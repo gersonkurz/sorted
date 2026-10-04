@@ -54,7 +54,9 @@ The rule is to reproduce, not fix. These are the known ones:
 - Indirect **reads** use `Data[value-1]` (1-based), but indirect **writes** (`GetDataPointer`) use `Data[value]` (0-based).
 - Only plain or indirect number cells can be assignment/read targets. Any other target yields a null pointer in the original.
 - Values are C `long`, which is 32-bit on Win32. Arithmetic wraps at int32. Division truncates toward zero. Division by zero crashes the original.
-- Win32's `isWhitespace()` has no NUL check, so `skipWhitespaces()` at the end of the input reads past the terminator (UB). Linux has the check. The port treats end of input as end of input and documents the divergence in a test.
+- Number words keep the original's jokes and misspellings: "fiveteen", "fourty", "nineth", "twelveth" ("fifteen" and "twelfth" are *not* recognised), German "einstausend", "millionenste". Zero prints as an empty line. These live in `internal/numbers`, ported line by line.
+- **Undefined behaviour in the C code is not emulated** (Gerson's ruling: Sorted! has features, not bugs, and UB is neither). It gets a simple, documented, test-pinned result: a negative number printed as a cardinal is a crash (`numbers.ErrCrash`), and reads before a static buffer find NUL. Don't reverse-engineer the binary or ask for captures to pin UB.
+- Win32's `isWhitespace()` has no NUL check, so `skipWhitespaces()` at the end of the input reads past the terminator (UB, see above). Linux has the check, and the port treats end of input as end of input.
 
 ## Porting decisions (made by Gerson)
 

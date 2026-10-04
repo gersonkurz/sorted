@@ -39,3 +39,6 @@ out/
 
 # Keep the original Win32 reference binary
 !legacy/sorted.win32/Sorted.exe
+
+# Golden captures are test data, not coverage output
+!testdata/golden/*.out
