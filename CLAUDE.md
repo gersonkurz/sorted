@@ -52,11 +52,12 @@ Pipeline (`Sorted.cpp`): **OPP preprocessor → character filter → recursive-d
 The rule is to reproduce, not fix. These are the known ones:
 
 - Indirect **reads** use `Data[value-1]` (1-based), but indirect **writes** (`GetDataPointer`) use `Data[value]` (0-based).
-- Only plain or indirect number cells can be assignment/read targets. Any other target yields a null pointer in the original.
-- Values are C `long`, which is 32-bit on Win32. Arithmetic wraps at int32. Division truncates toward zero. Division by zero crashes the original.
+- Values are C `long`, which is 32-bit on Win32. Arithmetic wraps at int32. Division truncates toward zero. Expressions are re-evaluated on every reference; a reference past the end of its table reads the next slot of the static `Code` array (another table's entry or zeros).
 - Number words keep the original's jokes and misspellings: "fiveteen", "fourty", "nineth", "twelveth" ("fifteen" and "twelfth" are *not* recognised), German "einstausend", "millionenste". Zero prints as an empty line. These live in `internal/numbers`, ported line by line.
 - The parser shares one cursor across alternatives without restoring it, so some forms can never parse: "as a english ordinal", "as a german ordinal", and the German "ein englischer/deutscher Kardinal"/"ein englische Ordinalzahl" outputs ("ein Zeichen" and "eine deutsche Ordinalzahl" work). Outputs and inputs have no period check in their "single" form, so a program can declare only one of each; German ordered differences cannot be a list.
 - A "single" jump, condition, assignment or statement followed by a comma is withdrawn (`Count--`) without undoing `TypeCount`, so the /D dump's `ELEMENTS` exceeds the real total (hallo: 26 for 23).
+- References have no "logical operation" or "input" type, so logical operations can be declared but never used, and a program can never read input ("This code cannot read." is the only useful choice). If it could, `getchar` would store into the read entry's unfilled second operand, i.e. the first cell.
+- itoa.s prints a NUL byte before its digits: the 0-based indirect write and the 1-based indirect read are one cell apart.
 - **Undefined behaviour in the C code is not emulated** (Gerson's ruling: Sorted! has features, not bugs, and UB is neither). It gets a simple, documented, test-pinned result: a negative number printed as a cardinal is a crash (`numbers.ErrCrash`), and reads before a static buffer find NUL. Don't reverse-engineer the binary or ask for captures to pin UB.
 - Win32's `isWhitespace()` has no NUL check, so `skipWhitespaces()` at the end of the input reads past the terminator (UB, see above). Linux has the check, and the port treats end of input as end of input.
 
