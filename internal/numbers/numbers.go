@@ -19,10 +19,10 @@ package numbers
 
 import "errors"
 
-// ErrCrash reports a value the original cannot format: a negative cardinal,
-// which indexes the C word tables with negative subscripts (undefined
-// behaviour, not emulated).
-var ErrCrash = errors.New("access violation in the original Sorted.exe")
+// ErrCrash is the port-defined result of formatting a negative cardinal. The
+// original indexes its word tables with negative subscripts there, which is
+// undefined behaviour and, by the maintainer's ruling, not emulated.
+var ErrCrash = errors.New("negative cardinal (undefined behaviour in the original)")
 
 // OrdinalError is what the original prints as the ordinal of a number below 1.
 const OrdinalError = "ERROR, ORDINALS ARE POSITIVE INTEGERS"

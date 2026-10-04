@@ -44,7 +44,7 @@ func enHalf(b []byte, n int32, suffix string) []byte {
 
 // EnglishCardinal returns n in English words, written as one word
 // ("onehundredtwentythree"). Zero, and any multiple of 1000000000, yields the
-// empty string. Negative numbers crash the original (see ErrCrash).
+// empty string. A negative number yields ErrCrash.
 func EnglishCardinal(n int32) (string, error) {
 	if n < 0 {
 		return "", ErrCrash

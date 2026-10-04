@@ -45,8 +45,8 @@ func deHalf(b []byte, n int32, suffix string) []byte {
 
 // GermanCardinal returns n in German words, written as one word
 // ("einhundertdreiundzwanzig", but also "einstausend" and "einsmillionen").
-// Zero, and any multiple of 1000000000, yields the empty string. Negative
-// numbers crash the original (see ErrCrash).
+// Zero, and any multiple of 1000000000, yields the empty string. A negative
+// number yields ErrCrash.
 func GermanCardinal(n int32) (string, error) {
 	if n < 0 {
 		return "", ErrCrash
