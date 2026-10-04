@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sorted! - p-nand-q.com</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <!-- Highlight.js for syntax highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    
+    <link rel="stylesheet" href="/css/modern.css">
+    
+    <style>
+        /* Override highlight.js styles to match our theme */
+        [data-theme="dark"] pre code.hljs {
+            background: var(--bg-code);
+            color: var(--text-primary);
+        }
+        
+        [data-theme="light"] pre code.hljs {
+            background: var(--bg-code);
+            color: var(--text-primary);
+        }
+        
+        .hljs {
+            padding: 1rem !important;
+            border-radius: 6px;
+        }
+        
+        /* Enhanced breadcrumb styling for sibling navigation */
+        .breadcrumb strong {
+            color: var(--accent);
+            font-weight: 600;
+        }
+        
+        .breadcrumb span {
+            margin: 0 0.5rem;
+            color: var(--text-secondary);
+        }
+    </style>
+</head>
+<body data-theme="dark">
+    <header class="header">
+        <div class="header-content">
+            <a href="/" class="logo">p-nand-q.com</a>
+            <button class="mobile-menu-toggle" aria-label="Toggle menu">
+                <span>☰</span>
+            </button>
+            <nav>
+                <ul>
+                    <li>
+                        <a href="#">C++</a>
+                        <ul class="dropdown-menu">
+                            <li class="dropdown-header">Articles</li>
+                            <li><a href="/programming/cplusplus/stl/index.html"><b>A Series on understanding STL headers</b></a></li>
+                            <li><a href="/programming/cplusplus/using_member_functions_with_c_function_pointers.html"><b>C++ Member Functions with C Function Pointers</b></a></li>
+                            <li><a href="/programming/cplusplus/registering_global_objects.html"><b>Registering global objects</b></a></li>
+                            <li class="dropdown-divider"></li>
+                            <li class="dropdown-header">Obfuscation exercises</li>
+                            <li><a href="/programming/obfuscation/cpp/index.html"><b>Calculating PI to an arbitrary number of digits</b> and</a></li>
+                            <li><a href="/programming/obfuscation/cpp/quicksort.html"><b>Elegant, well-documented Quicksort variant</b>...</a></li>
+                            <li><a href="/programming/obfuscation/cpp/more.html"><b>Yet another obfuscation FAQ</b></a></li>
+                            <li class="dropdown-divider"></li>
+                            <li><a href="/programming/cplusplus/index.html"><b>More...</b></a></li>
+                        </ul>
+                    </li>
+                    <li>
+                        <a href="#">Python</a>
+                        <ul class="dropdown-menu">
+                            <li class="dropdown-header">General</li>
+                            <li><a href="/python/algorithms/index.html"><b>Algorithms</b> and</a></li>
+                            <li><a href="/python/data-types/index.html"><b>Data Structures</b>...</a></li>
+                            <li class="dropdown-divider"></li>
+                            <li class="dropdown-header">Articles</li>
+                            <li><a href="/python/lambda.html"><b>Stupid Lambda Tricks</b></a></li>
+                            <li class="dropdown-divider"></li>
+                            <li class="dropdown-header">Obfuscation exercises</li>
+                            <li><a href="/programming/obfuscation/python/index.html"><b>Calculating PI to an arbitrary number of digits</b> and</a></li>
+                            <li><a href="/programming/obfuscation/python/quicksort.html"><b>Lambdaizing Python Code</b></a></li>
+                            <li><a href="/programming/obfuscation/python/more.html"><b>Obfuscated Python</b></a></li>
+                            <li class="dropdown-divider"></li>
+                            <li><a href="/python/index.html"><b>More...</b></a></li>
+                        </ul>
+                    </li>
+                    <li>
+                        <a href="#">Programming</a>
+                        <ul class="dropdown-menu">
+                            <li class="dropdown-header">Java</li>
+                            <li><a href="/programming/obfuscation/java/computed_gotos_howto.html"><b>Computed GOTOs - HOWTO</b></a></li>
+                            <li><a href="/programming/obfuscation/java/index.html"><b>Calculating PI to an arbitrary number of digits</b></a></li>
+                            <li><a href="/programming/obfuscation/java/quicksort.html"><b>Quicksort</b></a></li>
+                            <li class="dropdown-divider"></li>
+                            <li class="dropdown-header">Objective-C</li>
+                            <li><a href="/programming/obfuscation/objective-c/index.html"><b>Calculating PI to an arbitrary number of digits</b></a></li>
+                            <li class="dropdown-divider"></li>
+                            <li class="dropdown-header">Windows</li>
+                            <li><a href="/programming/windows/git/index.html"><b>GIT</b> for Subversion users</a></li>
+                            <li><a href="/programming/windows/wix/index.html"><b>WIX</b> for the impatient</a></li>
+                            <li><a href="/programming/windows/writingw8apps.html">Writing <b>Apps for Windows 8</b></a></li>
+                            <li><a href="/programming/windows/open_source_project_builds.html">Build instructions for <b>Open Source Projects with Visual Studio</b></a></li>
+                            <li class="dropdown-divider"></li>
+                            <li><a href="/programming/index.html"><b>More...</b></a></li>
+                        </ul>
+                    </li>
+                    <li>
+                        <a href="#">Languages</a>
+                        <ul class="dropdown-menu">
+                            <li class="dropdown-header">Programming Languages that I have written</li>
+                            <li><a href="/programming/languages/java2k/index.html"><b>Java2K</b> is the only truly stochastic programming language in the world</a></li>
+                            <li><a href="/programming/languages/sorted/index.html"><b>Sorted!</b>, winner of the <em>Award for Esoteric Language of the Year 2000</em>, is good, clean fun</a></li>
+                            <li><a href="/programming/languages/smith/index.html"><b>SMITH#</b> is to SMITH, what C# is to C</a></li>
+                            <li><a href="/programming/languages/justif.html"><b>JUSTIF &amp; RECURSION</b> is an experiment in language minimalism</a></li>
+                            <li><a href="/programming/languages/i/index.html"><b><em>i</em>&reg;&trade;</b> is inspired by my reading of Microsofts' Code Complete 2</a></li>
+                            <li><a href="/programming/languages/TMMLPTEALPAITAFNFAL.html"><b>TMMLPTEALPAITAFNFAL</b> is job-security embodied in a programming language</a></li>
+                            <li><a href="/programming/languages/gplz/index.html"><b>THE GREAT PYTHON LANGUAGE ZOO</b> is a facility in which <del>animals</del> languages are confined within enclosures</a></li>
+                            <li class="dropdown-divider"></li>
+                            <li><a href="/programming/languages/index.html"><b>More...</b></a></li>
+                        </ul>
+                    </li>
+                    <li>
+                        <a href="#">Humor</a>
+                        <ul class="dropdown-menu">
+                            <li class="dropdown-header">Obfuscation is for the whole family</li>
+                            <li><a href="/programming/obfuscation/c-sharp/index.html"><b>Calculating Pi to an arbitrary number of digits</b></a></li>
+                            <li><a href="/programming/obfuscation/c-sharp/quicksort.html"><b>Best practices for Quicksort implementations</b></a></li>
+                            <li><a href="/programming/obfuscation/cpp/more.html"><b>Obfuscating C/C++</b> - a FAQ</a></li>
+                            <li><a href="/programming/obfuscation/python/more.html"><b>Obfuscating Python</b> - what good is a language that you cannot obfuscate?</a></li>
+                            <li><a href="/programming/obfuscation/java/computed_gotos_howto.html"><b>Computed GOTOs in Java</b> - adding missing language features</a></li>
+                            <li class="dropdown-divider"></li>
+                            <li><a href="/programming/obfuscation/index.html"><b>More...</b></a></li>
+                        </ul>
+                    </li>
+                    <li>
+                        <a href="#">Tools</a>
+                        <ul class="dropdown-menu">
+                            <li class="dropdown-header">Windows System Administration</li>
+                            <li><a href="/download/regdiff.html"><b>regdiff</b> can diff/merge registry files</a></li>
+                            <li><a href="/download/pserv_cpl/index.html"><b>pserv.cpl</b> can control services, devices and lots of other things</a></li>
+                            <li><a href="/download/rfstool/index.html"><b>rfstool</b> can access Linux ReiserFS partitions from Windows</a></li>
+                            <li><a href="/download/gkalk/index.html"><b>gkalk</b> is a free-form calculator</a></li>
+                            <li><a href="/download/gtools/index.html"><b>gtools</b> is a collection of various tools in one installer</a></li>
+                            <li class="dropdown-divider"></li>
+                            <li class="dropdown-header">Web-Protocol Related Tools</li>
+                            <li><a href="/download/shicks/index.html"><b>shicks</b> is a mail server for Windows and Linux</a></li>
+                            <li><a href="/download/pop3filter/index.html"><b>pop3filter</b> is a mail proxy to filter spam</a></li>
+                            <li><a href="/download/eftepede.html"><b>eftepede</b> is a FTP server that doesn't suck</a></li>
+                            <li class="dropdown-divider"></li>
+                            <li><a href="/download/index.html"><b>More...</b></a></li>
+                        </ul>
+                    </li>
+                    <li>
+                        <a href="#">Misc</a>
+                        <ul class="dropdown-menu">
+                            <li class="dropdown-header">Stuff that really didn't fit in anywhere else</li>
+                            <li><a href="/music/index.html"><b>Music</b></a></li>
+                            <li><a href="/business/index.html"><b>Business</b></a></li>
+                            <li><a href="http://kiva.org"><b>Doing Good</b></a></li>
+                            <li class="dropdown-divider"></li>
+                            <li><a href="/about/index.html"><b>Impressum</b></a></li>
+                        </ul>
+                    </li>
+                </ul>
+            </nav>
+            <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme">
+                <span id="theme-icon">🌙</span>
+            </button>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="breadcrumb">
+    <a href="/">Home</a>
+    <span>/</span>
+    <a href="/programming">Programming</a>
+    <span>/</span>
+    <a href="/programming/languages">Languages</a>
+    <span>/</span>
+    <a href="/programming/languages/sorted">Sorted</a>
+    <span>/</span>
+    <strong>Overview</strong> <span>|</span> <a href="/programming/languages/sorted/manual.html">Manual</a>
+</div>
+
+
+        <div class="historical-note">
+            <h3>Historical Note</h3>
+            <p>This page was migrated from the original p-nand-q.com site which was last updated in 2015.
+            The content has been preserved exactly as it was, with only formatting updated for modern browsers.
+            Over the coming days and weeks, the content will be reviewed and may be updated for accuracy and relevance.
+            If you find any issues, please <a href="/about">contact me</a>.</p>
+        </div>
+
+        <article>
+            
+
+<h1>Sorted!</h1>
+<p>This page describes <b>Sorted!</b>, the winner of the
+<a  target="_blank" href="http://esolangs.org/wiki/Esoteric_Awards">esoteric language contest</a>
+for the year 2000 !</p>
+<h2>Design Criteria</h2>
+<p>I keep hearing these voices telling me that my cd tray wants to marry me,
+and this was part of my incentive for designing this language. Other than that,
+I firmly believe in the following design criteria:</p>
+<ul class="dash-list"> 
+<li>You should be able to sing a good programming language. Try singing PHP, and
+you'll know what I mean.  Sorted! in stark contrast lends itself ideally to singing.
+You are encouraged to do your own recordings of Sorted! programs and post them at
+<a target="_blank" href="http://www.mp3.com">MP3.COM</a>.</li>
+
+<li>The excessive use of cardinals is sinfull. Thou shalt not have the same cardinal
+more than once, because cardinals are roman-catholic ministers and, as such, holy.
+(I leave it to the reader to determine the meaning of "to have a cardinal"). For the
+more mathematically inclined, <a target="_blank" href="http://www.fiu.edu/~mirandas/birth.htm">here</a>
+is a list of the living cardinals arranged by date of birth. You won't find this kind of
+information at <a target="_blank href="http://forum.swarthmore.edu/library/">the Math
+Forum Internet Mathematics Library</a>.</li>
+<li>Each program should contain exactly fourteen statements.</li>
+</ul>
+
+<p>Since I found that most modern programming languages (Java, C# and the VAX assembler 
+(which is here mainly because it can be sung)) do not fullfill all of these to equal extent, 
+I decided that it was time to write a programming language from scratch. Here are its main</p>
+<h2>Features</h2>
+<ul class="dash-list">
+<li>Each Sorted! program contains exactly the same number of statements, namely fourteen(14). 
+No more, no less.
+At one point in the development cycle I thought about using sixteen statements instead, but I remembered my design criteria 
+and did not bloat the language unnecessarily.</li>
+<li>Because of this, error checking in Sorted! is very simple: just count the number of statements; 
+if there are more or less than 14 statements, the program definitely won't work; 
+if it has 14 statements, it will have a very high chance of working (compared to non-14-liners).</li>
+<li>Sorted! is bilingual. It can understand both english and german code. To my knowledge,
+  Sorted! is
+the only programming language that can do this, in the world.</li>
+<li>Each Sorted! program is, in fact, sorted, albeit randomly. Hence the name!</li>
+<li>Each Sorted! program can be sung.</li>
+<li> Sorted! now
+  uses <a href="/programming/languages/opp.html">OPP</a> for enhanced programming power.</li>
+<li>Each Sorted! is faithful to the roman catholic church, 
+by using cardinals only once, and by not including any satanistic references like Java does.</li>
+</ul>
+<h2>Examples</h2>
+<p>Currently, the following sample programs are available for your entertainment:</p>
+<h3>HELLO.S - an an english-language version of Hello, World.</h3>
+<pre><code>This code uses the numbers zero, one, seventy two, one hundred and one, one hundred eight, two hundred, 
+    one hundred eleven, fourtyfour, thirtytwo, eightyseven, twohundred one, onehundred fourteen, two hundred two, 
+    onehundred, fourtysix, and twohundredtwentytwo.
+This code always goes to the first label, and sometimes goes to the second label if the first condition is true.
+This code writes the cell indexed by the first number as a character.
+This code cannot read.
+This code uses the sum of the first number and the second number.
+This code uses the condition that the sixteenth number is equal to the cell indexed by the first number. 
+This code uses two labels.
+This code does not use any ordered differences.
+This code assigns the fifth number to the sixth number, the first number to the sixteenth number, the first sum to 
+    the first number, the seventh number to the eleventh number, and the fifth number to the thirteenth number.
+This code does not use any products.
+This code implements the first assignment, the second assignment, the third assignment, the fourth assignment, the 
+    third assignment, the fifth assignment, the third assignment, the first label, the second jump, the first output, 
+    the third assignment, the first jump, and the second label.
+This code does not use any ratios.
+This code does not use any logical operations.
+Cool.</code></pre>
+
+<h3>HALLO.S - the equivalent german-language version of Hallo, Welt.</h3>
+<pre><code>Dieses Programm benutzt die Zahlen 
+	Null, 
+	Eins, 
+	Zweiundsiebzig, 
+	Siebenundneunzig, 
+	Einhundertacht, 
+	Zweihundert, 
+	Einhundertelf, 
+	Vierundvierzig, 
+	Zweiunddreissig, 
+	Siebenundachtzig, 
+	Einhunderteins, 
+	Zweihundertzwei, 
+	Einhundertsechzehn, 
+	Sechsundvierzig, und 
+	Zweihundertzweiundzwanzig.
+Dieses Programm 
+	springt immer an das erste Sprungziel, und 
+	springt manchmal an das zweite Sprungziel wenn die erste Bedingung wahr ist.
+Dieses Programm 
+	schreibt diejenige Zelle die indiziert wird durch die erste Zahl als ein Zeichen.
+Dieses Programm 
+	kann nicht lesen.
+Dieses Programm 
+	benutzt die Summe aus der ersten Zahl und der zweiten Zahl.
+Dieses Programm 
+	benutzt die Bedingung dass die sechzehnte Zahl ist gleich diejenige Zelle die indiziert wird durch die erste Zahl.
+Dieses Programm 
+	benutzt zwei Sprungziele.
+Dieses Programm 
+	benutzt keine geordneten Differenzen.
+Dieses Programm 
+	weisst zu die fuenfte Zahl an die sechsten Zahl,
+	die erste Zahl an die fuenfzehnte Zahl,
+	die erste Summe an die erste Zahl,
+	die siebente Zahl an die zweihundertelfte Zahl, und
+	die fuenfte Zahl an die zwoelfte Zahl.
+Dieses Programm benutzt keine Produkte.
+Dieses Programm implementiert
+	die erste Zuweisung,
+	die zweite Zuweisung,
+	die dritte Zuweisung, 
+	die vierte Zuweisung, 
+	die dritte Zuweisung,
+	die fuenfte Zuweisung, 
+	die dritte Zuweisung, 
+	den ersten Sprungziel, 
+	der zweite Sprungbefehl, 
+	die erste Ausgabe, 
+	die dritte Zuweisung, 
+	den ersten Sprungbefehl, 
+	und das zweite Sprungziel.
+Dieses Programm 
+	benutzt keine Verhaeltnisse.
+Dieses Programm 
+	ist unlogisch.
+Cool.</code></pre>
+<h3>ITOA.S converts an integer to a string and prints it.</h3>
+<pre><code>This code uses the numbers fourtyone milliontwohundredeightyonethousand ninehundredtwentyseven, ten, eleven, fourtyeight, 
+    eighty, seventynine, one, and zero.
+This code sometimes goes to the second label if the first condition is true, sometimes goes to the first label if the
+    second condition is true, and 
+sometimes goes to the second label if the third condition is true.
+This code writes the cell indexed by the fifth number as a character.
+This code cannot read.
+This code uses the sums of the third number and the fourth number, and of the fifth number and the seventh number.
+This code uses the condition that the first number is equal to the eight number, 
+the condition that the eight number is less than the first number, and the condition that the fifth number is less than the sixth number.
+This code uses two labels.
+This code uses the ordered differences between the fifth number and the seventh number, and between the first number and the third number.
+This code assigns 
+the first ratio to the third number,
+the first ordered difference to the fifth number,
+the fifth number to the sixth number,
+the first ratio to the first number,
+the first sum to the cell indexed by the fifth number,
+the first product to the third number,
+the eight number to the cell indexed by the fifth number,
+the second ordered difference to the third number, and
+the second sum to the fifth number.
+This code uses the product of the second number and the third number.
+This code implements the seventh assignment, the third assignment,
+the second assignment, the first label, the first assignment, the sixth assignment,
+the eight assignment, the fourth assignment, the second assignment, the fifth assignment,
+the first jump, the second jump, the second label, the first output, the ninth assignment, and the third jump.
+This code uses the ratio of the first number to the second number.
+This code does not use any logical operations.
+This code is cool.</code></pre>
+
+<h3>FIBO.S calculates a fibonacci number and prints it.</h3>
+<pre><code>This code uses the numbers twenty, seventyone, three, two, and one.
+This code sometimes goes to the second label if the first condition is true,
+sometimes goes to the fourth label if the second condition is true,
+always goes to the third label,
+always goes to the fifth label, and
+always goes to the first label.
+This code writes the eleventh number as a english cardinal.
+This code cannot read.
+This code uses the sums of the tenth number and the eleventh number, 
+and of the second number and the fifth number.
+This code uses the condition 
+that the second number is equal to the first number, 
+and the condition that the second number is less than the third number.
+This code uses five labels.
+This code does not use any ordered differences.
+This code assigns the fourth number to the tenth number,
+the fifth number to the eleventh number,
+the fifth number to the second number,
+the second sum to the second number,
+the eleventh number to the fourth number,
+the eleventh number to the tenth number,
+and the first sum to the eleventh number.
+This code does not use any products.
+This code implements
+the third assignment,
+the first label,
+the first jump,
+the second jump,
+the third jump,
+the fourth label,
+the second assignment,
+the sixth assignment,
+the fourth jump,
+the third label,
+the fifth assignment,
+the seventh assignment,
+the first assignment,
+the fifth label,
+the first output,
+the fourth assignment,
+the fifth jump, and
+the second label.
+This code does not use any ratios.
+This code does not use any logical operations.
+Cool.</code></pre>
+<h2>Download</h2>
+<p>You can download the distribution for Win32 <a href="/programming/languages/sorted/sorted.zip">here</a>.
+You
+can download the distribution for Linux <a href="/programming/languages/sorted/sorted.tar.bz2">here</a>.</p>
+
+<p>NEW: You
+can download the distribution for the AMIGA <a href="/programming/languages/sorted/sorted.lha">here</a>.
+(Tested with WinUAE only, comments welcome).</p>
+
+<p>When you do so, you get a program that can interpret
+Sorted! code and optionally create a C-Source from it. You may send the generated C-Source output to
+your printer and pin it (the output) on the wall; free of charge, too. (GPL
+doesn't cover this bit).</p>
+
+
+        </article>
+    </div>
+
+    <footer>
+        <p>© 2000-2025 Gerson Kurz · <a href="/about/privacy_policy.html">Privacy</a> · <a href="/about/disclaimer.html">Disclaimer</a></p>
+    </footer>
+
+    <script src="/js/modern.js"></script>
+    
+    <!-- Highlight.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/cpp.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/csharp.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/xml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/objectivec.min.js"></script>
+    
+    <script>
+        // Initialize highlight.js
+        hljs.highlightAll();
+        
+        // Re-highlight when theme changes
+        const themeToggle = document.getElementById('theme-toggle');
+        if (themeToggle) {
+            const originalToggle = themeToggle.onclick;
+            themeToggle.onclick = function(e) {
+                if (originalToggle) originalToggle.call(this, e);
+                // Update highlight.js theme
+                const isDark = document.body.getAttribute('data-theme') === 'dark';
+                const link = document.querySelector('link[href*="highlight.js"]');
+                if (link) {
+                    link.href = isDark 
+                        ? 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css'
+                        : 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css';
+                }
+            };
+        }
+    </script>
+</body>
+</html>
