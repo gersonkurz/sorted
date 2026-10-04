@@ -33,3 +33,9 @@ go.work.sum
 
 # Build output
 out/
+
+# Side files written by the legacy OPP preprocessor
+*,opp
+
+# Keep the original Win32 reference binary
+!legacy/sorted.win32/Sorted.exe

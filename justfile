@@ -1,84 +1,119 @@
-# Set executable suffix based on operating system
-EXE_SUFFIX := if os() == "windows" { ".exe" } else { "" }
+# Build, test & packaging tasks for sorted, the Go port of Sorted!.
+#
+# Cross-platform: macOS/Linux (sh) and Windows (cmd). Go commands are the same
+# everywhere and live under "Shared"; the few recipes that need the shell are
+# OS-gated with a native variant each, so `just --list` only shows what applies.
+#
+# Windows note: keep double quotes out of Windows recipe lines. They do not reliably
+# survive the hand-off from just to cmd.exe (a quoted PowerShell -Command once
+# arrived as a string literal and silently did nothing), and nothing here
+# needs them.
 
-# Output directory for native builds
-BUILD_DIR := if os() == "macos" { "out/build/mac" } else if os() == "windows" { "out\\build\\win-64" } else { "out/build/linux" }
+# On Windows, run recipes through cmd. Ignored on macOS/Linux, which use sh.
+set windows-shell := ["cmd.exe", "/c"]
 
-# Output directory for release archives
-DIST_DIR := "out/dist"
+# The freshly built binary, as the shell of this OS invokes it
+bin := if os() == "windows" { "out\\build\\sorted.exe" } else { "out/build/sorted" }
 
-set windows-shell := ["cmd", "/C"]
+# Version baked into the binary. Only the branch for this OS is evaluated.
+version := if os() == "windows" { `git describe --tags --always --dirty 2>nul || echo dev` } else { `git describe --tags --always --dirty 2>/dev/null || echo dev` }
 
-# Auto-computed build metadata
-version := `git describe --tags --always --dirty 2>/dev/null || echo dev`
-LDFLAGS := "-s -w -X main.version=" + version
+# Linker flags in a form that needs no quotes (see the Windows note above).
+# Builds pass -buildvcs=false: the version comes from here, and VCS stamping
+# makes go build fail outright where git refuses the repository (e.g. a
+# network share owned by another user, as with the Windows VM).
+ldflags := "-ldflags=-X=main.version=" + version
 
 # Targets for `just package`, as GOOS/GOARCH pairs
-PLATFORMS := "darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 linux/386 windows/amd64 windows/386"
+platforms := "darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 linux/386 windows/amd64 windows/386 windows/arm64"
 
-# Default target
-default: build
+# Default recipe: show available commands
+default:
+    @just --list
 
-# Build the sorted interpreter for the host platform
+# ============================================================================
+# Shared
+# ============================================================================
+
+# Build the sorted interpreter for this platform into out/build
 build:
-    go build -buildvcs=false -trimpath -ldflags "{{LDFLAGS}}" -o {{BUILD_DIR}}/sorted{{EXE_SUFFIX}} ./cmd/sorted
-    @echo Built {{BUILD_DIR}}/sorted{{EXE_SUFFIX}}
+    go build -buildvcs=false -trimpath {{ldflags}} -o {{bin}} ./cmd/sorted
 
-# Usage: just run <arguments for sorted>
 # Build, then run the interpreter with arguments passed through
-run *ARGS: build
-    {{BUILD_DIR}}/sorted{{EXE_SUFFIX}} {{ARGS}}
+run *args: build
+    {{bin}} {{args}}
 
-# Run all tests
+# Run all tests (never replayed from the test cache)
 test:
     go test -count 1 ./...
-
-# Usage: just test-one TestParseHello
-# Run tests whose name matches a regex, verbosely
-test-one PATTERN:
-    go test -count 1 -v -run '{{PATTERN}}' ./...
-
-# Run all tests with the race detector
-test-race:
-    go test -count 1 -race ./...
-
-# Run tests with coverage; writes out/coverage.out and an HTML report
-[unix]
-coverage:
-    mkdir -p out
-    go test -count 1 -coverprofile=out/coverage.out ./...
-    go tool cover -func=out/coverage.out | tail -1
-    go tool cover -html=out/coverage.out -o out/coverage.html
-    @echo Coverage report: out/coverage.html
 
 # Format all Go sources
 fmt:
     gofmt -w .
 
-# Check formatting, run go vet and staticcheck
+# Run go vet
+vet:
+    go vet ./...
+
+# Run staticcheck (pinned as a tool in go.mod)
+staticcheck:
+    go tool staticcheck ./...
+
+# Format check, go vet and all tests: the review loop's Verify step
+verify: fmt-check vet test
+
+# Format check, go vet and staticcheck
+lint: fmt-check vet staticcheck
+
+# Lint and test: run before committing
+check: lint test
+
+# Run tests with coverage; writes out/coverage.out and out/coverage.html
+coverage: _out-dir
+    go test -count 1 -coverprofile=out/coverage.out ./...
+    go tool cover -html=out/coverage.out -o out/coverage.html
+
+# ============================================================================
+# macOS / Linux
+# ============================================================================
+
+# gofmt -l exits 0 when it merely lists files, and non-zero on a syntax error
+# (possibly with nothing listed), so both need checking.
+#
+# Fail if any Go source needs gofmt
 [unix]
-lint:
+fmt-check:
     #!/usr/bin/env sh
-    set -e
-    unformatted=$(gofmt -l .)
+    unformatted=$(gofmt -l .) || exit 1
     if [ -n "$unformatted" ]; then
         echo "Files need gofmt:"
         echo "$unformatted"
         exit 1
     fi
-    go vet ./...
-    go run honnef.co/go/tools/cmd/staticcheck@latest ./...
 
-# Format check, lint and test: run before committing
-check: lint test
+# The pattern reaches go test through the environment ($pattern), so regex
+# characters such as | are never parsed by the shell.
+#
+# Run tests whose name matches a regex, verbosely: just test-one 'TestA|TestB'
+[unix]
+test-one $pattern:
+    go test -count 1 -v -run "$pattern" ./...
 
-# Cross-compile all PLATFORMS and package each into out/dist with README, LICENSE and the sample programs
+# Run all tests with the race detector (needs cgo, hence not on Windows)
+[unix]
+test-race:
+    go test -count 1 -race ./...
+
+# One archive per platform with the binary, README, LICENSE and the sample
+# programs, plus SHA256SUMS.
+#
+# Cross-compile all platforms into out/dist
 [unix]
 package: clean-dist
     #!/usr/bin/env sh
     set -e
-    mkdir -p {{DIST_DIR}}
-    for platform in {{PLATFORMS}}; do
+    mkdir -p out/dist
+    for platform in {{platforms}}; do
         goos=${platform%/*}
         goarch=${platform#*/}
         name="sorted-{{version}}-${goos}-${goarch}"
@@ -87,30 +122,63 @@ package: clean-dist
         [ "$goos" = "windows" ] && exe=".exe"
         echo "Building ${name}..."
         mkdir -p "${stage}/examples"
-        CGO_ENABLED=0 GOOS=$goos GOARCH=$goarch go build -buildvcs=false -trimpath -ldflags "{{LDFLAGS}}" -o "${stage}/sorted${exe}" ./cmd/sorted
+        CGO_ENABLED=0 GOOS=$goos GOARCH=$goarch go build -buildvcs=false -trimpath {{ldflags}} -o "${stage}/sorted${exe}" ./cmd/sorted
         cp README.md LICENSE "${stage}/"
-        cp legacy/sorted.linux/*.s "${stage}/examples/"
+        cp legacy/sorted.win32/*.s "${stage}/examples/"
         if [ "$goos" = "windows" ]; then
-            (cd out/stage && zip -qr "../../{{DIST_DIR}}/${name}.zip" "${name}")
+            (cd out/stage && zip -qr "../dist/${name}.zip" "${name}")
         else
-            tar -czf "{{DIST_DIR}}/${name}.tar.gz" -C out/stage "${name}"
+            tar -czf "out/dist/${name}.tar.gz" -C out/stage "${name}"
         fi
     done
     rm -rf out/stage
-    (cd {{DIST_DIR}} && shasum -a 256 * > SHA256SUMS)
-    echo "Packages written to {{DIST_DIR}}:"
-    ls -1 {{DIST_DIR}}
+    (cd out/dist && shasum -a 256 * > SHA256SUMS)
+    echo "Packages written to out/dist:"
+    ls -1 out/dist
 
 # Remove release archives
 [unix]
 clean-dist:
-    rm -rf {{DIST_DIR}} out/stage
+    rm -rf out/dist out/stage
 
-# Clean all build artifacts
+# Remove all build output
 [unix]
 clean:
     rm -rf out
 
+[unix]
+[private]
+_out-dir:
+    @mkdir -p out
+
+# ============================================================================
+# Windows (cmd)
+# ============================================================================
+
+# A gofmt syntax error fails the first line; findstr succeeds only if gofmt
+# listed a file.
+#
+# Fail if any Go source needs gofmt
+[windows]
+fmt-check: _out-dir
+    gofmt -l . > out\gofmt.txt
+    @findstr . out\gofmt.txt && (echo Files need gofmt & exit 1) || exit 0
+
+# The pattern reaches go test through the environment and is expanded by a
+# nested cmd with delayed expansion (!pattern!), which happens after cmd has
+# parsed | & < >, so regex characters stay literal without any quoting.
+#
+# Run tests whose name matches a regex, verbosely: just test-one "TestA|TestB"
+[windows]
+test-one $pattern:
+    cmd /v:on /c go test -count 1 -v -run !pattern! ./...
+
+# Remove all build output
 [windows]
 clean:
     if exist out rmdir /s /q out
+
+[windows]
+[private]
+_out-dir:
+    @if not exist out mkdir out
