@@ -69,11 +69,11 @@ just package    # macOS/Linux: release archives for all platforms in out/dist
 ## Usage
 
 ```
-sorted [--dump FILE] [--emit-c FILE] [--version] PROGRAM.s
+sorted [--dump FILE] [--to-c FILE] [--version] PROGRAM.s
 ```
 
 `sorted` parses and runs the program. `--dump` writes the parsed tables and
-`--emit-c` a translation into C, the original's `/D` and `/C` options; both are
+`--to-c` a translation into C, the original's `/D` and `/C` options; both are
 written before the program runs.
 
 What the program prints, and the original's diagnostics, go to stdout exactly

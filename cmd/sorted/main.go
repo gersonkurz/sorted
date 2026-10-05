@@ -1,9 +1,9 @@
 // Command sorted runs programs written in Sorted!, the esoteric language from
 // 2000.
 //
-//	sorted [--dump FILE] [--emit-c FILE] [--version] PROGRAM.s
+//	sorted [--dump FILE] [--to-c FILE] [--version] PROGRAM.s
 //
-// --dump writes the parsed tables and --emit-c a translation into C, as the
+// --dump writes the parsed tables and --to-c a translation into C, as the
 // original's /D and /C do, before the program runs.
 //
 // The flags are modern; what a program prints, and the diagnostics of the
@@ -39,9 +39,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	showVersion := fs.Bool("version", false, "print the version and exit")
 	dumpFile := fs.String("dump", "", "write the parsed tables to `FILE` (legacy /D)")
-	cFile := fs.String("emit-c", "", "write a translation into C to `FILE` (legacy /C)")
+	cFile := fs.String("to-c", "", "write a translation into C to `FILE` (legacy /C)")
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: sorted [--dump FILE] [--emit-c FILE] [--version] PROGRAM.s")
+		fmt.Fprintln(stderr, "usage: sorted [--dump FILE] [--to-c FILE] [--version] PROGRAM.s")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {

@@ -10,7 +10,7 @@ This repo is a from-scratch **Go reimplementation of Sorted!**, the esoteric lan
 - `legacy/*/*.s` are sample programs (`hello.s`, `hallo.s` in German, `fibo.s`, `itoa.s`). They are the end-to-end golden tests (`cmd/sorted` `TestGolden`): output, `/C` and `/D` of each are compared with captures from the original binary in `testdata/golden/`, whose `README.md` lists each capture's origin. Expected output must come from actually running the original binary, so ask Gerson for it. Don't derive it from reading the C++.
 - `manual/Sorted! - p-nand-q.com.html` is the archived overview page with the same examples. It is not a full specification, so the legacy source is the authority.
 
-Port CLI: `sorted [--dump FILE] [--emit-c FILE] [--version] PROGRAM.s` (`cmd/sorted`); `--dump`/`--emit-c` are the legacy `/D`/`/C`, rendered by `internal/emit` byte for byte (LF where the original writes CRLF), written before the program runs. Legacy messages go to stdout byte for byte; port-defined run-time errors go to stderr; exit 1 on any failure, 2 on usage errors (the original always exits 0).
+Port CLI: `sorted [--dump FILE] [--to-c FILE] [--version] PROGRAM.s` (`cmd/sorted`); `--dump`/`--to-c` are the legacy `/D`/`/C`, rendered by `internal/emit` byte for byte (LF where the original writes CRLF), written before the program runs. Legacy messages go to stdout byte for byte; port-defined run-time errors go to stderr; exit 1 on any failure, 2 on usage errors (the original always exits 0).
 
 Legacy CLI: `Sorted /S<source> [/D<dumpfile>] [/C<c-output>]`. It interprets the program, can optionally dump the parsed tables, and can optionally emit an equivalent C program. Flags start with `-` or `/` and are case-insensitive. The value follows the flag letter with no space. Every exit code is 0, including parse failures, which print `<file> is not intelligible.`
 
@@ -62,6 +62,17 @@ The rule is to reproduce, not fix. These are the known ones:
 - itoa.s prints a NUL byte before its digits: the 0-based indirect write and the 1-based indirect read are one cell apart.
 - **Undefined behaviour in the C code is not emulated** (Gerson's ruling: Sorted! has features, not bugs, and UB is neither). It gets a simple, documented, test-pinned result: a negative number printed as a cardinal is a crash (`numbers.ErrCrash`), and reads before a static buffer find NUL. Don't reverse-engineer the binary or ask for captures to pin UB.
 - Win32's `isWhitespace()` has no NUL check, so `skipWhitespaces()` at the end of the input reads past the terminator (UB, see above). Linux has the check, and the port treats end of input as end of input.
+
+## Next phase: C to Sorted! (decided with Gerson, 2026-10-05)
+
+The faithful port is complete. The next phase compiles a growing subset of C into singable Sorted!, in the same binary (milestones M0–M5, issues #12–#17):
+
+- `sorted --from-c prog.c [--lang en|de]` prints the Sorted! program on stdout; `--lang` also re-renders an existing `.s` file (translation English ↔ German). `--to-c` is the legacy `/C`, renamed from `--emit-c` for symmetry.
+- No library calls and no `malloc`: one block of memory. `putchar` is the only intrinsic. The subset starts small and grows.
+- The C front end is a Go port of chibicc's tokenizer, parser and type pass (MIT; keep its notice), slimmed to the subset.
+- Output must be singable (that is the joke), in the style of the samples; German falls back to English per sentence where it has no form (ratios, lists of ordered differences).
+- Every generated program must parse back into the same tables (round trip) and print what the C program prints when compiled natively (differential tests; skipped without a C compiler).
+- C → Sorted! → C is free obfuscation, but the legacy `--to-c` does not preserve semantics (1-based indirect writes, every output `putchar`), so M5 adds a semantics-preserving C emitter alongside it.
 
 ## Porting decisions (made by Gerson)
 

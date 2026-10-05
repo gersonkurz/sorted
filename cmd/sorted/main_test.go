@@ -118,14 +118,14 @@ Cool.
 // code; the original silently skips it, and the program runs either way.
 func TestUnwritableOutputFile(t *testing.T) {
 	bad := filepath.Join(t.TempDir(), "missing-dir", "out.c")
-	r := runCLI("--emit-c", bad, filepath.Join("..", "..", "legacy", "sorted.win32", "hello.s"))
+	r := runCLI("--to-c", bad, filepath.Join("..", "..", "legacy", "sorted.win32", "hello.s"))
 	if r.code != 1 || normalise(r.stdout) != "Hello, World." || !strings.HasPrefix(r.stderr, "sorted: ") {
 		t.Errorf("%+v", r)
 	}
 }
 
 // TestGolden is the end-to-end suite: each sample runs through the CLI with
-// --emit-c and --dump, and its output, C translation and table dump must
+// --to-c and --dump, and its output, C translation and table dump must
 // equal what Sorted.exe produced (testdata/golden, see README.md there).
 // The diagnostics captures are checked by TestMissingFile and
 // TestParseFailure.
@@ -134,7 +134,7 @@ func TestGolden(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			dir := t.TempDir()
 			cFile, dumpFile := filepath.Join(dir, name+".c"), filepath.Join(dir, name+".dump")
-			r := runCLI("--emit-c", cFile, "--dump", dumpFile, filepath.Join("..", "..", "legacy", "sorted.win32", name+".s"))
+			r := runCLI("--to-c", cFile, "--dump", dumpFile, filepath.Join("..", "..", "legacy", "sorted.win32", name+".s"))
 			if r.code != 0 || r.stderr != "" {
 				t.Fatalf("%+v", r)
 			}
