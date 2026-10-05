@@ -132,6 +132,12 @@ func TestSentences(t *testing.T) {
 		{"german ordinal never parses", replace("This code writes", "This code writes the first number as a german ordinal."), "declaration of output", nil},
 		{"ein Zeichen", replace("This code writes", "Dieses Programm schreibt die erste Zahl als ein Zeichen."), "", flagsOf(FormatCharacter)},
 		{"ein deutscher Kardinal never parses", replace("This code writes", "Dieses Programm schreibt die erste Zahl als ein deutscher Kardinal."), "declaration of output", nil},
+		// Each failed alternative eats a word, so doubling it gets through.
+		{"english english ordinal", replace("This code writes", "This code writes the first number as a english english ordinal."), "", flagsOf(FormatEnglishOrdinal)},
+		{"german german ordinal", replace("This code writes", "This code writes the first number as a german german ordinal."), "", flagsOf(FormatGermanOrdinal)},
+		{"ein ein englischer Kardinal", replace("This code writes", "Dieses Programm schreibt die erste Zahl als ein ein englischer Kardinal."), "", flagsOf(FormatEnglishCardinal)},
+		{"ein ein ein englische Ordinalzahl", replace("This code writes", "Dieses Programm schreibt die erste Zahl als ein ein ein englische Ordinalzahl."), "", flagsOf(FormatEnglishOrdinal)},
+		{"ein ein ein ein deutscher Kardinal", replace("This code writes", "Dieses Programm schreibt die erste Zahl als ein ein ein ein deutscher Kardinal."), "", flagsOf(FormatGermanCardinal)},
 		{"eine deutsche Ordinalzahl", replace("This code writes", "Dieses Programm schreibt die erste Zahl als eine deutsche Ordinalzahl."), "", flagsOf(FormatGermanOrdinal)},
 		{"only one output per program", replace("This code writes", "This code writes the first number as a character, and the second number as a character."), "declaration of output", nil},
 		{"no output", replace("This code writes", "This code cannot write."), "", nil},

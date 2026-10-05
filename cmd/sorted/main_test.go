@@ -153,3 +153,19 @@ func TestGolden(t *testing.T) {
 		})
 	}
 }
+
+// --lang prints the program instead of running it; the printed program runs
+// like the original.
+func TestLang(t *testing.T) {
+	r := runCLI("--lang", "de", filepath.Join("..", "..", "legacy", "sorted.win32", "hello.s"))
+	if r.code != 0 || r.stderr != "" || !strings.HasPrefix(r.stdout, "Dieses Programm benutzt die Zahlen") || !strings.HasSuffix(r.stdout, "Hervorragend.\n") {
+		t.Fatalf("%+v", r)
+	}
+	r = runCLI(writeProgram(t, r.stdout))
+	if r.code != 0 || normalise(r.stdout) != "Hello, World." {
+		t.Errorf("running the German version: %+v", r)
+	}
+	if r := runCLI("--lang", "fr", "hello.s"); r.code != 2 || !strings.Contains(r.stderr, "usage: sorted") {
+		t.Errorf("unknown language: %+v", r)
+	}
+}

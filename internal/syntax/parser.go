@@ -785,7 +785,9 @@ func (ps *parser) assignDeclaration() bool {
 // cursor that is not restored between them, as in the original: "english"
 // consumed by the cardinal alternative is gone when the ordinal alternative
 // runs, so "as a english ordinal" and "as a german ordinal" never parse, nor
-// do the German "ein ..." forms other than "ein Zeichen".
+// do the German "ein ..." forms other than "ein Zeichen". Doubling the eaten
+// word gets through: "as a english english ordinal", "als ein ein ein ein
+// deutscher Kardinal".
 func (ps *parser) outputSpec() bool {
 	save := ps.p
 	cell := ps.code.slot(Writes)

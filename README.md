@@ -69,12 +69,14 @@ just package    # macOS/Linux: release archives for all platforms in out/dist
 ## Usage
 
 ```
-sorted [--dump FILE] [--to-c FILE] [--version] PROGRAM.s
+sorted [--dump FILE] [--to-c FILE] [--lang en|de] [--version] PROGRAM.s
 ```
 
 `sorted` parses and runs the program. `--dump` writes the parsed tables and
 `--to-c` a translation into C, the original's `/D` and `/C` options; both are
-written before the program runs.
+written before the program runs. `--lang en` or `--lang de` prints the program
+in English or German instead of running it, so `sorted --lang de hello.s` sings
+Hello World in German.
 
 What the program prints, and the original's diagnostics, go to stdout exactly
 as the original printed them:
@@ -124,9 +126,8 @@ eight, and nine", "the sums of … and …, and of … and …".
 - **The implementation** is the program proper: the order in which
   assignments, outputs, jumps and labels run. The same assignment can appear
   many times.
-- **Output** can be a character, a number written out as an English or German
-  cardinal, or (in German phrasing only: "als eine deutsche Ordinalzahl") a
-  German ordinal.
+- **Output** can be a character, or a number written out as an English or
+  German cardinal or ordinal (see below for how to ask for an ordinal).
 
 ## Things worth knowing
 
@@ -144,7 +145,9 @@ Sorted! has no bugs, only features. The port keeps all of them:
 - Logical operations can be declared but never used, for the same reason.
   They would compute `~a & ~b` anyway.
 - "as a english ordinal" and "as a german ordinal" are part of the grammar,
-  but never parse.
+  but do not parse: the cardinal alternative eats the "english" first. Say it
+  twice and it works: "as a english english ordinal". In German, a cardinal
+  takes four of them: "als ein ein ein ein deutscher Kardinal".
 - German grammar is approximate: a reference to a difference must read
   "der ersten geordnete Differenz", because "geordneten" is not recognised.
 - Reading a cell indirectly counts from 1, writing one indirectly counts from
@@ -184,7 +187,8 @@ just run legacy/sorted.win32/fibo.s
 
 The packages follow the original's pipeline: `internal/syntax` (source filter
 and parser), `internal/numbers` (number words), `internal/interp`
-(interpreter), `internal/emit` (`/D` and `/C` output), and the command in
+(interpreter), `internal/emit` (`/D` and `/C` output), `internal/render`
+(programs back to Sorted! text), and the command in
 `cmd/sorted`.
 
 ## License
