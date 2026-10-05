@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-Sorted! is a Go reimplementation of the original esoteric language, faithful to the original including its quirks. Work is tracked as GitHub issues; the Go module (`github.com/gersonkurz/sorted`) currently has only a CLI stub in `cmd/sorted/`.
+Sorted! is a Go reimplementation of the original esoteric language, faithful to the original including its quirks. Work is tracked as GitHub issues; the Go module is `github.com/gersonkurz/sorted`: `cmd/sorted` (CLI), `internal/numbers`, `internal/syntax`, `internal/interp`.
 
 - `legacy/sorted.linux/` and `legacy/sorted.win32/`: original C++ implementations, platform build files, and sample `.s` programs.
 - `manual/Sorted! - p-nand-q.com.html`: archived overview and examples.
@@ -15,7 +15,7 @@ Sorted! is a Go reimplementation of the original esoteric language, faithful to 
 Install Go and `just`. Use the root `justfile`:
 
 - `just build`: build the host executable as `out/build/sorted` (`.exe` on Windows).
-- `just run --version`: build and run with arguments passed through (running `.s` programs arrives with issue #5).
+- `just run legacy/sorted.win32/hello.s`: build and run a program (arguments pass through).
 - `just test`: run all tests without cached results.
 - `just test-one TestParseHello`: run tests matching a name or regex.
 - `just test-race`: run tests with race detection (Unix only).
