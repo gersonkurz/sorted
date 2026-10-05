@@ -1,14 +1,18 @@
 // Command sorted runs programs written in Sorted!, the esoteric language from
 // 2000.
 //
-//	sorted [--version] PROGRAM.s
+//	sorted [--dump FILE] [--emit-c FILE] [--version] PROGRAM.s
+//
+// --dump writes the parsed tables and --emit-c a translation into C, as the
+// original's /D and /C do, before the program runs.
 //
 // The flags are modern; what a program prints, and the diagnostics of the
 // original (on stdout, byte for byte), are those of the Win32 Sorted.exe.
 // Unlike the original, which always exits with 0, sorted exits with 1 when the
-// program cannot be read or parsed or fails at run time, and with 2 on a usage
-// error. Run-time errors have no counterpart in the original (it crashes), so
-// they go to stderr.
+// program cannot be read or parsed, a requested file cannot be written (the
+// original silently skips it), or the program fails at run time, and with 2
+// on a usage error. Run-time errors have no counterpart in the original (it
+// crashes), so they go to stderr.
 package main
 
 import (
@@ -17,6 +21,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/gersonkurz/sorted/internal/emit"
 	"github.com/gersonkurz/sorted/internal/interp"
 	"github.com/gersonkurz/sorted/internal/syntax"
 )
@@ -33,8 +38,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("sorted", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	showVersion := fs.Bool("version", false, "print the version and exit")
+	dumpFile := fs.String("dump", "", "write the parsed tables to `FILE` (legacy /D)")
+	cFile := fs.String("emit-c", "", "write a translation into C to `FILE` (legacy /C)")
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: sorted [--version] PROGRAM.s")
+		fmt.Fprintln(stderr, "usage: sorted [--dump FILE] [--emit-c FILE] [--version] PROGRAM.s")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -64,9 +71,23 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "%s is not intelligible.\n", name)
 		return 1
 	}
+	// Like the original: the C translation first, then the dump, then run.
+	code := 0
+	for _, out := range []struct {
+		file   string
+		render func(*syntax.Program) string
+	}{{*cFile, emit.C}, {*dumpFile, emit.Dump}} {
+		if out.file == "" {
+			continue
+		}
+		if err := os.WriteFile(out.file, []byte(out.render(p)), 0o644); err != nil {
+			fmt.Fprintf(stderr, "sorted: %v\n", err)
+			code = 1
+		}
+	}
 	if err := interp.Run(p, stdin, stdout, 0); err != nil {
 		fmt.Fprintf(stderr, "sorted: %v\n", err)
 		return 1
 	}
-	return 0
+	return code
 }

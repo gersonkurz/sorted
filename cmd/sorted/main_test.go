@@ -130,3 +130,33 @@ Cool.
 		t.Errorf("%+v", r)
 	}
 }
+
+// --emit-c and --dump write what Sorted.exe's /C and /D wrote for hallo.s
+// (testdata/golden/hallo.c, hallo.dump), and the program still runs.
+func TestDumpAndEmitC(t *testing.T) {
+	dir := t.TempDir()
+	cFile, dumpFile := filepath.Join(dir, "hallo.c"), filepath.Join(dir, "hallo.dump")
+	r := runCLI("--emit-c", cFile, "--dump", dumpFile, filepath.Join("..", "..", "legacy", "sorted.win32", "hallo.s"))
+	if r.code != 0 || r.stderr != "" || normalise(r.stdout) != "Hallo, Welt." {
+		t.Fatalf("%+v", r)
+	}
+	for file, capture := range map[string]string{cFile: "hallo.c", dumpFile: "hallo.dump"} {
+		got, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := golden(t, capture); string(got) != want {
+			t.Errorf("%s:\n%s\nwant:\n%s", capture, got, want)
+		}
+	}
+}
+
+// A file that cannot be written is reported on stderr and fails the exit
+// code; the original silently skips it, and the program runs either way.
+func TestUnwritableOutputFile(t *testing.T) {
+	bad := filepath.Join(t.TempDir(), "missing-dir", "out.c")
+	r := runCLI("--emit-c", bad, filepath.Join("..", "..", "legacy", "sorted.win32", "hello.s"))
+	if r.code != 1 || normalise(r.stdout) != "Hello, World." || !strings.HasPrefix(r.stderr, "sorted: ") {
+		t.Errorf("%+v", r)
+	}
+}

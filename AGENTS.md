@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-Sorted! is a Go reimplementation of the original esoteric language, faithful to the original including its quirks. Work is tracked as GitHub issues; the Go module is `github.com/gersonkurz/sorted`: `cmd/sorted` (CLI), `internal/numbers`, `internal/syntax`, `internal/interp`.
+Sorted! is a Go reimplementation of the original esoteric language, faithful to the original including its quirks. Work is tracked as GitHub issues; the Go module is `github.com/gersonkurz/sorted`: `cmd/sorted` (CLI), `internal/numbers`, `internal/syntax`, `internal/interp`, `internal/emit` (legacy /D and /C output).
 
 - `legacy/sorted.linux/` and `legacy/sorted.win32/`: original C++ implementations, platform build files, and sample `.s` programs.
 - `manual/Sorted! - p-nand-q.com.html`: archived overview and examples.

@@ -10,7 +10,7 @@ This repo is a from-scratch **Go reimplementation of Sorted!**, the esoteric lan
 - `legacy/*/*.s` are sample programs (`hello.s`, `hallo.s` in German, `fibo.s`, `itoa.s`). They are the end-to-end golden tests. Expected output should come from actually running the original binary, so ask Gerson for it. Don't derive it from reading the C++.
 - `manual/Sorted! - p-nand-q.com.html` is the archived overview page with the same examples. It is not a full specification, so the legacy source is the authority.
 
-Port CLI: `sorted [--version] PROGRAM.s` (`cmd/sorted`). Legacy messages go to stdout byte for byte; port-defined run-time errors go to stderr; exit 1 on any failure, 2 on usage errors (the original always exits 0).
+Port CLI: `sorted [--dump FILE] [--emit-c FILE] [--version] PROGRAM.s` (`cmd/sorted`); `--dump`/`--emit-c` are the legacy `/D`/`/C`, rendered by `internal/emit` byte for byte (LF where the original writes CRLF), written before the program runs. Legacy messages go to stdout byte for byte; port-defined run-time errors go to stderr; exit 1 on any failure, 2 on usage errors (the original always exits 0).
 
 Legacy CLI: `Sorted /S<source> [/D<dumpfile>] [/C<c-output>]`. It interprets the program, can optionally dump the parsed tables, and can optionally emit an equivalent C program. Flags start with `-` or `/` and are case-insensitive. The value follows the flag letter with no space. Every exit code is 0, including parse failures, which print `<file> is not intelligible.`
 
