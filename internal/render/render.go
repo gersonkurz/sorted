@@ -280,7 +280,7 @@ func (r *renderer) ref(l Lang, op syntax.Operand, c gcase) (string, error) {
 		'm': {"der", "den", "den"}, // "dem" is not a keyword
 	}[nn.gender][c]
 	// Inflect where the grammar wants it ("der ersten Zahl") and the parser
-	// reads it back; from "zwanzigsten" on it does not.
+	// reads it back; some endings it does not ("zwanzigsten").
 	inflect := c == dative && nn.gender == 'f' || c != nominative && nn.gender == 'm'
 	if inflect && ordinalParses(ord+"n", n, nn.de) {
 		ord += "n"
@@ -486,13 +486,14 @@ func (r *renderer) conditions() (sentence, error) {
 		if err != nil {
 			return sentence{}, err
 		}
-		b, err := r.ref(r.lang, c.Ops[1], dative)
+		// "gleich" takes the dative, "kleiner als" the nominative.
+		cmp, bc := r.say("is equal to", "ist gleich"), dative
+		if c.Flags != syntax.CompareEqual {
+			cmp, bc = r.say("is less than", "ist kleiner als"), nominative
+		}
+		b, err := r.ref(r.lang, c.Ops[1], bc)
 		if err != nil {
 			return sentence{}, err
-		}
-		cmp := r.say("is equal to", "ist gleich")
-		if c.Flags != syntax.CompareEqual {
-			cmp = r.say("is less than", "ist kleiner als")
 		}
 		items[i] = r.say("the condition that ", "die Bedingung dass ") + a + " " + cmp + " " + b
 	}

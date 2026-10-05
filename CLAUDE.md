@@ -71,6 +71,7 @@ The faithful port is complete. The next phase compiles a growing subset of C int
 - No library calls and no `malloc`: one block of memory. `putchar` is the only intrinsic. The subset starts small and grows.
 - The C front end is a Go port of chibicc's tokenizer, parser and type pass (MIT; keep its notice), slimmed to the subset.
 - Output must be singable (that is the joke), in the style of the samples; German falls back to English per sentence where it has no form (ratios, lists of ordered differences).
+- The parser stays faithful to 2000 (Gerson, 2026-10-05): generated programs use only forms the original accepts, so they also run on `Sorted.exe`. The renderer works around the parser's gaps ("the eight number" for "eighth", German "-n" endings only where the parser reads them back: "ersten" and "einhundertersten" do, "zwanzigsten" does not) instead of the grammar being extended.
 - Every generated program must parse back into the same tables (round trip) and print what the C program prints when compiled natively (differential tests; skipped without a C compiler).
 - C → Sorted! → C is free obfuscation, but the legacy `--to-c` does not preserve semantics (1-based indirect writes, every output `putchar`), so M5 adds a semantics-preserving C emitter alongside it.
 

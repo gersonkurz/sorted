@@ -65,7 +65,8 @@ func TestSamplesRoundTrip(t *testing.T) {
 
 // Every reference the renderer can write reads back as the same operand:
 // all types, both languages, every grammatical case, indices 1 to 2000
-// (German inflection stops parsing at 20, so this covers both forms).
+// (some German "-n" endings do not parse, "zwanzigsten" for one, so this
+// covers both forms).
 func TestReferencesRoundTrip(t *testing.T) {
 	r := &renderer{}
 	for _, lang := range []Lang{English, German} {
@@ -193,6 +194,16 @@ func TestLayout(t *testing.T) {
 			t.Errorf("missing %q in:\n%s", want, de)
 		}
 	}
+	// "gleich" takes the dative, "kleiner als" the nominative.
+	itoa, err := Render(parse(t, readFile(t, "legacy", "sorted.win32", "itoa.s")), German)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"ist gleich der achten Zahl", "ist kleiner als die erste Zahl"} {
+		if !strings.Contains(itoa, want) {
+			t.Errorf("missing %q in:\n%s", want, itoa)
+		}
+	}
 }
 
 func TestUnrenderable(t *testing.T) {
@@ -252,7 +263,8 @@ func TestUnrenderable(t *testing.T) {
 }
 
 // Ordinals that do not read back must be noticed, not assumed: German "-n"
-// endings stop parsing at 20, and English "eighth" leaves its "h" behind.
+// endings parse only sometimes ("ersten", "einhundertersten" but not
+// "zwanzigsten"), and English "eighth" leaves its "h" behind.
 func TestOrdinalLimits(t *testing.T) {
 	if ordinalParses("eighth", 8, "number") || !ordinalParses("eight", 8, "number") {
 		t.Error("\"eighth\" should not read back, \"eight\" should")
@@ -268,6 +280,10 @@ func TestOrdinalLimits(t *testing.T) {
 	ord, _ = numbers.GermanOrdinal(20)
 	if ordinalParses(ord+"n", 20, "Zahl") {
 		t.Errorf("%sn should not parse", ord)
+	}
+	ord, _ = numbers.GermanOrdinal(101)
+	if !ordinalParses(ord+"n", 101, "Zahl") {
+		t.Errorf("%sn should parse", ord)
 	}
 }
 

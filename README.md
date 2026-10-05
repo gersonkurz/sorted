@@ -176,6 +176,68 @@ cardinal, for example, indexes its word tables with a negative subscript), the
 port does not try to reproduce what the 2000 compiler made of it. It gives a
 simple, documented result instead: here, a run-time error.
 
+## Young Adult Romance
+
+Sorted! and C have been seeing each other since 2000: the original could
+already turn any Sorted! program into C (`--to-c`). Now the relationship is
+getting serious in the other direction. A compiler from C to Sorted! is under
+way, in the same binary.
+
+**What works today.** The second half of that compiler: `--lang en` or
+`--lang de` writes a program back out as Sorted! text, so translating between
+English and German comes free. Every text it writes is parsed back to make sure
+it is the same program, and it only uses forms the 2000 parser knows, so
+whatever it writes also runs on the original `Sorted.exe`. A few programs that
+run fine cannot be written back: a declaration may add up its parts to a
+number from 1000000000 on ("ninehundredmillion onehundredmillion"), but no
+single number word writes it.
+
+**What is coming** (issues #13 to #17):
+
+```
+sorted --from-c prog.c [--lang de] > prog.s
+```
+
+It starts with a small subset of C (`main`, `int` variables, arithmetic,
+`if`, `while`, `putchar`) and grows: arrays and strings, functions, then
+recursion. Some limits are part of the deal. There are no library calls,
+`putchar` being the only one. There is no `malloc`, just one big block of
+memory. And there is no input, because Sorted! cannot read. Round trip a
+program through C → Sorted! → C, and you get C obfuscation for free.
+
+### Known kinks
+
+Every program the compiler writes has to get past the 2000 parser unchanged,
+which takes the occasional detour:
+
+- **"the eight number".** "the eighth number" does not read back: the parser
+  matches the cardinal "eight" and trips over the leftover "h". So wherever an
+  ordinal ends in "eighth", the compiler writes the cardinal instead: "the
+  eight number", "the twentyeight number", and so on. `itoa.s` did that all
+  along.
+- **German endings, sometimes.** "der ersten Zahl" and even "der
+  einhundertersten Zahl" read back, but "der zwanzigsten Zahl" does not. The
+  compiler tries the proper ending and falls back to the bare form ("der
+  zwanzigste Zahl") wherever the parser would trip.
+- **No "dem".** The parser knows the articles die, das, der and den, but not
+  dem. Where German wants "dem", neuter nouns keep "das" ("von das erste
+  Produkt") and masculine ones take "den" ("den ersten Sprungbefehl").
+- **"der ersten geordnete Differenz".** The adjective must stay uninflected,
+  or the parser does not recognise the difference.
+- **"eins Sprungziel".** One label is "eins", because the parser reads "ein"
+  as no number at all.
+- **Ordinals in stereo.** Asking for an ordinal output means repeating
+  yourself: "as a english english ordinal". The parser's alternatives share
+  one cursor, and each failed one eats a word. German needs up to four:
+  "als ein ein ein ein deutscher Kardinal".
+- **Code-switching.** German has no ratios, no logical operations and no lists
+  of ordered differences, so in a German program those sentences are written
+  in English. Sorted! has always allowed switching language from one sentence
+  to the next.
+- **Some tables cannot be written.** A program whose internal table layout
+  could not have come from Sorted! text, which only happens with hand-crafted
+  tables, is refused rather than silently changed.
+
 ## Development
 
 ```
