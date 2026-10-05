@@ -47,23 +47,6 @@ func normalise(s string) string {
 	return strings.TrimSuffix(strings.ReplaceAll(s, "\r\n", "\n"), "\n")
 }
 
-// The samples print what Sorted.exe printed for them
-// (testdata/golden/<sample>.out).
-func TestSamples(t *testing.T) {
-	for _, name := range []string{"hello", "hallo", "fibo", "itoa"} {
-		t.Run(name, func(t *testing.T) {
-			r := runCLI(filepath.Join("..", "..", "legacy", "sorted.win32", name+".s"))
-			want, err := os.ReadFile(filepath.Join("..", "..", "testdata", "golden", name+".out"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if r.code != 0 || r.stderr != "" || normalise(r.stdout) != normalise(string(want)) {
-				t.Errorf("%+v, want stdout %q", r, want)
-			}
-		})
-	}
-}
-
 func golden(t *testing.T, name string) string {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join("..", "..", "testdata", "golden", name))
@@ -131,26 +114,6 @@ Cool.
 	}
 }
 
-// --emit-c and --dump write what Sorted.exe's /C and /D wrote for hallo.s
-// (testdata/golden/hallo.c, hallo.dump), and the program still runs.
-func TestDumpAndEmitC(t *testing.T) {
-	dir := t.TempDir()
-	cFile, dumpFile := filepath.Join(dir, "hallo.c"), filepath.Join(dir, "hallo.dump")
-	r := runCLI("--emit-c", cFile, "--dump", dumpFile, filepath.Join("..", "..", "legacy", "sorted.win32", "hallo.s"))
-	if r.code != 0 || r.stderr != "" || normalise(r.stdout) != "Hallo, Welt." {
-		t.Fatalf("%+v", r)
-	}
-	for file, capture := range map[string]string{cFile: "hallo.c", dumpFile: "hallo.dump"} {
-		got, err := os.ReadFile(file)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if want := golden(t, capture); string(got) != want {
-			t.Errorf("%s:\n%s\nwant:\n%s", capture, got, want)
-		}
-	}
-}
-
 // A file that cannot be written is reported on stderr and fails the exit
 // code; the original silently skips it, and the program runs either way.
 func TestUnwritableOutputFile(t *testing.T) {
@@ -158,5 +121,35 @@ func TestUnwritableOutputFile(t *testing.T) {
 	r := runCLI("--emit-c", bad, filepath.Join("..", "..", "legacy", "sorted.win32", "hello.s"))
 	if r.code != 1 || normalise(r.stdout) != "Hello, World." || !strings.HasPrefix(r.stderr, "sorted: ") {
 		t.Errorf("%+v", r)
+	}
+}
+
+// TestGolden is the end-to-end suite: each sample runs through the CLI with
+// --emit-c and --dump, and its output, C translation and table dump must
+// equal what Sorted.exe produced (testdata/golden, see README.md there).
+// The diagnostics captures are checked by TestMissingFile and
+// TestParseFailure.
+func TestGolden(t *testing.T) {
+	for _, name := range []string{"hello", "hallo", "fibo", "itoa"} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			cFile, dumpFile := filepath.Join(dir, name+".c"), filepath.Join(dir, name+".dump")
+			r := runCLI("--emit-c", cFile, "--dump", dumpFile, filepath.Join("..", "..", "legacy", "sorted.win32", name+".s"))
+			if r.code != 0 || r.stderr != "" {
+				t.Fatalf("%+v", r)
+			}
+			if got, want := normalise(r.stdout), normalise(golden(t, name+".out")); got != want {
+				t.Errorf("output %q, want %q", got, want)
+			}
+			for file, capture := range map[string]string{cFile: name + ".c", dumpFile: name + ".dump"} {
+				got, err := os.ReadFile(file)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if want := golden(t, capture); string(got) != want {
+					t.Errorf("%s:\n%s\nwant:\n%s", capture, got, want)
+				}
+			}
+		})
 	}
 }

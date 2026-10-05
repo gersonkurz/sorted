@@ -46,12 +46,17 @@ func TestCMatchesCaptures(t *testing.T) {
 	}
 }
 
-// The /D dump of hallo.s, byte for byte (testdata/golden/hallo.dump).
-// ELEMENTS=26 for 23 entries pins the TypeCount that withdrawn single
-// entries leave behind.
-func TestDumpMatchesCapture(t *testing.T) {
-	if got, want := Dump(parseSample(t, "hallo")), golden(t, "hallo.dump"); got != want {
-		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+// The /D dump of all four samples, byte for byte (testdata/golden/<sample>.dump,
+// captured 2026-10-04 and 2026-10-05). ELEMENTS exceeding the entries
+// (hallo: 26 for 23) pins the TypeCount that withdrawn single entries leave
+// behind.
+func TestDumpMatchesCaptures(t *testing.T) {
+	for _, name := range []string{"hello", "hallo", "fibo", "itoa"} {
+		t.Run(name, func(t *testing.T) {
+			if got, want := Dump(parseSample(t, name)), golden(t, name+".dump"); got != want {
+				t.Errorf("got:\n%s\nwant:\n%s", got, want)
+			}
+		})
 	}
 }
 
