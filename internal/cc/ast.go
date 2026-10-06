@@ -28,7 +28,9 @@
 // and character constants, string literals (char arrays of their own), a[i],
 // unary & and *, pointer arithmetic, + - * / % and unary -, =, the compound
 // assignments += -= *= /= %= &= |= ^= <<= >>=, ++ and -- (prefix and
-// postfix), == != < <= > >=, && || !, & | ^ ~ << >>, if/else, while, for, break, continue, return, blocks, and
+// postfix), == != < <= > >=, && || !, & | ^ ~ << >>, ?:, the comma
+// operator, if/else, while, do/while, for, switch (case, default,
+// fall-through), break, continue, return, blocks, and
 // putchar(expr), and functions with int, char and pointer parameters (an
 // array parameter is a pointer) returning int, char, a pointer or void
 // (prototypes included), called by name. As in chibicc, x op= e is
@@ -64,6 +66,11 @@ const (
 	NdIf                       // "if"
 	NdWhile                    // "while"
 	NdFor                      // "for"
+	NdDo                       // "do" … "while"
+	NdSwitch                   // "switch"
+	NdCase                     // "case" and "default" labels
+	NdCond                     // ?:
+	NdComma                    // the comma operator
 	NdBreak                    // "break"
 	NdContinue                 // "continue"
 	NdLogAnd                   // &&
@@ -102,8 +109,11 @@ type Node struct {
 
 	Lhs, Rhs *Node // operands, assignment target and value
 
-	Cond, Then, Els *Node // if, while, for
+	Cond, Then, Els *Node // if, while, for, do, switch (Cond, Then), case (Then), ?:
 	Init, Inc       *Node // for
+
+	Cases   []*Node // switch: its case labels (also inside Then), in order
+	Default *Node   // switch: its default label, if any
 
 	Body []*Node // block
 

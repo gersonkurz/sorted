@@ -3,8 +3,11 @@ package cc
 import "math"
 
 // Fold evaluates an integer constant expression (constants with the
-// arithmetic, bitwise, comparison and logical operators) as 32-bit C does. Division by zero, the one overflowing
-// division and shift counts outside 0..31 do not fold.
+// arithmetic, bitwise, comparison, logical and conditional operators) as
+// 32-bit C does. Division by zero, the one overflowing division and shift
+// counts outside 0..31 do not fold. It looks at values, not types: the
+// callers check that the expression is an integer (1 ? 0 : &g folds to 0,
+// but is a pointer).
 func Fold(n *Node) (int32, bool) {
 	switch n.Kind {
 	case NdNum:
@@ -15,6 +18,15 @@ func Fold(n *Node) (int32, bool) {
 			return -a, ok
 		}
 		return ^a, ok
+	case NdCond:
+		c, ok := Fold(n.Cond)
+		if !ok {
+			return 0, false
+		}
+		if c != 0 {
+			return Fold(n.Then)
+		}
+		return Fold(n.Els)
 	case NdNot:
 		a, ok := Fold(n.Lhs)
 		return b2i(a == 0), ok

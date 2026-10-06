@@ -26,6 +26,11 @@ func (ps *parser) typed(n *Node) *Type {
 	}
 	ps.typed(n.Lhs)
 	ps.typed(n.Rhs)
+	if n.Kind == NdCond {
+		ps.typed(n.Cond)
+		ps.typed(n.Then)
+		ps.typed(n.Els)
+	}
 	for _, a := range n.Args {
 		ps.typed(a)
 	}
@@ -92,6 +97,20 @@ func (ps *parser) typeOf(n *Node) *Type {
 	case NdAssign:
 		ps.assignable(n.Lhs.Ty, n.Rhs, n.Pos, "the assignment")
 		return n.Lhs.Ty
+	case NdComma:
+		return n.Rhs.Ty
+	case NdCond:
+		a, b := n.Then.Ty, n.Els.Ty
+		switch {
+		case a.IsInteger() && b.IsInteger():
+			return tyInt
+		case a.Kind == TyPtr && b.Kind == TyPtr && sameType(a, b),
+			a.Kind == TyPtr && isNull(n.Els):
+			return a
+		case b.Kind == TyPtr && isNull(n.Then):
+			return b
+		}
+		ps.fail(n.Pos, "the branches of '?:' have different types ('%s' and '%s')", a, b)
 	case NdFuncall:
 		if n.Fn == nil { // putchar
 			ps.integer(n.Args[0], "putchar's argument")

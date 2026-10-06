@@ -211,7 +211,9 @@ arrays), integer constants (decimal, hex, octal), character constants (`'a'`,
 arithmetic, `+ - * / %`,
 comparisons, `&&`, `||` and `!` (short-circuiting, as in C), the bitwise `& |
 ^ ~ << >>`, assignment including `+=`, `<<=` and friends, `++` and `--`,
-`if`/`else`, `while`, `for`, `break`, `continue`, `return`, and `putchar`.
+`?:` and the comma operator, `if`/`else`, `while`, `do`/`while`, `for`,
+`switch` (fall-through included, Duff's device works), `break`, `continue`,
+`return`, and `putchar`.
 The preprocessor knows `#define` (with and without parameters) and `#undef`,
 and array lengths and global initializers can be constant expressions.
 `#include <stdio.h>` is allowed, so the same file compiles with a C compiler

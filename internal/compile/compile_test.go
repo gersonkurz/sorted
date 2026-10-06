@@ -490,6 +490,113 @@ int main() {
 	return 0;
 }`,
 
+	"control flow": `#include <stdio.h>
+int pn; int pp;
+int calls;
+int g[3] = {7, 8, 9};
+int *pick = 1 ? &g[2] : 0;
+int *none = 0 ? g : 0;
+int *other = 0 ? 0 : g + 1;
+int count(int x) { calls++; return x; }
+int last;
+int note(int v) { last = last * 10 + v; return v; }
+char *name(int n) {
+	switch (n) {
+	case 0: return "zero";
+	case 1: return "one";
+	case 2: case 3: return "a few";
+	default: return n < 0 ? "negative" : "many";
+	}
+}
+void say(char *s) { while (*s) putchar(*s++); }
+int classify(char c) {
+	int kind = 0;
+	switch (c) {
+	case 'a': case 'e': case 'i': case 'o': case 'u':
+		kind = 1;
+		break;
+	case ' ':
+		kind = 2;
+	case '.':
+		kind += 10; /* falls through from ' ' */
+		break;
+	default:
+		kind = 3;
+	}
+	return kind;
+}
+void copy(char *to, char *from, int n) { /* Duff's device */
+	int rounds = (n + 3) / 4;
+	switch (n % 4) {
+	case 0: do { *to++ = *from++;
+	case 3:      *to++ = *from++;
+	case 2:      *to++ = *from++;
+	case 1:      *to++ = *from++;
+		} while (--rounds > 0);
+	}
+}
+int collatz(int n) { int steps = 0; do { n = n % 2 ? 3 * n + 1 : n / 2; steps++; } while (n != 1); return steps; }
+int fact(int n) { return n < 2 ? 1 : n * fact(n - 1); }
+char buf[16];
+int main() {
+	for (int i = -1; i < 6; i++) { say(name(i)); putchar(' '); }
+	putchar('\n');
+	char *text = "a b.c";
+	for (char *p = text; *p; p++) putchar('0' + classify(*p) % 10);
+	putchar('\n');
+	for (int n = 1; n <= 7; n++) {
+		for (int k = 0; k < 16; k++) buf[k] = 0;
+		copy(buf, "abcdefg", n);
+		say(buf); putchar(' ');
+	}
+	putchar('\n');
+	` + printNum("collatz(27)") + printNum("fact(10)") + `
+	int odd = 0, sum = 0;
+	for (int i = 0; i < 20; i++) {
+		switch (i % 5) {
+		case 0: continue;
+		case 4: if (i > 10) break; sum += 100;
+		}
+		if (i == 17) break;
+		odd += i % 2 ? 1 : 0;
+		sum += i;
+	}
+	` + printNum("odd * 10000 + sum") + `
+	int j = 0;
+	do {
+		j++;
+		if (j == 2) continue;
+		if (j == 5) break;
+		putchar('0' + j);
+	} while (j < 9);
+	putchar('\n');
+	calls = 0;
+	int x = 3;
+	int y = x > 2 ? count(10) : count(20);
+	int z = x < 2 ? count(30) : x == 3 ? count(40) : count(50);
+	` + printNum("y * 1000 + z * 10 + calls") + `
+	int arr[3] = {1, 2, 3}; int i = 1;
+	arr[i++] += x ? 5 : 6;
+	` + printNum("arr[0] * 100 + arr[1] * 10 + arr[2] + i * 1000") + `
+	int a = 0, b = 0;
+	int c = (a = 4, b = a + 1, a * b);
+	for (a = 0, b = 10; a < b; a++, b--) ;
+	` + printNum("c * 100 + a * 10 + b") + `
+	int *pa = x ? &arr[2] : 0;
+	char ch = x ? 300 : 0;
+	` + printNum("*pa * 1000 + ch") + `
+	if (x ? calls : 0) putchar('Y'); else putchar('N');
+	putchar(x > 5 ? 'B' : x > 2 ? 'M' : 'S');
+	if (none == 0 && pick - g == 2) putchar('0' + *pick + *other - 10);
+	putchar('\n');
+	x < 2 ? note(1) : note(2);
+	x > 2 ? note(3) : note(4);
+	` + printNum("last") + `
+	int w = x ? count(7) : 1;
+	` + printNum("x * 100 + w * 10 + calls") + printNum("(calls = 100) + (x ? count(1) : 0)") + `
+	return 0;
+}`,
+
 	"strings": `#include <stdio.h>
 char greeting[] = "Hello, " "World!\n";
 int main() {

@@ -49,6 +49,16 @@ func sexpr(n *Node) string {
 		return "(if " + sexpr(n.Cond) + " " + sexpr(n.Then) + " " + sexpr(n.Els) + ")"
 	case NdWhile:
 		return "(while " + sexpr(n.Cond) + " " + sexpr(n.Then) + ")"
+	case NdDo:
+		return "(do " + sexpr(n.Then) + " " + sexpr(n.Cond) + ")"
+	case NdSwitch:
+		return "(switch " + sexpr(n.Cond) + " " + sexpr(n.Then) + ")"
+	case NdCase:
+		return "(case " + fmt.Sprint(n.Val) + " " + sexpr(n.Then) + ")"
+	case NdCond:
+		return "(?: " + sexpr(n.Cond) + " " + sexpr(n.Then) + " " + sexpr(n.Els) + ")"
+	case NdComma:
+		return "(, " + sexpr(n.Lhs) + " " + sexpr(n.Rhs) + ")"
 	case NdExprStmt:
 		return sexpr(n.Lhs)
 	case NdFuncall:
@@ -177,9 +187,16 @@ func TestGlobals(t *testing.T) {
 
 func TestErrors(t *testing.T) {
 	tests := []struct{ src, want string }{
-		{"int main() { do ; while (0); }", "1:14: not supported in Sorted! (yet): 'do'"},
-		{"int main() { int a; a = a ? 1 : 2; }", "1:27: not supported in Sorted! (yet): ?:"},
-		{"int main() { break; }", "1:14: 'break' outside a loop"},
+		{"int main() { break; }", "1:14: 'break' outside a loop or switch"},
+		{"int main() { switch (1) { continue; } }", "1:27: 'continue' outside a loop"},
+		{"int main() { case 1: ; }", "1:14: 'case' outside a switch"},
+		{"int main() { default: ; }", "1:14: 'default' outside a switch"},
+		{"int main() { switch (1) { case 1: case 2: case 1: ; } }", "1:43: duplicate case value 1"},
+		{"int main() { switch (1) { default: default: ; } }", "1:36: a second 'default' in one switch"},
+		{"int main() { int x; switch (1) { case x: ; } }", "1:39: not supported in Sorted! (yet): case values other than integer constants"},
+		{"int main() { int *p; switch (p) { } }", "1:30: the value of a switch must be an integer, not 'int *'"},
+		{"int main() { int *p; int x; x = 1 ? p : x; }", "1:35: the branches of '?:' have different types ('int *' and 'int')"},
+		{"int main() { do ; while (1) }", "1:29: expected ';'"},
 		{"int main() { if (1) continue; }", "1:21: 'continue' outside a loop"},
 		{"int main() { int a; a++++; }", "1:24: the left side of '++' cannot be assigned to"},
 		{"int main() { int a; ++(+a); }", "1:21: the left side of '++' cannot be assigned to"},
@@ -215,7 +232,6 @@ func TestErrors(t *testing.T) {
 		{"int f(int a, int a) { } int main() {}", "1:18: redefinition of parameter 'a'"},
 		{"int f(int x) { int x = 65; return x; } int main() {}", "1:20: redefinition of 'x'"},
 		{"int main() { int a; a = &a; }", "1:23: the assignment needs 'int', not 'int *'"},
-		{"int main() { int a; a = 1 ? 2 : 3; }", "1:27: not supported in Sorted! (yet): ?:"},
 		{"int f(int) { } int main() {}", "1:5: parameter 1 of 'f' has no name"},
 		{"int f(void x) { } int main() {}", "1:7: a parameter cannot be void"},
 		{"int f(int a[][2]) { } int main() {}", "1:14: not supported in Sorted! (yet): arrays of arrays"},
@@ -250,6 +266,11 @@ func TestErrors(t *testing.T) {
 		{"int g[2]; int x; int *p = g + x; int main() {}", "1:27: not supported in Sorted! (yet): global initializers other than constants and addresses"},
 		{"int g[2]; int x; int *p = x + g; int main() {}", "1:27: not supported in Sorted! (yet): global initializers other than constants and addresses"},
 		{"int *g; int *p = g; int main() {}", "1:18: not supported in Sorted! (yet): global initializers other than constants and addresses"},
+		{"int g; char *p = 1 ? 0 : &g; int main() {}", "1:18: the initializer needs 'char *', not 'int *'"},
+		{"int g; int main() { switch (1) { case 1 ? 0 : &g: ; } }", "1:39: a constant expression must be an integer, not 'int *'"},
+		{"int g; int a[1 ? 3 : &g]; int main() {}", "1:16: the branches of '?:' have different types ('int' and 'int *')"},
+		{"int g; int x = 1 ? 0 : &g; int main() {}", "1:16: the initializer needs 'int', not 'int *'"},
+		{"int g; int *p = (1 ? 0 : &g) + 1; int main() {}", "1:17: not supported in Sorted! (yet): global initializers other than constants and addresses"},
 		{"int (*p)[3]; int main() {}", "1:5: not supported in Sorted! (yet): declarators in parentheses (pointers to arrays, function pointers)"},
 		{"int f(int a); char f(int a) { } int main() {}", "1:20: conflicting declarations of 'f'"},
 		{"int f(int a); int f(char a) { } int main() {}", "1:19: conflicting declarations of 'f'"},
@@ -310,7 +331,6 @@ func TestErrors(t *testing.T) {
 		{"int main() { _Bool b; }", "1:14: not supported in Sorted! (yet): the type or specifier '_Bool' (int and char are the only types)"},
 		{"int main() { int a; a = restrict; }", "1:25: not supported in Sorted! (yet): 'restrict'"},
 		{"int main() { _Static_assert(1, 2); }", "1:14: not supported in Sorted! (yet): '_Static_assert'"},
-		{"int main() { int a; a = 1, 2; }", "1:26: not supported in Sorted! (yet): the comma operator"},
 		{"int main();", "1:11: expected the body of main"},
 		{"int main() {} int main() {}", "1:19: redefinition of main"},
 		{"int g = 1 / 0; int main() {}", "1:9: not supported in Sorted! (yet): global initializers other than constants and addresses"},
@@ -338,7 +358,7 @@ func TestPreprocess(t *testing.T) {
 		{"#define A B\n#define B 7\nint main() { putchar(A); }", "{ (putchar 7)}"},
 		{"int v;\n#define v v + 1\nint main() { putchar(v); }", "{ (putchar (+ @v 1))}"},
 		{"#define SQ(x) ((x) * (x))\nint main() { putchar(SQ(1 + 2)); }", "{ (putchar (* (+ 1 2) (+ 1 2)))}"},
-		{"#define MAX(a, b) ((a) > (b) ? (a) : (b))\n#define ADD(a, b) a + b\nint main() { putchar(ADD((1, 2), 3)); }", ""},
+		{"#define MAX(a, b) ((a) > (b) ? (a) : (b))\n#define ADD(a, b) a + b\nint main() { putchar(ADD((1, 2), MAX(3, 4))); }", "{ (putchar (+ (, 1 2) (?: (< 4 3) 3 4)))}"},
 		{"#define ADD(a, b) (a + b)\nint main() { putchar(ADD(ADD(1, 2), 3)); }", "{ (putchar (+ (+ 1 2) 3))}"},
 		{"#define F(a) a * 2\n#define G F\nint main() { putchar(G(3)); }", "{ (putchar (* 3 2))}"},
 		{"#define F(a) a\nint main() { int F = 1; putchar(F); }", "{ { (= F 1)} (putchar F)}"},
@@ -358,12 +378,6 @@ func TestPreprocess(t *testing.T) {
 	}
 	for _, tt := range tests {
 		p, err := Parse(tt.src)
-		if tt.want == "" { // only to check that the macro is accepted, its use is not
-			if err == nil || !strings.Contains(err.Error(), "the comma operator") {
-				t.Errorf("%s: %v", tt.src, err)
-			}
-			continue
-		}
 		if err != nil {
 			t.Errorf("%s: %v", tt.src, err)
 			continue
@@ -460,6 +474,37 @@ int *f(char **x) { return 0; } int main() { }`)
 	if names.InitRef[0] != p.Globals[0] || names.InitRef[1] != p.Globals[1] || gp.InitRef[0] != g || gp.Init[0] != 2 ||
 		ge.InitRef[0] != g || ge.Init[0] != 4 || str.InitRef[0] != p.Globals[0] {
 		t.Errorf("init refs: %+v %+v %+v %+v", names, gp, ge, str)
+	}
+}
+
+func TestControlFlow(t *testing.T) {
+	tests := []struct{ src, want string }{
+		{"int main() { int i; do i++; while (i < 3); }", "{ {} (do (- (= i (+ i 1)) 1) (< i 3))}"},
+		{"int main() { int x; switch (x) { case 1: x = 2; break; case 3 + 1: default: x = 0; } }",
+			"{ {} (switch x { (case 1 (= x 2)) break (case 4 (case 0 (= x 0)))})}"},
+		{"int main() { int x; x = x ? 1 : x < 0 ? -1 : 0; }", "{ {} (= x (?: x 1 (?: (< x 0) (neg 1) 0)))}"},
+		{"int main() { int i, j; for (i = 0, j = 9; i < j; i++, j--) ; }", "{ {} (for (, (= i 0) (= j 9)) (< i j) (, (- (= i (+ i 1)) 1) (+ (= j (- j 1)) 1)) {})}"},
+		{"int main() { int *p; int *q; q = p ? p : 0; }", "{ {} {} (= q (?: p p 0))}"},
+		{"int g[1 ? 3 : 4]; int main() { }", "{}"},
+	}
+	for _, tt := range tests {
+		p, err := Parse(tt.src)
+		if err != nil {
+			t.Errorf("%s: %v", tt.src, err)
+			continue
+		}
+		if got := sexpr(p.Main); got != tt.want {
+			t.Errorf("%s:\n got %s\nwant %s", tt.src, got, tt.want)
+		}
+	}
+	// A switch records its cases and default, which also stay in its body.
+	p, err := Parse("int main() { switch (1) { case 5: default: case 7: ; } }")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sw := p.Main.Body[0]
+	if len(sw.Cases) != 2 || sw.Cases[0].Val != 5 || sw.Cases[1].Val != 7 || sw.Default == nil {
+		t.Errorf("switch: %+v", sw)
 	}
 }
 

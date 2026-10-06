@@ -38,7 +38,9 @@ type parser struct {
 	globals map[string]*Obj
 	strs    map[string]*Obj // string literals by content, so equal ones share their cells
 	prog    *Program
-	loops   int       // nesting depth of loops, for break and continue
+	loops   int       // nesting depth of loops, for continue
+	breaks  int       // nesting depth of loops and switches, for break
+	sw      *Node     // the innermost switch, for case and default
 	fn      *Function // the function being parsed, nil in main
 }
 
@@ -374,13 +376,16 @@ type ginit struct {
 // expression, or for a pointer 0 or an address.
 func (ps *parser) initializer(t *Type) ginit {
 	pos := ps.tok().Pos
-	n := ps.logor()
+	n := ps.conditional()
 	ps.typed(n)
-	if v, ok := Fold(n); ok && (t.IsInteger() || v == 0) {
-		return ginit{val: v}
-	}
-	if t.IsInteger() && n.Ty.IsInteger() {
-		ps.unsupported(pos, "global initializers other than constants and addresses")
+	if n.Ty.IsInteger() {
+		v, ok := Fold(n)
+		if !ok {
+			ps.unsupported(pos, "global initializers other than constants and addresses")
+		}
+		if t.IsInteger() || v == 0 { // a number, or the null pointer
+			return ginit{val: v}
+		}
 	}
 	ps.assignable(t, n, pos, "the initializer")
 	ref, off, ok := addrConst(n)
@@ -391,9 +396,23 @@ func (ps *parser) initializer(t *Type) ginit {
 }
 
 // addrConst evaluates the address of a global plus a constant offset: &g,
-// &a[k], a (an array), and those plus or minus a constant.
+// &a[k], a (an array), those plus or minus a constant, and c ? x : y with a
+// constant c. The null pointer comes back as no variable and offset 0.
 func addrConst(n *Node) (*Obj, int32, bool) {
 	switch n.Kind {
+	case NdCond:
+		c, ok := Fold(n.Cond)
+		if !ok {
+			return nil, 0, false
+		}
+		branch := n.Els
+		if c != 0 {
+			branch = n.Then
+		}
+		if isNull(branch) {
+			return nil, 0, true
+		}
+		return addrConst(branch)
 	case NdAddr:
 		switch x := n.Lhs; x.Kind {
 		case NdVar:
@@ -403,14 +422,14 @@ func addrConst(n *Node) (*Obj, int32, bool) {
 			return x.Var, k, ok
 		}
 	case NdAdd, NdSub:
-		if ref, off, ok := addrConst(n.Lhs); ok {
+		if ref, off, ok := addrConst(n.Lhs); ok && ref != nil {
 			k, okK := Fold(n.Rhs)
 			if n.Kind == NdSub {
 				k = -k
 			}
 			return ref, off + k, okK
 		}
-		if ref, off, ok := addrConst(n.Rhs); ok && n.Kind == NdAdd {
+		if ref, off, ok := addrConst(n.Rhs); ok && ref != nil && n.Kind == NdAdd {
 			k, okK := Fold(n.Lhs)
 			return ref, off + k, okK
 		}
@@ -422,7 +441,11 @@ func addrConst(n *Node) (*Obj, int32, bool) {
 // is what.
 func (ps *parser) constant(what string) int32 {
 	pos := ps.tok().Pos
-	v, ok := Fold(ps.logor())
+	n := ps.conditional()
+	if ty := ps.typed(n); !ty.IsInteger() {
+		ps.fail(pos, "a constant expression must be an integer, not '%s'", ty)
+	}
+	v, ok := Fold(n)
 	if !ok {
 		ps.unsupported(pos, what)
 	}
@@ -531,6 +554,9 @@ func (ps *parser) declaration() *Node {
 //
 //	| "if" "(" expr ")" stmt ("else" stmt)?
 //	| "while" "(" expr ")" stmt
+//	| "do" stmt "while" "(" expr ")" ";"
+//	| "switch" "(" expr ")" stmt
+//	| "case" const-expr ":" stmt | "default" ":" stmt
 //	| "for" "(" (declaration | expr-stmt) expr? ";" expr? ")" stmt
 //	| "break" ";" | "continue" ";"
 //	| "{" compound-stmt
@@ -574,6 +600,53 @@ func (ps *parser) stmt() *Node {
 		ps.skip(")")
 		n.Then = ps.loopBody()
 		return n
+	case ps.equal("do"):
+		ps.next()
+		n := &Node{Kind: NdDo, Pos: t.Pos}
+		n.Then = ps.loopBody()
+		ps.skip("while")
+		ps.skip("(")
+		n.Cond = ps.expr()
+		ps.skip(")")
+		ps.skip(";")
+		return n
+	case ps.equal("switch"):
+		ps.next()
+		n := &Node{Kind: NdSwitch, Pos: t.Pos}
+		ps.skip("(")
+		n.Cond = ps.expr()
+		ps.integer(n.Cond, "the value of a switch")
+		ps.skip(")")
+		outer := ps.sw
+		ps.sw = n
+		ps.breaks++
+		n.Then = ps.stmt()
+		ps.breaks--
+		ps.sw = outer
+		return n
+	case ps.equal("case"), ps.equal("default"):
+		ps.next()
+		if ps.sw == nil {
+			ps.fail(t.Pos, "'%s' outside a switch", t.Text)
+		}
+		n := &Node{Kind: NdCase, Pos: t.Pos}
+		if t.Text == "default" {
+			if ps.sw.Default != nil {
+				ps.fail(t.Pos, "a second 'default' in one switch")
+			}
+			ps.sw.Default = n
+		} else {
+			n.Val = ps.constant("case values other than integer constants")
+			for _, c := range ps.sw.Cases {
+				if c.Val == n.Val {
+					ps.fail(t.Pos, "duplicate case value %d", n.Val)
+				}
+			}
+			ps.sw.Cases = append(ps.sw.Cases, n)
+		}
+		ps.skip(":")
+		n.Then = ps.stmt()
+		return n
 	case ps.equal("for"):
 		ps.next()
 		n := &Node{Kind: NdFor, Pos: t.Pos}
@@ -597,8 +670,11 @@ func (ps *parser) stmt() *Node {
 		return n
 	case ps.equal("break"), ps.equal("continue"):
 		ps.next()
-		if ps.loops == 0 {
-			ps.fail(t.Pos, "'%s' outside a loop", t.Text)
+		if t.Text == "break" && ps.breaks == 0 {
+			ps.fail(t.Pos, "'break' outside a loop or switch")
+		}
+		if t.Text == "continue" && ps.loops == 0 {
+			ps.fail(t.Pos, "'continue' outside a loop")
 		}
 		ps.skip(";")
 		if t.Text == "break" {
@@ -617,7 +693,8 @@ func (ps *parser) stmt() *Node {
 // loopBody parses the statement of a loop, where break and continue apply.
 func (ps *parser) loopBody() *Node {
 	ps.loops++
-	defer func() { ps.loops-- }()
+	ps.breaks++
+	defer func() { ps.loops--; ps.breaks-- }()
 	return ps.stmt()
 }
 
@@ -665,12 +742,13 @@ func (ps *parser) exprStmt() *Node {
 	return n
 }
 
-// expr = assign; the comma operator is not in the subset. The expression
-// comes back typed (see typed).
+// expr = assign ("," expr)?
+//
+// The expression comes back typed (see typed).
 func (ps *parser) expr() *Node {
 	n := ps.assign()
-	if ps.equal(",") {
-		ps.unsupported(ps.tok().Pos, "the comma operator")
+	if t := ps.tok(); ps.consume(",") {
+		n = &Node{Kind: NdComma, Pos: t.Pos, Lhs: n, Rhs: ps.expr()}
 	}
 	ps.typed(n)
 	return n
@@ -678,7 +756,7 @@ func (ps *parser) expr() *Node {
 
 // operators that are C but not (yet) in the subset, rejected where they
 // would continue an expression.
-var notYet = map[string]string{"?": "?:", "->": "->", ".": "structs"}
+var notYet = map[string]string{"->": "->", ".": "structs"}
 
 // compound assignment operators and the operation each applies
 var assignOps = map[string]NodeKind{
@@ -686,12 +764,12 @@ var assignOps = map[string]NodeKind{
 	"&=": NdBitAnd, "|=": NdBitOr, "^=": NdBitXor, "<<=": NdShl, ">>=": NdShr,
 }
 
-// assign    = logor (assign-op assign)?
+// assign    = conditional (assign-op assign)?
 // assign-op = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^=" | "<<=" | ">>="
 //
 // As in chibicc's to_assign, x op= e is x = x op e.
 func (ps *parser) assign() *Node {
-	n := ps.logor()
+	n := ps.conditional()
 	t := ps.tok()
 	if t.Kind == TkPunct {
 		if what, ok := notYet[t.Text]; ok {
@@ -727,6 +805,18 @@ func (ps *parser) lvalue(n *Node, t Token) {
 // address of its first element.
 func decayed(n *Node) bool {
 	return n.Kind == NdAddr && n.Lhs.Kind == NdVar && n.Lhs.Var.Ty.Kind == TyArray
+}
+
+// conditional = logor ("?" expr ":" conditional)?
+func (ps *parser) conditional() *Node {
+	n := ps.logor()
+	t := ps.tok()
+	if !ps.consume("?") {
+		return n
+	}
+	then := ps.expr()
+	ps.skip(":")
+	return &Node{Kind: NdCond, Pos: t.Pos, Cond: n, Then: then, Els: ps.conditional()}
 }
 
 // logor = logand ("||" logand)*

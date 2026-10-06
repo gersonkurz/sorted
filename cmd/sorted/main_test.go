@@ -304,10 +304,10 @@ func TestPrintFailure(t *testing.T) {
 func TestFromCErrors(t *testing.T) {
 	dir := t.TempDir()
 	bad := filepath.Join(dir, "bad.c")
-	if err := os.WriteFile(bad, []byte("int main() {\n  int a;\n  a = a ? 1 : 2;\n}\n"), 0o644); err != nil {
+	if err := os.WriteFile(bad, []byte("int main() {\n  int a;\n  a = sizeof a;\n}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if r := runCLI("--from-c", bad); r.code != 1 || r.stdout != "" || r.stderr != "sorted: "+bad+":3:9: not supported in Sorted! (yet): ?:\n" {
+	if r := runCLI("--from-c", bad); r.code != 1 || r.stdout != "" || r.stderr != "sorted: "+bad+":3:7: not supported in Sorted! (yet): 'sizeof'\n" {
 		t.Errorf("syntax: %+v", r)
 	}
 	big := filepath.Join(dir, "big.c")

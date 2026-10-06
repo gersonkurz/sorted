@@ -19,6 +19,11 @@
 //     taken when its condition is true, so each test jumps on the negated
 //     condition, and negating a condition is a condition again ("the first
 //     condition is equal to zero").
+//   - switch is a chain of "go to case k if the value is k" jumps, then one
+//     to default or past the end; case labels are ordinary labels, so
+//     fall-through (and Duff's device) works. do/while jumps back on its
+//     test. As a value, c ? a : b sets a temporary on each branch, so only
+//     one side runs.
 //   - && and || short-circuit: in a test they become a chain of jumps, and as
 //     a value they set a temporary cell to 0 or 1 by jumping, because a
 //     product of conditions would evaluate both sides. !x is x == 0.
@@ -154,6 +159,7 @@ type jump struct {
 // They are made when first needed (-1 until then).
 type loop struct {
 	brk, cont int
+	sw        bool // a switch: break applies, continue goes to the loop around it
 }
 
 // compiler holds the tables being built.
@@ -168,6 +174,7 @@ type compiler struct {
 	fillers   int              // numbers program declared only to keep the pool size
 	addrIndex map[int]int      // offset → index in addrs
 	reads     map[*cc.Node]val // array elements whose read pointer is already set
+	cases     map[*cc.Node]int // the labels of the switches' case and default
 
 	exprs   map[valKind]*table // sums, differences, products, ratios, conditions
 	assigns table
@@ -238,6 +245,7 @@ func compileProgram(prog *cc.Program) (c *compiler, p *syntax.Program, err error
 		jumpIdx:   map[jump]int{},
 		addrIndex: map[int]int{},
 		reads:     map[*cc.Node]val{},
+		cases:     map[*cc.Node]int{},
 		funcs:     map[*cc.Function]*function{},
 		exit:      -1,
 	}
@@ -526,6 +534,20 @@ func (c *compiler) value(n *cc.Node) val {
 		return c.not(c.value(n.Lhs), n.Pos)
 	case cc.NdBitNot, cc.NdBitAnd, cc.NdBitOr, cc.NdBitXor, cc.NdShl, cc.NdShr:
 		return c.bitValue(n)
+	case cc.NdCond:
+		// t = a; or t = b;  so that only one side runs
+		t := c.temporary()
+		els, end := c.newLabel(), c.newLabel()
+		c.jumpIf(n.Cond, els, false)
+		c.assign(t, c.value(n.Then))
+		c.jumpTo(end, -1)
+		c.place(els)
+		c.assign(t, c.value(n.Els))
+		c.place(end)
+		return t
+	case cc.NdComma:
+		c.effects(n.Lhs)
+		return c.value(n.Rhs)
 	case cc.NdLogAnd, cc.NdLogOr:
 		// t = 0; if (n) t = 1;  so that the right side runs only when needed
 		t := c.temporary()
@@ -596,7 +618,7 @@ func hasCall(n *cc.Node) bool {
 	if n.Kind == cc.NdFuncall && n.Fn != nil {
 		return true
 	}
-	if hasCall(n.Lhs) || hasCall(n.Rhs) {
+	if hasCall(n.Lhs) || hasCall(n.Rhs) || hasCall(n.Cond) || hasCall(n.Then) || hasCall(n.Els) {
 		return true
 	}
 	for _, a := range n.Args {
@@ -798,6 +820,14 @@ func (c *compiler) effects(n *cc.Node) {
 		c.assignment(n, false)
 	case cc.NdIndex:
 		c.effects(n.Lhs)
+	case cc.NdCond:
+		els, end := c.newLabel(), c.newLabel()
+		c.jumpIf(n.Cond, els, false)
+		c.effects(n.Then)
+		c.jumpTo(end, -1)
+		c.place(els)
+		c.effects(n.Els)
+		c.place(end)
 	case cc.NdLogAnd, cc.NdLogOr:
 		// the right side runs only when the left does not decide
 		skip := c.newLabel()
@@ -865,10 +895,49 @@ func (c *compiler) stmt(n *cc.Node) {
 		if l.brk >= 0 {
 			c.place(l.brk)
 		}
+	case cc.NdDo:
+		top := c.newLabel()
+		l := &loop{brk: -1, cont: -1}
+		c.place(top)
+		c.body(l, n.Then)
+		if l.cont >= 0 {
+			c.place(l.cont)
+		}
+		c.mark = c.nvars
+		c.jumpIf(n.Cond, top, true)
+		if l.brk >= 0 {
+			c.place(l.brk)
+		}
+	case cc.NdSwitch:
+		// "go to case k if the value is k", then to default or past the end.
+		// Nothing changes between the tests, so the value needs no temporary.
+		c.mark = c.nvars
+		v := c.value(n.Cond)
+		l := &loop{brk: -1, cont: -1, sw: true}
+		for _, k := range n.Cases {
+			c.cases[k] = c.newLabel()
+			c.jumpTo(c.cases[k], c.eq(v, c.number(k.Val, k.Pos)).i)
+		}
+		if n.Default != nil {
+			c.cases[n.Default] = c.newLabel()
+			c.jumpTo(c.cases[n.Default], -1)
+		} else {
+			c.jumpTo(c.breakLabel(l), -1)
+		}
+		c.body(l, n.Then)
+		if l.brk >= 0 {
+			c.place(l.brk)
+		}
+	case cc.NdCase:
+		c.place(c.cases[n])
+		c.stmt(n.Then)
 	case cc.NdBreak:
 		c.jumpTo(c.breakLabel(c.loops[len(c.loops)-1]), -1)
 	case cc.NdContinue:
 		l := c.loops[len(c.loops)-1]
+		for i := len(c.loops) - 1; l.sw; i-- { // the loop around the switches
+			l = c.loops[i-1]
+		}
 		if l.cont < 0 {
 			l.cont = c.newLabel()
 		}
