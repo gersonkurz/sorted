@@ -40,16 +40,26 @@ func (ps *parser) typed(n *Node) *Type {
 
 func (ps *parser) typeOf(n *Node) *Type {
 	switch n.Kind {
-	case NdNum, NdNot, NdLogAnd, NdLogOr:
+	case NdNum:
 		return tyInt
+	case NdNot:
+		ps.scalar(n.Lhs, "the operand of '!'")
+		return tyInt
+	case NdLogAnd, NdLogOr:
+		op := map[NodeKind]string{NdLogAnd: "&&", NdLogOr: "||"}[n.Kind]
+		ps.scalar(n.Lhs, "an operand of '"+op+"'")
+		ps.scalar(n.Rhs, "an operand of '"+op+"'")
+		return tyInt
+	case NdMember:
+		return n.Member.Ty
 	case NdVar:
 		return n.Var.Ty
 	case NdIndex:
 		ps.integer(n.Lhs, "an array index")
 		return n.Var.Ty.Base
 	case NdAddr:
-		if decayed(n) {
-			return pointerTo(n.Lhs.Var.Ty.Base)
+		if a := arrayType(n.Lhs); a != nil {
+			return pointerTo(a.Base)
 		}
 		return pointerTo(n.Lhs.Ty)
 	case NdDeref:
@@ -100,6 +110,7 @@ func (ps *parser) typeOf(n *Node) *Type {
 	case NdComma:
 		return n.Rhs.Ty
 	case NdCond:
+		ps.scalar(n.Cond, "the condition of '?:'")
 		a, b := n.Then.Ty, n.Els.Ty
 		switch {
 		case a.IsInteger() && b.IsInteger():
@@ -109,6 +120,8 @@ func (ps *parser) typeOf(n *Node) *Type {
 			return a
 		case b.Kind == TyPtr && isNull(n.Then):
 			return b
+		case a.Kind == TyStruct && sameType(a, b):
+			ps.unsupported(n.Pos, "'?:' choosing between structs")
 		}
 		ps.fail(n.Pos, "the branches of '?:' have different types ('%s' and '%s')", a, b)
 	case NdFuncall:
@@ -137,6 +150,13 @@ func (ps *parser) integer(n *Node, what string) {
 	}
 }
 
+// scalar checks that n is an integer or a pointer, which can be tested.
+func (ps *parser) scalar(n *Node, what string) {
+	if !ps.typed(n).IsScalar() {
+		ps.fail(n.Pos, "%s must be an integer or a pointer, not '%s'", what, n.Ty)
+	}
+}
+
 // isNull reports whether n is the null pointer constant: an integer
 // constant expression that is 0.
 func isNull(n *Node) bool {
@@ -152,6 +172,7 @@ func (ps *parser) assignable(t *Type, n *Node, pos Pos, what string) {
 	switch {
 	case t.IsInteger() && v.IsInteger(),
 		t.Kind == TyPtr && v.Kind == TyPtr && sameType(t, v),
+		t.Kind == TyStruct && sameType(t, v),
 		t.Kind == TyPtr && isNull(n):
 		return
 	}

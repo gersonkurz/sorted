@@ -35,12 +35,14 @@ type parser struct {
 	toks    []Token
 	i       int
 	scopes  []map[string]*Obj
+	tags    []map[string]*Type // struct tags, by scope: the globals' first
 	globals map[string]*Obj
 	strs    map[string]*Obj // string literals by content, so equal ones share their cells
 	prog    *Program
 	loops   int       // nesting depth of loops, for continue
 	breaks  int       // nesting depth of loops and switches, for break
 	sw      *Node     // the innermost switch, for case and default
+	pending *Node     // an initializer already parsed, for the first scalar of an elided struct (see initValue)
 	fn      *Function // the function being parsed, nil in main
 }
 
@@ -84,10 +86,14 @@ func (ps *parser) program() *Program {
 	ps.prog = &Program{Funcs: map[string]*Function{}}
 	ps.globals = map[string]*Obj{}
 	ps.strs = map[string]*Obj{}
+	ps.tags = []map[string]*Type{{}}
 	for ps.tok().Kind != TkEOF {
 		var base *Type // nil for void
 		if !ps.consume("void") {
 			base = ps.declspec()
+			if base.Kind == TyStruct && ps.consume(";") { // struct t { ... };
+				continue
+			}
 		} else if ps.equal("*") {
 			ps.unsupported(ps.tok().Pos, "void pointers")
 		}
@@ -95,6 +101,9 @@ func (ps *parser) program() *Program {
 		if ps.equal("(") {
 			if d.array {
 				ps.unsupported(d.name.Pos, "functions returning arrays")
+			}
+			if d.ty != nil && d.ty.Kind == TyStruct {
+				ps.unsupported(d.name.Pos, "functions returning structs (return a pointer)")
 			}
 			if d.name.Text == "main" {
 				if d.ty == nil || d.ty.Kind != TyInt {
@@ -117,17 +126,118 @@ func (ps *parser) program() *Program {
 	return ps.prog
 }
 
-// declspec = "int" | "char"
+// declspec = "int" | "char" | "struct" struct-decl
 func (ps *parser) declspec() *Type {
 	t := ps.tok()
+	if ps.consume("struct") {
+		return ps.structDecl(t)
+	}
 	if t.Kind == TkKeyword && t.Text != "int" && t.Text != "char" {
-		ps.unsupported(t.Pos, "the type or specifier '"+t.Text+"' (int and char are the only types)")
+		ps.unsupported(t.Pos, "the type or specifier '"+t.Text+"' (int, char and struct are the only types)")
 	}
 	if ps.consume("char") {
 		return tyChar
 	}
 	ps.skip("int")
 	return tyInt
+}
+
+// struct-decl = ident? ("{" (declspec declarator ("," declarator)* ";")* "}")?
+//
+// A tag lives in the scope it is declared in, like a variable. "struct t"
+// without a body refers to the nearest t, and declares it (incomplete) when
+// there is none, so a struct can point to its own kind; a body completes
+// it. Members are laid out one after the other, each taking its size in
+// cells.
+func (ps *parser) structDecl(kw Token) *Type {
+	var tag Token
+	if ps.tok().Kind == TkIdent {
+		tag = ps.next()
+	} else if !ps.equal("{") {
+		ps.fail(ps.tok().Pos, "expected a struct tag or '{'")
+	}
+	scope := ps.tags[len(ps.tags)-1]
+	ty := &Type{Kind: TyStruct}
+	if tag.Text != "" {
+		if ps.equal(";") { // "struct t;" declares t here, hiding an outer t
+			if prev := scope[tag.Text]; prev != nil {
+				return prev
+			}
+		} else if ps.equal("{") {
+			if prev := scope[tag.Text]; prev != nil { // declared in this scope
+				if prev.Complete {
+					ps.fail(tag.Pos, "redefinition of 'struct %s'", tag.Text)
+				}
+				ty = prev
+			}
+		} else if prev := ps.findTag(tag.Text); prev != nil {
+			return prev
+		}
+		ty.Tag = tag.Text
+		scope[tag.Text] = ty
+	}
+	if !ps.consume("{") {
+		return ty
+	}
+	off := 0
+	for !ps.consume("}") {
+		if ps.tok().Kind == TkEOF {
+			ps.fail(ps.tok().Pos, "expected '}'")
+		}
+		base := ps.declspec()
+		for first := true; !ps.consume(";"); first = false {
+			if !first {
+				ps.skip(",")
+			}
+			d := ps.declarator(base)
+			if d.array && d.len == 0 {
+				ps.fail(d.lpos, "a member array needs a length")
+			}
+			ps.complete(d.ty, d.name.Pos)
+			if ty.member(d.name.Text) != nil {
+				ps.fail(d.name.Pos, "duplicate member '%s'", d.name.Text)
+			}
+			ty.Members = append(ty.Members, &Member{Name: d.name.Text, Ty: d.ty, Offset: off, Pos: d.name.Pos})
+			off += d.ty.Size()
+		}
+	}
+	if len(ty.Members) == 0 {
+		ps.fail(kw.Pos, "a struct needs at least one member")
+	}
+	ty.size, ty.Complete = off, true
+	return ty
+}
+
+// findTag looks a struct tag up from the innermost scope out to the globals.
+func (ps *parser) findTag(name string) *Type {
+	for i := len(ps.tags) - 1; i >= 0; i-- {
+		if t, ok := ps.tags[i][name]; ok {
+			return t
+		}
+	}
+	return nil
+}
+
+// complete checks that a variable or member of type t can exist: a struct
+// (or an array of them) must have its members by now.
+func (ps *parser) complete(t *Type, pos Pos) {
+	for t.Kind == TyArray {
+		t = t.Base
+	}
+	if t.Kind == TyStruct && !t.Complete {
+		ps.fail(pos, "'%s' is incomplete: its members are not known here", t)
+	}
+}
+
+// enter and leave open and close a block scope, for variables and tags.
+func (ps *parser) enter(vars map[string]*Obj) {
+	ps.scopes = append(ps.scopes, vars)
+	ps.tags = append(ps.tags, map[string]*Type{})
+}
+
+func (ps *parser) leave() {
+	ps.scopes = ps.scopes[:len(ps.scopes)-1]
+	ps.tags = ps.tags[:len(ps.tags)-1]
 }
 
 // decl is a declarator: a name and its type, and for an array its length (0
@@ -237,6 +347,9 @@ func (ps *parser) otherFunction(name Token, ret *Type) {
 		if ps.tok().Kind == TkIdent {
 			pname = ps.next()
 		}
+		if ty.Kind == TyStruct && !ps.equal("[") {
+			ps.unsupported(ps.tok().Pos, "struct parameters (pass a pointer)")
+		}
 		if ps.consume("[") { // int a[] and int a[10] are int *a
 			if !ps.equal("]") {
 				ps.constant("array lengths other than integer constants")
@@ -298,6 +411,7 @@ func (ps *parser) otherFunction(name Token, ret *Type) {
 
 // newObj makes the variable a declarator declares.
 func (ps *parser) newObj(d decl, global bool) *Obj {
+	ps.complete(d.ty, d.name.Pos)
 	elem := d.ty
 	if d.array {
 		elem = d.ty.Base
@@ -305,12 +419,11 @@ func (ps *parser) newObj(d decl, global bool) *Obj {
 	return &Obj{Name: d.name.Text, IsGlobal: global, Ty: d.ty, Char: elem.Kind == TyChar, Len: d.len, Pos: d.name.Pos}
 }
 
-// global-variable = (declarator ("=" global-init)? ("," declarator ("=" global-init)?)*)? ";"
-// global-init     = init | "{" init ("," init)* ","? "}" | string
+// global-variable = (declarator ("=" init)? ("," declarator ("=" init)?)*)? ";"
 //
-// An init is a constant expression, or for a pointer an address: 0, a string
-// literal, or the address of a global (&g, &a[2], a, a + 2). The first
-// declarator has been read already.
+// Every scalar of a global's initializer is a constant expression, or for a
+// pointer an address: 0, a string literal, or the address of a global (&g,
+// &a[2], a, a + 2). The first declarator has been read already.
 func (ps *parser) globalVariable(d decl) {
 	base := d.ty
 	for base.Kind == TyPtr || base.Kind == TyArray {
@@ -329,24 +442,22 @@ func (ps *parser) globalVariable(d decl) {
 		}
 		v := ps.newObj(d, true)
 		if ps.consume("=") {
-			elem := v.Ty
-			if d.array {
-				elem = v.Ty.Base
+			var items []initItem
+			ps.initValue(v.Ty, 0, nil, &items, false)
+			v.Len = v.Ty.Len
+			last := -1
+			for _, it := range items {
+				last = max(last, it.off)
 			}
-			item := func() ginit { return ps.initializer(elem) }
-			var items []ginit
-			if d.array {
-				items = arrayInit(ps, v, d, item, func(c int32) ginit { return ginit{val: c} })
-			} else {
-				items = []ginit{item()}
-			}
-			for i, it := range items {
-				v.Init = append(v.Init, it.val)
-				if it.ref != nil {
+			v.Init = make([]int32, last+1)
+			for _, it := range items {
+				g := ps.constValue(it.ty, it.val, it.pos)
+				v.Init[it.off] = g.val
+				if g.ref != nil {
 					if v.InitRef == nil {
-						v.InitRef = make([]*Obj, len(items))
+						v.InitRef = make([]*Obj, len(v.Init))
 					}
-					v.InitRef[i] = it.ref
+					v.InitRef[it.off] = g.ref
 				}
 			}
 			if !ps.equal(",") && !ps.equal(";") {
@@ -372,16 +483,17 @@ type ginit struct {
 	ref *Obj
 }
 
-// initializer parses one initial value of a global of type t: a constant
-// expression, or for a pointer 0 or an address.
-func (ps *parser) initializer(t *Type) ginit {
-	pos := ps.tok().Pos
-	n := ps.conditional()
+// constValue evaluates one scalar of a global's initializer for a t: a
+// constant expression, or for a pointer 0 or an address. A char wraps.
+func (ps *parser) constValue(t *Type, n *Node, pos Pos) ginit {
 	ps.typed(n)
 	if n.Ty.IsInteger() {
 		v, ok := Fold(n)
 		if !ok {
 			ps.unsupported(pos, "global initializers other than constants and addresses")
+		}
+		if t.Kind == TyChar {
+			v = int32(int8(v))
 		}
 		if t.IsInteger() || v == 0 { // a number, or the null pointer
 			return ginit{val: v}
@@ -397,7 +509,8 @@ func (ps *parser) initializer(t *Type) ginit {
 
 // addrConst evaluates the address of a global plus a constant offset: &g,
 // &a[k], a (an array), those plus or minus a constant, and c ? x : y with a
-// constant c. The null pointer comes back as no variable and offset 0.
+// constant c. The null pointer comes back as no variable and offset 0. The
+// offset counts cells, so it is scaled by the size of what is pointed to.
 func addrConst(n *Node) (*Obj, int32, bool) {
 	switch n.Kind {
 	case NdCond:
@@ -414,25 +527,39 @@ func addrConst(n *Node) (*Obj, int32, bool) {
 		}
 		return addrConst(branch)
 	case NdAddr:
-		switch x := n.Lhs; x.Kind {
-		case NdVar:
-			return x.Var, 0, true
-		case NdIndex:
-			k, ok := Fold(x.Lhs)
-			return x.Var, k, ok
-		}
+		return lvalueConst(n.Lhs)
 	case NdAdd, NdSub:
+		size := int32(n.Ty.Base.Size())
 		if ref, off, ok := addrConst(n.Lhs); ok && ref != nil {
 			k, okK := Fold(n.Rhs)
 			if n.Kind == NdSub {
 				k = -k
 			}
-			return ref, off + k, okK
+			return ref, off + k*size, okK
 		}
 		if ref, off, ok := addrConst(n.Rhs); ok && ref != nil && n.Kind == NdAdd {
 			k, okK := Fold(n.Lhs)
-			return ref, off + k, okK
+			return ref, off + k*size, okK
 		}
+	}
+	return nil, 0, false
+}
+
+// lvalueConst evaluates where a global lvalue is: the variable and the cell
+// offset of g, a[k], s.m and their combinations.
+func lvalueConst(x *Node) (*Obj, int32, bool) {
+	switch x.Kind {
+	case NdVar:
+		return x.Var, 0, true
+	case NdIndex:
+		k, ok := Fold(x.Lhs)
+		return x.Var, k * int32(x.Var.Ty.Base.Size()), ok
+	case NdMember:
+		ref, off, ok := lvalueConst(x.Lhs)
+		return ref, off + int32(x.Member.Offset), ok
+	case NdDeref: // *(&a.b + k), as a[k] on a member array is
+		ref, off, ok := addrConst(x.Lhs)
+		return ref, off, ok && ref != nil
 	}
 	return nil, 0, false
 }
@@ -452,59 +579,178 @@ func (ps *parser) constant(what string) int32 {
 	return v
 }
 
-// arrayInit reads the initializer of array v, "{" item ("," item)* ","? "}"
-// or, for a char array, a string literal (adjacent literals are joined), and
-// returns the values, setting v.Len when the declarator left it open. A
-// string's terminating NUL is included when the array has room for it.
-// item reads one list element; char turns a string's character into one.
-func arrayInit[T any](ps *parser, v *Obj, d decl, item func() T, char func(int32) T) []T {
-	var items []T
+// initItem is one scalar of an initializer: its cell, counted from the start
+// of the variable, its type, how to reach it as an lvalue (for locals; nil
+// for globals) and its value.
+type initItem struct {
+	off int
+	ty  *Type
+	lv  func() *Node
+	val *Node
+	pos Pos // where the initializer starts, for messages
+}
+
+// init = "{" init ("," init)* ","? "}" | string | assign
+//
+// initValue reads the initializer of a ty at cell off and adds its scalars
+// to items. A string initializes a char array, with its NUL when there is
+// room. Inside an aggregate, an aggregate may leave out its braces (C's
+// brace elision) and takes as many initializers as it has elements. An
+// array of unknown length gets the length its initializer gives it.
+func (ps *parser) initValue(ty *Type, off int, lv func() *Node, items *[]initItem, nested bool) {
 	t := ps.tok()
-	if t.Kind == TkStr {
-		if !v.Char {
+	switch {
+	case ty.Kind == TyArray && t.Kind == TkStr:
+		if ty.Base.Kind != TyChar {
 			ps.fail(t.Pos, "a string literal can only initialize a char array")
 		}
 		var str []byte
 		for ps.tok().Kind == TkStr {
 			str = append(str, ps.next().Str...)
 		}
-		if d.len == 0 || len(str) < d.len {
+		if ty.Len == 0 || len(str) < ty.Len {
 			str = append(str, 0)
 		}
-		if d.len > 0 && len(str) > d.len {
+		if ty.Len == 0 {
+			ty.Len = len(str)
+		}
+		if len(str) > ty.Len {
 			ps.fail(t.Pos, "the string is longer than the array")
 		}
-		for _, c := range str {
-			items = append(items, char(int32(int8(c))))
+		for i, c := range str {
+			*items = append(*items, initItem{off + i, ty.Base, elemLV(lv, i, t.Pos), &Node{Kind: NdNum, Pos: t.Pos, Val: int32(int8(c))}, t.Pos})
 		}
-	} else {
-		ps.skip("{")
-		for !ps.equal("}") {
-			items = append(items, item())
-			if !ps.consume(",") {
-				break
+	case ty.Kind == TyArray || ty.Kind == TyStruct:
+		if !ps.equal("{") {
+			if !nested {
+				ps.fail(t.Pos, "an array or a struct is initialized with a list in braces")
 			}
+			if ty.Kind == TyStruct && (ps.pending != nil || t.Kind != TkStr) {
+				// A struct expression of this type initializes the whole
+				// struct. Anything else goes, with the braces left out, to
+				// the first member that takes it: a nested struct of its
+				// type, or the first scalar.
+				e := ps.pending
+				if e == nil {
+					e = ps.assign()
+				}
+				if ps.typed(e).Kind == TyStruct && sameType(e.Ty, ty) {
+					*items = append(*items, initItem{off, ty, lv, e, e.Pos})
+					ps.pending = nil
+					return
+				}
+				ps.pending = e
+			}
+			ps.initList(ty, off, lv, items)
+			return
 		}
-		ps.skip("}")
-		if len(items) == 0 {
+		ps.next()
+		n, full := ps.initList(ty, off, lv, items)
+		if n == 0 {
 			ps.fail(t.Pos, "empty initializer")
 		}
-		if d.len > 0 && len(items) > d.len {
-			ps.fail(t.Pos, "too many initializers for the array")
+		ps.consume(",")
+		if !ps.equal("}") && full {
+			what := "array"
+			if ty.Kind == TyStruct {
+				what = "struct"
+			}
+			ps.fail(ps.tok().Pos, "too many initializers for the %s", what)
 		}
+		ps.skip("}")
+	case ps.pending != nil:
+		*items = append(*items, initItem{off, ty, lv, ps.pending, ps.pending.Pos})
+		ps.pending = nil
+	default:
+		braced := ps.consume("{")
+		pos := ps.tok().Pos
+		val := ps.assign()
+		if braced {
+			ps.consume(",")
+			ps.skip("}")
+		}
+		*items = append(*items, initItem{off, ty, lv, val, pos})
 	}
-	if d.len == 0 {
-		v.Len = len(items)
-		v.Ty.Len = v.Len
+}
+
+// initList reads the initializers of an array's elements or a struct's
+// members, up to a "}" or until every one has one, and reports how many it
+// read and whether that was all of them.
+func (ps *parser) initList(ty *Type, off int, lv func() *Node, items *[]initItem) (int, bool) {
+	n := 0
+	full := func() bool {
+		if ty.Kind == TyStruct {
+			return n == len(ty.Members)
+		}
+		return ty.Len > 0 && n == ty.Len
 	}
-	return items
+	for (!ps.equal("}") || ps.pending != nil) && !full() {
+		if n > 0 {
+			if !ps.equal(",") || ps.toks[ps.i+1].Text == "}" {
+				break
+			}
+			ps.next()
+		}
+		pos := ps.tok().Pos
+		if ty.Kind == TyStruct {
+			m := ty.Members[n]
+			ps.initValue(m.Ty, off+m.Offset, memberLV(lv, m, pos), items, true)
+		} else {
+			ps.initValue(ty.Base, off+n*ty.Base.Size(), elemLV(lv, n, pos), items, true)
+		}
+		n++
+	}
+	if ty.Kind == TyArray && ty.Len == 0 {
+		ty.Len = n
+	}
+	return n, full()
+}
+
+// elemLV and memberLV build the lvalue of an array element or a struct
+// member from the lvalue of the whole (nil for a global, which needs none).
+func elemLV(lv func() *Node, i int, pos Pos) func() *Node {
+	if lv == nil {
+		return nil
+	}
+	return func() *Node {
+		base, k := lv(), &Node{Kind: NdNum, Pos: pos, Val: int32(i)}
+		if base.Kind == NdVar && base.Var.Ty.Kind == TyArray {
+			return &Node{Kind: NdIndex, Pos: pos, Var: base.Var, Lhs: k}
+		}
+		return &Node{Kind: NdDeref, Pos: pos, Lhs: &Node{Kind: NdAdd, Pos: pos, Lhs: decay(base), Rhs: k}}
+	}
+}
+
+func memberLV(lv func() *Node, m *Member, pos Pos) func() *Node {
+	if lv == nil {
+		return nil
+	}
+	return func() *Node { return &Node{Kind: NdMember, Pos: pos, Lhs: lv(), Member: m} }
+}
+
+// leaves calls visit for every scalar of a ty at cell off, in order, with
+// its lvalue.
+func leaves(ty *Type, off int, lv func() *Node, pos Pos, visit func(off int, ty *Type, lv func() *Node)) {
+	switch ty.Kind {
+	case TyArray:
+		for i := range ty.Len {
+			leaves(ty.Base, off+i*ty.Base.Size(), elemLV(lv, i, pos), pos, visit)
+		}
+	case TyStruct:
+		for _, m := range ty.Members {
+			leaves(m.Ty, off+m.Offset, memberLV(lv, m, pos), pos, visit)
+		}
+	default:
+		visit(off, ty, lv)
+	}
 }
 
 // declaration = declspec (declarator ("=" init)? ("," declarator ("=" init)?)*)? ";"
-// init        = assign | "{" assign ("," assign)* ","? "}" | string
 //
-// It becomes a block of assignment statements for the initializers. An array
-// initializer assigns every element: those it leaves out become 0, as in C.
+// It becomes a block of assignment statements for the initializers. An
+// aggregate initializer assigns every scalar of the variable: those it
+// leaves out become 0, as in C. A struct can also be initialized by copying
+// another one.
 func (ps *parser) declaration() *Node {
 	block := &Node{Kind: NdBlock, Pos: ps.tok().Pos}
 	base := ps.declspec()
@@ -533,19 +779,36 @@ func (ps *parser) declaration() *Node {
 			ps.typed(n)
 			block.Body = append(block.Body, &Node{Kind: NdExprStmt, Pos: d.name.Pos, Lhs: n})
 		}
-		if !d.array {
-			assign(&Node{Kind: NdVar, Pos: d.name.Pos, Var: v}, ps.assign())
+		whole := func() *Node { return &Node{Kind: NdVar, Pos: d.name.Pos, Var: v} }
+		if v.Ty.Kind != TyArray && (v.Ty.Kind != TyStruct || !ps.equal("{")) {
+			assign(whole(), ps.assign())
 			continue
 		}
-		items := arrayInit(ps, v, d, ps.assign, func(c int32) *Node { return &Node{Kind: NdNum, Pos: eq.Pos, Val: c} })
-		for i := 0; i < v.Len; i++ {
-			rhs := &Node{Kind: NdNum, Pos: eq.Pos}
-			if i < len(items) {
-				rhs = items[i]
+		var items []initItem
+		ps.initValue(v.Ty, 0, whole, &items, false)
+		v.Len = v.Ty.Len
+		given := map[int]*Node{}
+		copied := map[int]bool{} // cells a struct copy fills
+		for _, it := range items {
+			if it.ty.Kind == TyStruct {
+				assign(it.lv(), it.val)
+				for i := range it.ty.Size() {
+					copied[it.off+i] = true
+				}
+				continue
 			}
-			idx := &Node{Kind: NdNum, Pos: eq.Pos, Val: int32(i)}
-			assign(&Node{Kind: NdIndex, Pos: d.name.Pos, Var: v, Lhs: idx}, rhs)
+			given[it.off] = it.val
 		}
+		leaves(v.Ty, 0, whole, eq.Pos, func(off int, _ *Type, lv func() *Node) {
+			if copied[off] {
+				return
+			}
+			val, ok := given[off]
+			if !ok {
+				val = &Node{Kind: NdNum, Pos: eq.Pos}
+			}
+			assign(lv(), val)
+		})
 	}
 	return block
 }
@@ -586,6 +849,7 @@ func (ps *parser) stmt() *Node {
 		n := &Node{Kind: NdIf, Pos: t.Pos}
 		ps.skip("(")
 		n.Cond = ps.expr()
+		ps.scalar(n.Cond, "a condition")
 		ps.skip(")")
 		n.Then = ps.stmt()
 		if ps.consume("else") {
@@ -597,6 +861,7 @@ func (ps *parser) stmt() *Node {
 		n := &Node{Kind: NdWhile, Pos: t.Pos}
 		ps.skip("(")
 		n.Cond = ps.expr()
+		ps.scalar(n.Cond, "a condition")
 		ps.skip(")")
 		n.Then = ps.loopBody()
 		return n
@@ -607,6 +872,7 @@ func (ps *parser) stmt() *Node {
 		ps.skip("while")
 		ps.skip("(")
 		n.Cond = ps.expr()
+		ps.scalar(n.Cond, "a condition")
 		ps.skip(")")
 		ps.skip(";")
 		return n
@@ -651,7 +917,7 @@ func (ps *parser) stmt() *Node {
 		ps.next()
 		n := &Node{Kind: NdFor, Pos: t.Pos}
 		ps.skip("(")
-		ps.scopes = append(ps.scopes, map[string]*Obj{}) // for (int i = ...)
+		ps.enter(map[string]*Obj{}) // for (int i = ...)
 		if ps.equal("int") || ps.equal("char") || ps.tok().Kind == TkKeyword && isTypeKeyword(ps.tok().Text) {
 			n.Init = ps.declaration()
 		} else {
@@ -659,6 +925,7 @@ func (ps *parser) stmt() *Node {
 		}
 		if !ps.equal(";") {
 			n.Cond = ps.expr()
+			ps.scalar(n.Cond, "a condition")
 		}
 		ps.skip(";")
 		if !ps.equal(")") {
@@ -666,7 +933,7 @@ func (ps *parser) stmt() *Node {
 		}
 		ps.skip(")")
 		n.Then = ps.loopBody()
-		ps.scopes = ps.scopes[:len(ps.scopes)-1]
+		ps.leave()
 		return n
 	case ps.equal("break"), ps.equal("continue"):
 		ps.next()
@@ -704,7 +971,7 @@ func (ps *parser) compoundStmt() *Node { return ps.block(map[string]*Obj{}) }
 // block parses a compound statement whose declarations go into scope.
 func (ps *parser) block(scope map[string]*Obj) *Node {
 	n := &Node{Kind: NdBlock, Pos: ps.tok().Pos}
-	ps.scopes = append(ps.scopes, scope)
+	ps.enter(scope)
 	for !ps.equal("}") {
 		if ps.tok().Kind == TkEOF {
 			ps.fail(ps.tok().Pos, "expected '}'")
@@ -716,7 +983,7 @@ func (ps *parser) block(scope map[string]*Obj) *Node {
 		}
 	}
 	ps.next()
-	ps.scopes = ps.scopes[:len(ps.scopes)-1]
+	ps.leave()
 	return n
 }
 
@@ -756,7 +1023,7 @@ func (ps *parser) expr() *Node {
 
 // operators that are C but not (yet) in the subset, rejected where they
 // would continue an expression.
-var notYet = map[string]string{"->": "->", ".": "structs"}
+var notYet = map[string]string{}
 
 // compound assignment operators and the operation each applies
 var assignOps = map[string]NodeKind{
@@ -796,7 +1063,7 @@ func (ps *parser) lvalue(n *Node, t Token) {
 	if decayed(n) {
 		ps.fail(n.Pos, "an array cannot be assigned to, only its elements")
 	}
-	if n.Kind != NdVar && n.Kind != NdIndex && n.Kind != NdDeref || n.Rvalue {
+	if n.Kind != NdVar && n.Kind != NdIndex && n.Kind != NdDeref && n.Kind != NdMember || n.Rvalue {
 		ps.fail(t.Pos, "the left side of '%s' cannot be assigned to", t.Text)
 	}
 }
@@ -804,7 +1071,18 @@ func (ps *parser) lvalue(n *Node, t Token) {
 // decayed reports whether n is an array used as a value, which is the
 // address of its first element.
 func decayed(n *Node) bool {
-	return n.Kind == NdAddr && n.Lhs.Kind == NdVar && n.Lhs.Var.Ty.Kind == TyArray
+	return n.Kind == NdAddr && arrayType(n.Lhs) != nil
+}
+
+// arrayType returns the array type of an array variable or member, or nil.
+func arrayType(n *Node) *Type {
+	switch {
+	case n.Kind == NdVar && n.Var.Ty.Kind == TyArray:
+		return n.Var.Ty
+	case n.Kind == NdMember && n.Member.Ty.Kind == TyArray:
+		return n.Member.Ty
+	}
+	return nil
 }
 
 // conditional = logor ("?" expr ":" conditional)?
@@ -976,7 +1254,7 @@ func (ps *parser) unary() *Node {
 		if decayed(n) {
 			ps.unsupported(t.Pos, "pointers to arrays (&array; the array itself is the address of its first element)")
 		}
-		if n.Kind != NdVar && n.Kind != NdIndex && n.Kind != NdDeref || n.Rvalue {
+		if n.Kind != NdVar && n.Kind != NdIndex && n.Kind != NdDeref && n.Kind != NdMember || n.Rvalue {
 			ps.fail(t.Pos, "cannot take the address of a value, only of a variable or an element")
 		}
 		return &Node{Kind: NdAddr, Pos: t.Pos, Lhs: n}
@@ -1007,12 +1285,17 @@ func incDec(n *Node, t Token) *Node {
 // its first element.
 func (ps *parser) postfix() *Node {
 	n := ps.primary()
-	for ps.equal("[") || ps.equal("++") || ps.equal("--") {
+	for ps.equal("[") || ps.equal("++") || ps.equal("--") || ps.equal(".") || ps.equal("->") {
 		t := ps.next()
+		if t.Text == "." || t.Text == "->" {
+			n = ps.member(n, t)
+			continue
+		}
 		if t.Text == "[" {
 			if n.Kind == NdVar && n.Var.Ty.Kind == TyArray && !n.Rvalue {
 				n = &Node{Kind: NdIndex, Pos: t.Pos, Var: n.Var, Lhs: ps.expr()}
 			} else {
+				n = decay(n)
 				if ps.typed(n).Kind != TyPtr {
 					ps.fail(t.Pos, "subscripted value is not an array or a pointer")
 				}
@@ -1035,12 +1318,39 @@ func (ps *parser) postfix() *Node {
 	return decay(n)
 }
 
-// decay turns an array variable used as a value into the address of its
-// first element; anything else stays as it is.
+// decay turns an array variable or member used as a value into the address
+// of its first element; anything else stays as it is.
 func decay(n *Node) *Node {
-	if n.Kind == NdVar && n.Var.Ty.Kind == TyArray {
+	if arrayType(n) != nil {
 		return &Node{Kind: NdAddr, Pos: n.Pos, Lhs: n}
 	}
+	return n
+}
+
+// member reads the member name after "." (s.m) or "->" (p->m, which is
+// (*p).m) at t.
+func (ps *parser) member(n *Node, t Token) *Node {
+	if t.Text == "->" {
+		if ty := ps.typed(n); ty.Kind != TyPtr || ty.Base.Kind != TyStruct {
+			ps.fail(t.Pos, "'->' needs a pointer to a struct, not '%s'", ty)
+		}
+		n = &Node{Kind: NdDeref, Pos: t.Pos, Lhs: n}
+	}
+	ty := ps.typed(n)
+	if ty.Kind != TyStruct {
+		ps.fail(t.Pos, "'.' needs a struct, not '%s'", ty)
+	}
+	ps.complete(ty, t.Pos)
+	name := ps.next()
+	if name.Kind != TkIdent {
+		ps.fail(name.Pos, "expected a member name")
+	}
+	m := ty.member(name.Text)
+	if m == nil {
+		ps.fail(name.Pos, "'%s' has no member '%s'", ty, name.Text)
+	}
+	n = &Node{Kind: NdMember, Pos: name.Pos, Lhs: n, Member: m}
+	ps.typed(n)
 	return n
 }
 

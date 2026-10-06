@@ -21,12 +21,15 @@
 // #include <stdio.h>, so that a program for Sorted! is also a C program that
 // declares putchar.
 //
-// The subset: int and char variables, pointers to them (to any depth), and
-// one-dimensional arrays of those, global (with constant expressions and
-// addresses of globals as initializers) and local (initializers are
-// assignments, with {...} lists and string literals for arrays), integer
+// The subset: int and char variables, structs (members of any of these
+// types, tags in scopes, a struct pointing to its own kind), pointers to
+// any of them (to any depth), and one-dimensional arrays of those, global
+// (with constant expressions and addresses of globals as initializers) and
+// local (initializers are assignments, with nested {...} lists, brace
+// elision, and string literals for char arrays), integer
 // and character constants, string literals (char arrays of their own), a[i],
-// unary & and *, pointer arithmetic, + - * / % and unary -, =, the compound
+// unary & and *, . and ->, pointer arithmetic, + - * / % and unary -, =
+// (also of whole structs), the compound
 // assignments += -= *= /= %= &= |= ^= <<= >>=, ++ and -- (prefix and
 // postfix), == != < <= > >=, && || !, & | ^ ~ << >>, ?:, the comma
 // operator, if/else, while, do/while, for, switch (case, default,
@@ -79,6 +82,7 @@ const (
 	NdIndex                    // a[i] for an array variable a
 	NdAddr                     // unary &, and an array used as a value (its first element's address)
 	NdDeref                    // unary *, and p[i] for anything but an array variable (*(p + i))
+	NdMember                   // s.m, and p->m as (*p).m
 	NdBlock                    // { ... }
 	NdFuncall                  // putchar(...)
 	NdExprStmt                 // expression statement
@@ -121,7 +125,8 @@ type Node struct {
 	Fn   *Function // the function called, nil for putchar
 	Args []*Node   // call arguments
 
-	Var *Obj  // NdVar, NdIndex (the array; Lhs is the index)
+	Var    *Obj    // NdVar, NdIndex (the array; Lhs is the index)
+	Member *Member // NdMember (Lhs is the struct)
 	Val int32 // NdNum
 
 	Ty *Type // the expression's type, set by the parser's type pass

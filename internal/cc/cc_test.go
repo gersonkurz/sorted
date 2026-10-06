@@ -37,6 +37,8 @@ func sexpr(n *Node) string {
 		return "(& " + sexpr(n.Lhs) + ")"
 	case NdDeref:
 		return "(* " + sexpr(n.Lhs) + ")"
+	case NdMember:
+		return "(. " + sexpr(n.Lhs) + " " + n.Member.Name + ")"
 	case NdFor:
 		return "(for " + sexpr(n.Init) + " " + sexpr(n.Cond) + " " + sexpr(n.Inc) + " " + sexpr(n.Then) + ")"
 	case NdBreak:
@@ -208,7 +210,7 @@ func TestErrors(t *testing.T) {
 		{"int main() { putchar('\\x100'); }", "1:22: hex escape sequence out of range"},
 		{"int main() { putchar('\\777'); }", "1:22: octal escape sequence out of range"},
 		{"int main() { putchar('\xc3\xa4'); }", "1:22: not supported in Sorted! (yet): non-ASCII characters"},
-		{"int main() { long c; }", "1:14: not supported in Sorted! (yet): the type or specifier 'long' (int and char are the only types)"},
+		{"int main() { long c; }", "1:14: not supported in Sorted! (yet): the type or specifier 'long' (int, char and struct are the only types)"},
 		{"void *p; int main() {}", "1:6: not supported in Sorted! (yet): void pointers"},
 		{"int a[2][3]; int main() {}", "1:9: not supported in Sorted! (yet): arrays of arrays"},
 		{"int a[n]; int main() {}", "1:7: undefined variable 'n'"},
@@ -216,7 +218,7 @@ func TestErrors(t *testing.T) {
 		{"int a[0]; int main() {}", "1:7: the length of an array must be positive"},
 		{"int a[]; int main() {}", "1:6: an array without a length needs an initializer"},
 		{"int main() { int a[]; }", "1:19: an array without a length needs an initializer"},
-		{"int a[2] = {1, 2, 3}; int main() {}", "1:12: too many initializers for the array"},
+		{"int a[2] = {1, 2, 3}; int main() {}", "1:19: too many initializers for the array"},
 		{"int a[2] = {}; int main() {}", "1:12: empty initializer"},
 		{"char s[2] = \"abc\"; int main() {}", "1:13: the string is longer than the array"},
 		{"int s[] = \"abc\"; int main() {}", "1:11: a string literal can only initialize a char array"},
@@ -271,6 +273,32 @@ func TestErrors(t *testing.T) {
 		{"int g; int a[1 ? 3 : &g]; int main() {}", "1:16: the branches of '?:' have different types ('int' and 'int *')"},
 		{"int g; int x = 1 ? 0 : &g; int main() {}", "1:16: the initializer needs 'int', not 'int *'"},
 		{"int g; int *p = (1 ? 0 : &g) + 1; int main() {}", "1:17: not supported in Sorted! (yet): global initializers other than constants and addresses"},
+		{"struct p { int x; }; int main() { struct p a; a.y; }", "1:49: 'struct p' has no member 'y'"},
+		{"int main() { int a; a.x; }", "1:22: '.' needs a struct, not 'int'"},
+		{"struct p { int x; }; int main() { struct p a; a->x; }", "1:48: '->' needs a pointer to a struct, not 'struct p'"},
+		{"struct p; int main() { struct p a; }", "1:33: 'struct p' is incomplete: its members are not known here"},
+		{"struct p; int main() { struct p *a; a->x; }", "1:38: 'struct p' is incomplete: its members are not known here"},
+		{"struct p { int x; }; struct p { int y; }; int main() {}", "1:29: redefinition of 'struct p'"},
+		{"struct p { int x; int x; }; int main() {}", "1:23: duplicate member 'x'"},
+		{"struct p { int x[]; }; int main() {}", "1:17: a member array needs a length"},
+		{"struct p { struct p q; }; int main() {}", "1:21: 'struct p' is incomplete: its members are not known here"},
+		{"struct p { }; int main() {}", "1:1: a struct needs at least one member"},
+		{"struct { int x; } a, b; struct { int x; } c; int main() { a = c; }", "1:61: the assignment needs 'struct (anonymous)', not 'struct (anonymous)'"},
+		{"struct p { int x; }; int f(struct p a) { return 0; } int main() {}", "1:38: not supported in Sorted! (yet): struct parameters (pass a pointer)"},
+		{"struct p { int x; }; struct p f(void) { } int main() {}", "1:31: not supported in Sorted! (yet): functions returning structs (return a pointer)"},
+		{"struct p { int x; }; int main() { struct p a; if (a) ; }", "1:51: a condition must be an integer or a pointer, not 'struct p'"},
+		{"struct p { int x; }; int main() { struct p a; !a; }", "1:48: the operand of '!' must be an integer or a pointer, not 'struct p'"},
+		{"struct p { int x; }; int main() { struct p a; a + 1; }", "1:49: invalid operands to '+' ('struct p' and 'int')"},
+		{"struct p { int x; }; int main() { struct p a, b; a = 1 ? a : b; }", "1:56: not supported in Sorted! (yet): '?:' choosing between structs"},
+		{"struct p { int x; }; struct p g = {1, 2}; int main() {}", "1:39: too many initializers for the struct"},
+		{"struct p { int x; }; struct p a; struct p g[1] = {a}; int main() {}", "1:51: not supported in Sorted! (yet): global initializers other than constants and addresses"},
+		{"struct p { int x; }; struct q { int y; }; int main() { struct q b; struct p a[1] = {b}; }", "1:82: the assignment needs 'int', not 'struct q'"},
+		{"struct p { int x; }; struct p g = 1; int main() {}", "1:35: an array or a struct is initialized with a list in braces"},
+		{"struct p { int x[2]; }; struct p g = {\"ab\"}; int main() {}", "1:39: a string literal can only initialize a char array"},
+		{"int g[2] = {1 2}; int main() {}", "1:15: expected '}'"},
+		{"int main() { struct 3 a; }", "1:21: expected a struct tag or '{'"},
+		{"struct p { int x;", "1:18: expected '}'"},
+		{"struct p { int x; }; int main() { struct p a; a.3; }", "1:49: expected a member name"},
 		{"int (*p)[3]; int main() {}", "1:5: not supported in Sorted! (yet): declarators in parentheses (pointers to arrays, function pointers)"},
 		{"int f(int a); char f(int a) { } int main() {}", "1:20: conflicting declarations of 'f'"},
 		{"int f(int a); int f(char a) { } int main() {}", "1:19: conflicting declarations of 'f'"},
@@ -327,8 +355,8 @@ func TestErrors(t *testing.T) {
 		{"int main() { int putchar = 0; putchar(65); }", "1:31: 'putchar' is a variable, not a function"},
 		{"int putchar; int main() { putchar(65); }", "1:27: 'putchar' is a variable, not a function"},
 		{"int main() { int inline = 1; }", "1:18: expected a variable name"},
-		{"int main() { inline int a; }", "1:14: not supported in Sorted! (yet): the type or specifier 'inline' (int and char are the only types)"},
-		{"int main() { _Bool b; }", "1:14: not supported in Sorted! (yet): the type or specifier '_Bool' (int and char are the only types)"},
+		{"int main() { inline int a; }", "1:14: not supported in Sorted! (yet): the type or specifier 'inline' (int, char and struct are the only types)"},
+		{"int main() { _Bool b; }", "1:14: not supported in Sorted! (yet): the type or specifier '_Bool' (int, char and struct are the only types)"},
 		{"int main() { int a; a = restrict; }", "1:25: not supported in Sorted! (yet): 'restrict'"},
 		{"int main() { _Static_assert(1, 2); }", "1:14: not supported in Sorted! (yet): '_Static_assert'"},
 		{"int main();", "1:11: expected the body of main"},
@@ -505,6 +533,66 @@ func TestControlFlow(t *testing.T) {
 	sw := p.Main.Body[0]
 	if len(sw.Cases) != 2 || sw.Cases[0].Val != 5 || sw.Cases[1].Val != 7 || sw.Default == nil {
 		t.Errorf("switch: %+v", sw)
+	}
+}
+
+func TestStructs(t *testing.T) {
+	tests := []struct{ src, want string }{
+		{"struct p { int x, y; }; int main() { struct p a; a.y = 1; }", "{ {} (= (. a y) 1)}"},
+		{"struct p { int x; }; int main() { struct p *q; q->x = 2; }", "{ {} (= (. (* q) x) 2)}"},
+		{"struct p { int x; }; int main() { struct p a[2]; a[1].x = 3; }", "{ {} (= (. a[1] x) 3)}"},
+		{"struct p { char n[2]; }; int main() { struct p a; a.n[1] = 4; }", "{ {} (= (* (+ (& (. a n)) 1)) 4)}"},
+		{"struct p { int x; int y; }; int main() { struct p a = {5}; }", "{ { (= (. a x) 5) (= (. a y) 0)}}"},
+		{"struct s { char n[2]; }; int main() { struct s a = {\"z\"}; }", "{ { (= (* (+ (& (. a n)) 0)) 122) (= (* (+ (& (. a n)) 1)) 0)}}"},
+		{"int main() { struct q { int v; struct q *next; } a, b; a.next = &b; }", "{ {} (= (. a next) (& b))}"},
+		{"struct p { int x; }; int main() { { struct p { char c; } a; a.c = 1; } struct p b; b.x = 2; }", "{ { {} (= (. a c) 1)} {} (= (. b x) 2)}"},
+	}
+	for _, tt := range tests {
+		p, err := Parse(tt.src)
+		if err != nil {
+			t.Errorf("%s: %v", tt.src, err)
+			continue
+		}
+		if got := sexpr(p.Main); got != tt.want {
+			t.Errorf("%s:\n got %s\nwant %s", tt.src, got, tt.want)
+		}
+	}
+	// "struct t;" declares a new t in its scope, which hides an outer t and
+	// is completed there.
+	sh, err := Parse("struct t { int x; }; int main() { struct t; struct t *p; struct t { char y; } s; p = &s; p->y = 1; }")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sexpr(sh.Main) != "{ {} {} {} (= p (& s)) (= (. (* p) y) 1)}" {
+		t.Errorf("shadowing: %s", sexpr(sh.Main))
+	}
+	// A forward declaration is completed by its body; a scalar may have braces.
+	q, err := Parse("struct p; struct p *first; struct p { int x; }; struct p g = {1}; int s = {5}; int main() { first->x = 2; }")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if q.Globals[0].Ty.Base != q.Globals[1].Ty || q.Globals[2].Init[0] != 5 {
+		t.Errorf("forward declaration: %v %v", q.Globals[0].Ty.Base, q.Globals[1].Ty)
+	}
+	// Layout in cells, and flattened global initializers.
+	p, err := Parse(`struct pt { int x; char y; };
+struct box { struct pt a, b; int tag[3]; char *name; };
+struct box g = {{1, 2}, 3, 4, {5, 6}, "n"};
+struct pt list[] = {1, 2, 3, 4, {5}};
+int main() { }`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, list := p.Globals[1], p.Globals[2]
+	box := g.Ty
+	if box.Size() != 8 || box.Members[1].Offset != 2 || box.Members[2].Offset != 4 || box.Members[3].Offset != 7 || box.String() != "struct box" {
+		t.Errorf("box: size %d, members %+v %+v %+v", box.Size(), box.Members[1], box.Members[2], box.Members[3])
+	}
+	if fmt.Sprint(g.Init) != "[1 2 3 4 5 6 0 0]" || g.InitRef[7] != p.Globals[0] {
+		t.Errorf("g init %v refs %v", g.Init, g.InitRef)
+	}
+	if list.Len != 3 || list.Ty.Size() != 6 || fmt.Sprint(list.Init) != "[1 2 3 4 5]" {
+		t.Errorf("list: len %d, size %d, init %v", list.Len, list.Ty.Size(), list.Init)
 	}
 }
 

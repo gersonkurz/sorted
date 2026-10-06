@@ -203,12 +203,12 @@ every verse printed exactly as the C program prints it.
 
 **What works today.** A growing subset of C: functions with `int`, `char`
 and pointer parameters returning `int`, `char`, a pointer or `void`
-(prototypes and recursion included), `int` and `char` variables, pointers to
-them and one-dimensional arrays of those (globals with constant or address
-initializers, locals in nested blocks, `{...}` lists and string literals for
-arrays), integer constants (decimal, hex, octal), character constants (`'a'`,
-`'\n'`, `'\x41'`) and string literals, `a[i]`, `&x`, `*p` and pointer
-arithmetic, `+ - * / %`,
+(prototypes and recursion included), `int` and `char` variables, structs,
+pointers to them and one-dimensional arrays of those (globals with constant
+or address initializers, locals in nested blocks, nested `{...}` lists and
+string literals), integer constants (decimal, hex, octal), character constants (`'a'`,
+`'\n'`, `'\x41'`) and string literals, `a[i]`, `&x`, `*p`, `s.m`, `p->m` and
+pointer arithmetic, `+ - * / %`,
 comparisons, `&&`, `||` and `!` (short-circuiting, as in C), the bitwise `& |
 ^ ~ << >>`, assignment including `+=`, `<<=` and friends, `++` and `--`,
 `?:` and the comma operator, `if`/`else`, `while`, `do`/`while`, `for`,

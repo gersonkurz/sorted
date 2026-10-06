@@ -597,6 +597,94 @@ int main() {
 	return 0;
 }`,
 
+	"structs": `#include <stdio.h>
+int pn; int pp;
+struct point { int x; int y; };
+struct rect { struct point min, max; char name[8]; };
+struct node { int value; struct node *next; };
+struct tagged { struct point p; int tag; };
+struct point corners[3] = {{1, 2}, {3, 4}, 5, 6};
+struct rect box = {{1, 1}, {4, 3}, "box"};
+struct node nodes[4];
+struct node *head;
+struct { int a; char b; } anon = {7, 300};
+struct point *second = &corners[1];
+struct point *third = corners + 2;
+int *maxy = &box.max.y;
+char *bname = box.name;
+char *bsecond = &box.name[1];
+int depth(int n) { struct point p; p.x = n; p.y = n * 2; if (n > 0) depth(n - 1); return p.x * 10 + p.y; }
+int area(struct rect *r) { return (r->max.x - r->min.x) * (r->max.y - r->min.y); }
+void move(struct point *p, int dx, int dy) { p->x += dx; p->y += dy; }
+void say(char *s) { while (*s) putchar(*s++); }
+void push(int v, int i) { nodes[i].value = v; nodes[i].next = head; head = &nodes[i]; }
+int sum(struct node *n) { return n ? n->value + sum(n->next) : 0; }
+struct point *farthest(struct point *ps, int n) {
+	struct point *best = ps;
+	for (int i = 1; i < n; i++)
+		if (ps[i].x + ps[i].y > best->x + best->y) best = ps + i;
+	return best;
+}
+int main() {
+	` + printNum("area(&box)") + `
+	move(&box.max, 2, 1);
+	` + printNum("area(&box)") + `
+	say(box.name); putchar('\n');
+	struct point p = corners[1];
+	p.x++;
+	` + printNum("p.x * 10 + p.y + corners[1].x * 100") + `
+	struct point q = {9};
+	` + printNum("q.x * 10 + q.y") + `
+	corners[0] = q;
+	` + printNum("corners[0].x * 10 + corners[0].y") + `
+	struct point *fp = farthest(corners, 3);
+	` + printNum("(fp - corners) * 100 + fp->x * 10 + fp->y") + `
+	for (int i = 0; i < 4; i++) push(i * 10, i);
+	` + printNum("sum(head)") + printNum("head->next->value") + printNum("anon.a * 1000 + anon.b") + `
+	struct rect r2;
+	r2 = box;
+	r2.name[0] = 'B';
+	say(r2.name); say(box.name); putchar('\n');
+	int i = 1;
+	corners[i++].y = 100;
+	corners[i].x += corners[i - 1].y;
+	` + printNum("corners[1].y * 1000 + corners[2].x") + `
+	struct point a, b, c;
+	a.x = 1; a.y = 2;
+	c = b = a;
+	` + printNum("c.x * 10 + b.y") + `
+	struct point *walk = &corners[0];
+	walk++;
+	` + printNum("walk->y + (third - second) * 1000 + (&corners[2] - corners) * 10000") + `
+	char *np = box.name;
+	struct rect *rp = &box;
+	rp->name[2] = 'X';
+	say(rp->name); putchar(np[1]); putchar('\n');
+	struct point pts[2] = {{5, 6}, {7}};
+	struct node local = {42, &nodes[0]};
+	struct rect named = {{0, 0}, {1, 1}, "named"};
+	say(named.name); putchar('\n');
+	` + printNum("pts[0].x * 1000 + pts[1].x * 100 + pts[1].y * 10 + local.next->value") + `
+	(*rp).min.x = 3;
+	rp->min = rp->max;
+	` + printNum("box.min.x * 10 + box.min.y + second->y * 100") + printNum("depth(3) * 100 + (1 + walk)->x") + `
+	struct point arr2[3], a2, c2;
+	a2.x = 8; a2.y = 9;
+	int j = 0;
+	c2 = arr2[j++] = a2;
+	` + printNum("j * 100 + c2.x * 10 + arr2[0].y") + printNum("*maxy * 1000 + bname[2] + *bsecond") + `
+	struct point a3 = {1, 2};
+	struct point list[2] = {a3, {3, 4}};
+	struct rect r3 = {a3, list[1], "r3"};
+	int k = 7;
+	struct point l3[2] = {k, 2, 3};
+	struct tagged tg[2] = {a3, 3, {{5, 6}, 7}};
+	` + printNum("tg[0].p.x * 100000 + tg[0].p.y * 10000 + tg[0].tag * 1000 + tg[1].p.x * 100 + tg[1].p.y * 10 + tg[1].tag") + `
+	say(r3.name);
+	` + printNum("list[0].y * 100000 + r3.min.x * 10000 + r3.max.y * 1000 + l3[0].x * 100 + l3[1].x * 10 + l3[1].y") + `
+	return 0;
+}`,
+
 	"strings": `#include <stdio.h>
 char greeting[] = "Hello, " "World!\n";
 int main() {
@@ -975,6 +1063,10 @@ func TestErrors(t *testing.T) {
 	tests := []struct{ src, want string }{
 		{`int main() { int a = 1 << 32; }`, "1:27: shift count 32 is out of range (0 to 31)"},
 		{`int main() { int a[2]; int *p = &a[3]; }`, "1:36: index 3 is out of range for 'a' (2 elements)"},
+		{`struct p { int x; }; int f(int n) { struct p s; int *q = &s.x; if (n) f(n - 1); return *q; } int main() { f(1); }`, "1:58: taking the address of 's' in the recursive function 'f' is not supported yet (make it a global)"},
+		{`struct p { int x; }; int f(struct p *q, int n) { int *r = &q->x; if (n) f(q, n - 1); return *r; } int main() { struct p s; f(&s, 1); }`, ""},
+		{`struct p { int x; }; int f(int n) { struct p s; int *q = &(*&s).x; if (n) f(n - 1); return *q; } int main() { f(1); }`, "1:58: taking the address of 's' in the recursive function 'f' is not supported yet (make it a global)"},
+		{`struct p { int x; }; int main() { struct p a, b; a = (b, a); }`, "1:56: this struct value is not supported yet (only variables, elements, members and *p)"},
 		{`int main() { int a[2]; a[2] = 1; }`, "1:26: index 2 is out of range for 'a' (2 elements)"},
 		{`int f(int n) { int x = n; int *p = &x; if (n) f(n - 1); return *p; } int main() { f(2); }`, "1:36: taking the address of 'x' in the recursive function 'f' is not supported yet (make it a global)"},
 		{`int f(int n) { int a[2]; int *p = a; if (n) return f(n - 1); return *p; } int main() { f(2); }`, "1:35: taking the address of 'a' in the recursive function 'f' is not supported yet (make it a global)"},

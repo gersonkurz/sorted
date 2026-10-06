@@ -37,9 +37,12 @@
 //     first sum") is undefined behaviour in the original, so it is avoided.
 //     Cell numbers depend on how many numbers are declared, and the
 //     addresses are declared numbers themselves; see program.
-//   - Every value is one cell, so a pointer is a cell number and pointer
-//     arithmetic is plain arithmetic: &x is an address constant, *p = v
-//     writes through p itself (a write pointer), and *p reads through p + 1.
+//   - Every scalar is one cell, and a struct or an array the cells of its
+//     members or elements, so a pointer is a cell number and pointer
+//     arithmetic counts cells (an index or a step times the size of what is
+//     pointed to): &x is an address constant, *p = v writes through p itself
+//     (a write pointer), and *p reads through p + 1. A member is an offset
+//     from its struct; assigning a struct copies it cell by cell.
 //     A function on a cycle of calls cannot take the address of its own
 //     locals, which a recursive call would save and restore under the
 //     pointer's feet.
@@ -350,7 +353,7 @@ func (c *compiler) number(v int32, pos cc.Pos) val {
 func (c *compiler) variable(o *cc.Obj) val {
 	i, ok := c.vars[o]
 	if !ok {
-		i = c.cells(max(1, o.Len), o.Pos)
+		i = c.cells(o.Ty.Size(), o.Pos)
 		c.vars[o] = i
 	}
 	return val{vVar, i}
@@ -426,6 +429,8 @@ func (c *compiler) element(n *cc.Node) val {
 	if v, ok := c.reads[n]; ok {
 		return v
 	}
+	// Only scalars are read, and a scalar element is one cell; elements of
+	// arrays of structs are reached through direct and location.
 	base := c.variable(n.Var)
 	if k, ok := c.constIndex(n); ok {
 		return val{vVar, base.i + k}
@@ -435,27 +440,72 @@ func (c *compiler) element(n *cc.Node) val {
 	return val{vInd, p.i}
 }
 
+// isPtr reports whether n is a pointer. Nodes the compiler makes itself (the
+// constant arguments of runtime calls) have no type: they are integers.
+func isPtr(n *cc.Node) bool { return n.Ty != nil && n.Ty.Kind == cc.TyPtr }
+
+// scaled is v times size: an index or a pointer step counted in cells.
+func (c *compiler) scaled(v val, size int, pos cc.Pos) val {
+	if size == 1 {
+		return v
+	}
+	return c.expr(vProd, v, c.number(int32(size), pos), 0)
+}
+
+// plus is v + k, for a constant k.
+func (c *compiler) plus(v val, k int, pos cc.Pos) val {
+	if k == 0 {
+		return v
+	}
+	return c.expr(vSum, v, c.number(int32(k), pos), 0)
+}
+
+// memberValue reads s.m: the cell itself when it is known while compiling,
+// otherwise through a read pointer (its address plus one).
+func (c *compiler) memberValue(n *cc.Node) val {
+	if v, ok := c.reads[n]; ok {
+		return v
+	}
+	if cell, ok := c.direct(n); ok {
+		return cell
+	}
+	p := c.temporary()
+	c.assign(p, c.plus(c.location(n), 1, n.Pos))
+	return val{vInd, p.i}
+}
+
+// rootVar returns the variable an lvalue is part of (a.b[2].c is part of
+// a), or nil when it is reached through a pointer.
+func rootVar(x *cc.Node) *cc.Obj {
+	switch x.Kind {
+	case cc.NdVar, cc.NdIndex:
+		return x.Var
+	case cc.NdMember:
+		return rootVar(x.Lhs)
+	case cc.NdDeref:
+		if x.Lhs.Kind == cc.NdAddr {
+			return rootVar(x.Lhs.Lhs)
+		}
+	}
+	return nil
+}
+
 // addressOf lowers &x: the cell number of a variable or an element (an
 // address constant), or of what a pointer points to. An array used as a
 // value is the address of its first element.
 func (c *compiler) addressOf(n *cc.Node) val {
 	x := n.Lhs
-	if x.Kind == cc.NdDeref { // &*p is p
-		return c.value(x.Lhs)
-	}
-	if !x.Var.IsGlobal && c.cur != nil && c.cur.reach[c.cur] {
+	if v := rootVar(x); v != nil && !v.IsGlobal && c.cur != nil && c.cur.reach[c.cur] {
 		// A recursive call saves and restores the caller's locals, so a write
 		// through a pointer to one of them would be undone (see save).
-		fail(n.Pos, "taking the address of '%s' in the recursive function '%s' is not supported yet (make it a global)", x.Var.Name, c.cur.decl.Name)
+		fail(n.Pos, "taking the address of '%s' in the recursive function '%s' is not supported yet (make it a global)", v.Name, c.cur.decl.Name)
 	}
-	base := c.variable(x.Var)
-	if x.Kind == cc.NdVar {
-		return c.address(base, 0)
+	if x.Kind == cc.NdIndex {
+		if k, ok := c.constOffset(x, x.Var.Len); ok { // &a[len] is the end
+			return c.address(c.variable(x.Var), k*x.Var.Ty.Base.Size())
+		}
 	}
-	if k, ok := c.constOffset(x, x.Var.Len); ok { // &a[len] is the end
-		return c.address(base, k)
-	}
-	return c.expr(vSum, c.address(base, 0), c.value(x.Lhs), 0)
+	return c.location(x) // &*p is p
 }
 
 // deref lowers *p for reading: the cell itself when p is the address of a
@@ -513,6 +563,8 @@ func (c *compiler) value(n *cc.Node) val {
 		return c.element(n)
 	case cc.NdAddr:
 		return c.addressOf(n)
+	case cc.NdMember:
+		return c.memberValue(n)
 	case cc.NdDeref:
 		return c.deref(n)
 	case cc.NdNeg:
@@ -564,6 +616,19 @@ func (c *compiler) value(n *cc.Node) val {
 		return c.wrapChar(c.value(&w), n.Pos)
 	}
 	a, b := c.operands(n.Lhs, n.Rhs)
+	if n.Kind == cc.NdAdd || n.Kind == cc.NdSub {
+		// pointer arithmetic counts elements, which may span several cells
+		switch {
+		case isPtr(n.Lhs) && isPtr(n.Rhs):
+			if size := n.Lhs.Ty.Base.Size(); size > 1 {
+				return c.expr(vRatio, c.expr(vDiff, a, b, 0), c.number(int32(size), n.Pos), 0)
+			}
+		case isPtr(n.Lhs):
+			b = c.scaled(b, n.Lhs.Ty.Base.Size(), n.Pos)
+		case isPtr(n.Rhs):
+			a = c.scaled(a, n.Rhs.Ty.Base.Size(), n.Pos)
+		}
+	}
 	switch n.Kind {
 	case cc.NdAdd:
 		return c.expr(vSum, a, b, 0)
@@ -714,6 +779,10 @@ func (c *compiler) assign(target, source val) {
 // into a char wraps.
 func (c *compiler) assignment(n *cc.Node, want bool) val {
 	lhs := n.Lhs
+	if lhs.Ty.Kind == cc.TyStruct {
+		c.copyStruct(n)
+		return val{}
+	}
 	char := lhs.Ty.Kind == cc.TyChar
 	if target, ok := c.direct(lhs); ok {
 		v := c.value(n.Rhs)
@@ -757,7 +826,11 @@ func (c *compiler) direct(x *cc.Node) (val, bool) {
 		return c.variable(x.Var), true
 	case cc.NdIndex:
 		if k, ok := c.constIndex(x); ok {
-			return val{vVar, c.variable(x.Var).i + k}, true
+			return val{vVar, c.variable(x.Var).i + k*x.Var.Ty.Base.Size()}, true
+		}
+	case cc.NdMember:
+		if s, ok := c.direct(x.Lhs); ok {
+			return val{vVar, s.i + x.Member.Offset}, true
 		}
 	case cc.NdDeref:
 		if x.Lhs.Kind == cc.NdAddr {
@@ -767,16 +840,79 @@ func (c *compiler) direct(x *cc.Node) (val, bool) {
 	return val{}, false
 }
 
-// location returns the cell number of an lvalue that direct cannot resolve,
-// which is what a write pointer holds: a[i] with a computed index, *p.
+// location returns the cell number of an lvalue, which is what a write
+// pointer holds: an address constant when direct knows the cell, otherwise
+// computed (a[i] with a computed index, *p, members of those).
 func (c *compiler) location(x *cc.Node) val {
-	switch {
-	case x.Kind == cc.NdIndex:
-		return c.expr(vSum, c.value(x.Lhs), c.address(c.variable(x.Var), 0), 0)
-	case x.Lhs.Kind == cc.NdAddr: // *&a[i]
-		return c.location(x.Lhs.Lhs)
+	if cell, ok := c.direct(x); ok {
+		return c.address(cell, 0)
 	}
-	return c.value(x.Lhs)
+	switch x.Kind {
+	case cc.NdIndex:
+		return c.expr(vSum, c.scaled(c.value(x.Lhs), x.Var.Ty.Base.Size(), x.Pos), c.address(c.variable(x.Var), 0), 0)
+	case cc.NdMember:
+		return c.plus(c.location(x.Lhs), x.Member.Offset, x.Pos)
+	case cc.NdDeref:
+		if x.Lhs.Kind == cc.NdAddr { // *&a[i]
+			return c.location(x.Lhs.Lhs)
+		}
+		return c.value(x.Lhs)
+	}
+	fail(x.Pos, "this struct value is not supported yet (only variables, elements, members and *p)")
+	return val{}
+}
+
+// copyStruct lowers s = t for structs, cell by cell, and returns where s
+// is. In a = b = c, the inner copy's destination is the outer one's source,
+// at the location already evaluated (b[i++] advances i once).
+func (c *compiler) copyStruct(n *cc.Node) structAt {
+	var from structAt
+	if n.Rhs.Kind == cc.NdAssign {
+		from = c.copyStruct(n.Rhs)
+	}
+	dst := c.structAt(n.Lhs)
+	if n.Rhs.Kind != cc.NdAssign {
+		from = c.structAt(n.Rhs)
+	}
+	for i := range n.Lhs.Ty.Size() {
+		c.assign(c.cellOf(dst, i, false), c.cellOf(from, i, true))
+	}
+	return dst
+}
+
+// structAt is where a struct is: a known cell (direct), or a cell holding
+// its computed location (a write pointer to its first cell).
+type structAt struct {
+	direct bool
+	cell   int // the first cell, or the cell holding the location
+	pos    cc.Pos
+}
+
+// structAt evaluates where struct lvalue x is, once.
+func (c *compiler) structAt(x *cc.Node) structAt {
+	if cell, ok := c.direct(x); ok {
+		return structAt{true, cell.i, x.Pos}
+	}
+	w := c.temporary()
+	c.assign(w, c.location(x))
+	return structAt{false, w.i, x.Pos}
+}
+
+// cellOf returns cell i of a struct, for writing or for reading (a read
+// pointer is one more than the cell).
+func (c *compiler) cellOf(s structAt, i int, read bool) val {
+	if s.direct {
+		return val{vVar, s.cell + i}
+	}
+	if read {
+		i++
+	}
+	if i == 0 {
+		return val{vInd, s.cell}
+	}
+	p := c.temporary()
+	c.assign(p, c.plus(val{vVar, s.cell}, i, s.pos))
+	return val{vInd, p.i}
 }
 
 // uses reports whether node x occurs in n (the same node, as the parser
@@ -1012,7 +1148,7 @@ func (c *compiler) functions(prog *cc.Program) {
 			if !o.IsGlobal && !seen[o] {
 				seen[o] = true
 				v := c.variable(o)
-				for i := range max(1, o.Len) {
+				for i := range o.Ty.Size() {
 					f.frame = append(f.frame, v.i+i)
 				}
 			}

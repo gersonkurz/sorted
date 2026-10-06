@@ -84,7 +84,7 @@ func (c *compiler) bitwise(n *cc.Node) {
 		return
 	}
 	call := func(name string, args ...*cc.Node) {
-		*n = cc.Node{Kind: cc.NdFuncall, Pos: n.Pos, Func: name, Fn: c.runtime(name), Args: args}
+		*n = cc.Node{Kind: cc.NdFuncall, Pos: n.Pos, Func: name, Fn: c.runtime(name), Args: args, Ty: n.Ty}
 	}
 	num := func(v int32) *cc.Node { return &cc.Node{Kind: cc.NdNum, Pos: n.Pos, Val: v} }
 	switch n.Kind {
