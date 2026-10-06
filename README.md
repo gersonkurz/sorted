@@ -189,8 +189,8 @@ English and German comes free. Every text it writes is parsed back to make sure
 it is the same program, and it only uses forms the 2000 parser knows, so
 whatever it writes also runs on the original `Sorted.exe`. A few programs that
 run fine cannot be written back: a declaration may add up its parts to a
-number from 1000000000 on ("ninehundredmillion onehundredmillion"), but no
-single number word writes it.
+number from 1000000000 on ("ninehundredmillion onehundredmillion"), and the
+current renderer cannot spell such values.
 
 **What is coming** (issues #13 to #17):
 
