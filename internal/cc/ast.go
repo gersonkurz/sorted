@@ -19,8 +19,10 @@
 // #include <stdio.h> is the one preprocessor line it accepts (and ignores), so
 // that a program for Sorted! is also a C program that declares putchar.
 //
-// The subset: int globals (with constant initializers) and locals, integer
-// and character constants, + - * / % and unary -, =, the compound
+// The subset: int and char variables and one-dimensional arrays of them,
+// global (with constant initializers) and local (initializers are
+// assignments, with {...} lists and string literals for arrays), integer
+// and character constants, a[i], + - * / % and unary -, =, the compound
 // assignments += -= *= /= %=, ++ and -- (prefix and postfix), == != < <= >
 // >=, && || !, if/else, while, for, break, continue, return, blocks, and
 // putchar(expr). As in chibicc, x op= e is x = x op e, ++x is x = x + 1 and
@@ -55,6 +57,7 @@ const (
 	NdLogAnd                   // &&
 	NdLogOr                    // ||
 	NdNot                      // !
+	NdIndex                    // a[i]
 	NdBlock                    // { ... }
 	NdFuncall                  // putchar(...)
 	NdExprStmt                 // expression statement
@@ -62,12 +65,14 @@ const (
 	NdNum                      // integer
 )
 
-// Obj is a variable.
+// Obj is a variable: an int or char, or a one-dimensional array of them.
 type Obj struct {
 	Name     string
 	IsGlobal bool
-	Init     int32 // initial value of a global
-	Pos      Pos   // where it is declared
+	Char     bool    // char (stores wrap to -128..127) rather than int
+	Len      int     // number of elements of an array; 0 for a scalar
+	Init     []int32 // initial values of a global (shorter than Len: the rest is 0)
+	Pos      Pos     // where it is declared
 }
 
 // Node is an AST node.
@@ -85,12 +90,17 @@ type Node struct {
 	Func string  // called function (putchar)
 	Args []*Node // call arguments
 
-	Var *Obj  // NdVar
+	Var *Obj  // NdVar, NdIndex (the array; Lhs is the index)
 	Val int32 // NdNum
 
 	// Rvalue marks a variable that is not assignable: the operand of a
 	// unary + (C's +a is a value, not an lvalue).
 	Rvalue bool
+
+	// WrapChar marks the value of a postfix ++ or -- on a char: the old value
+	// is rebuilt as new - 1 (or + 1), which must wrap to char again, since the
+	// new value wrapped (127++ stores -128, and -128 - 1 must give 127).
+	WrapChar bool
 }
 
 // Program is a parsed translation unit.

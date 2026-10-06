@@ -194,6 +194,119 @@ int main() {
 
 	"nothing": `int main() { }`,
 
+	"strings": `#include <stdio.h>
+char greeting[] = "Hello, " "World!\n";
+int main() {
+	for (int i = 0; greeting[i]; i++) putchar(greeting[i]);
+	char local[] = "Sorted!\tsingt\n";
+	int i = 0;
+	while (local[i] != 0) { putchar(local[i]); i++; }
+	char partial[8] = "abc";
+	for (i = 0; i < 8; i++) if (partial[i]) putchar(partial[i]); else putchar('.');
+	putchar('\n');
+}`,
+
+	"arrays": `#include <stdio.h>
+int pn; int pp;
+int squares[10];
+int g[6] = {3, -1, 4, 1, -5};
+int main() {
+	for (int i = 0; i < 10; i++) squares[i] = i * i;
+	int sum = 0;
+	for (int i = 0; i < 10; i++) sum += squares[i];
+	` + printNum("sum") + printNum("squares[3] + squares[9]") + `
+	int a[5] = {5, 3, 8, 1, 9};
+	for (int i = 0; i < 5; i++)
+		for (int j = 0; j + 1 < 5 - i; j++)
+			if (a[j] > a[j + 1]) { int t = a[j]; a[j] = a[j + 1]; a[j + 1] = t; }
+	for (int i = 0; i < 5; i++) { putchar('0' + a[i]); putchar(' '); }
+	putchar('\n');
+	int k = 0;
+	a[k++] = 7;
+	a[k] += 10;
+	a[k]++;
+	++a[k + 1];
+	int old = a[k + 2]--;
+	` + printNum("a[0] * 10000 + a[1] * 100 + a[2]") + printNum("a[3] * 100 + old") + printNum("k") + `
+	int m = 0;
+	a[m++] += 5;
+	a[m++]++;
+	` + printNum("m * 100 + a[0] - a[1]") + `
+	int idx[3] = {2, 0, 1};
+	` + printNum("a[idx[0]] + a[idx[idx[2]]]") + `
+	int total = 0;
+	for (int i = 0; i < 6; i++) total = total * 10 + g[i] + 5;
+	` + printNum("total") + `
+}`,
+
+	"sieve": `#include <stdio.h>
+int pn; int pp;
+int composite[60];
+int main() {
+	for (int i = 2; i < 60; i++) {
+		if (composite[i]) continue;
+		` + printNum("i") + `
+		for (int j = i * i; j < 60; j += i) composite[j] = 1;
+	}
+}`,
+
+	"itoa": `#include <stdio.h>
+int main() {
+	int numbers[4] = {41281927, 0, -2026, 7};
+	for (int k = 0; k < 4; k++) {
+		char buf[12];
+		int n = numbers[k], len = 0, neg = n < 0;
+		if (neg) n = -n;
+		buf[len++] = '0' + n % 10;
+		n /= 10;
+		while (n > 0) { buf[len++] = '0' + n % 10; n /= 10; }
+		if (neg) putchar('-');
+		while (len > 0) putchar(buf[--len]);
+		putchar('\n');
+	}
+}`,
+
+	"chars": `#include <stdio.h>
+int pn; int pp;
+char gc = 300;
+int main() {
+	char c = 200;
+	` + printNum("c") + printNum("gc") + `
+	c = c + 100;
+	` + printNum("c") + `
+	char s[3] = {127, -128, 0};
+	s[0]++;
+	s[1]--;
+	s[2] = 'A' * 3;
+	` + printNum("s[0]") + printNum("s[1]") + printNum("s[2]") + `
+	int i = 1000;
+	c = i;
+	` + printNum("c") + `
+	char hi = 127, lo = -128;
+	int a = hi++, b = lo--;
+	` + printNum("a") + printNum("hi") + printNum("b") + printNum("lo") + `
+	char e[3] = {127, -128, 5};
+	int j = 0;
+	int x = e[j]++, y = e[j + 1]--, z = e[2]++;
+	` + printNum("x") + printNum("e[0]") + printNum("y") + printNum("e[1]") + printNum("z") + `
+	hi = 127;
+	int w = ++hi;
+	` + printNum("w") + `
+}`,
+
+	"local arrays": `#include <stdio.h>
+int main() {
+	for (int k = 1; k <= 3; k++) {
+		int z[3] = {k};
+		putchar('0' + z[0] + z[1] + z[2]);
+		z[1] = 5;
+		char word[4] = "ab";
+		putchar(word[0]); putchar(word[1]); putchar('0' + word[2] + word[3]);
+		word[2] = 'X';
+	}
+	putchar('\n');
+}`,
+
 	"for loops": `#include <stdio.h>
 int pn; int pp;
 int main() {
@@ -376,6 +489,8 @@ func TestErrors(t *testing.T) {
 		{`int g = -1000000000; int main() { }`, "1:5: constants above 999999999 are not supported yet (1000000000)"},
 		{`int main() { int a = -999999999; putchar(a); }`, ""},
 		{`int main() { int a = putchar(65); }`, "1:22: using the result of putchar is not supported yet"},
+		{`int a[3]; int main() { a[3] = 1; }`, "1:26: index 3 is out of range for 'a' (3 elements)"},
+		{`int a[3]; int main() { putchar(a[-1]); }`, "1:34: index -1 is out of range for 'a' (3 elements)"},
 	}
 	for _, tt := range tests {
 		_, err := compileC(t, tt.src)
@@ -389,5 +504,72 @@ func TestErrors(t *testing.T) {
 		if !errors.As(err, &e) || err.Error() != tt.want {
 			t.Errorf("%s\n got %v\nwant %s", tt.src, err, tt.want)
 		}
+	}
+}
+
+// An address that happens to equal a constant shares its slot; a filler
+// keeps the pool at its planned size, so the variable cells stay where the
+// addresses point.
+func TestAddressCollision(t *testing.T) {
+	c := &compiler{pool: []int32{5}, addrs: []int{3}, exprs: map[valKind]*table{}}
+	for _, k := range []valKind{vSum, vDiff, vProd, vRatio, vCond} {
+		c.exprs[k] = &table{}
+	}
+	p := c.program()
+	if c.fillers != 1 {
+		t.Errorf("%d fillers, want 1", c.fillers)
+	}
+	// two slots planned (one constant, one address): cells start at 2, and
+	// the address of variable cell 3 is 2 + 3 = 5, the constant's own slot.
+	if fmt.Sprint(p.Data) != "[5 0]" {
+		t.Errorf("pool %v, want [5 0] (5 shared, 0 as filler)", p.Data)
+	}
+}
+
+// The same end to end: find a program whose address equals one of its own
+// constants, then check it still runs like C.
+func TestAddressCollisionRuns(t *testing.T) {
+	for n := 1; n < 100; n++ {
+		src := fmt.Sprintf(`#include <stdio.h>
+int a[4];
+int main() { int i = 2; a[i] = %d; putchar('A' + a[2] - %d); putchar(a[i] / %d + 'a'); putchar('\n'); }`, n, n, n)
+		prog, err := cc.Parse(src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c, _, err := compileProgram(prog)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.fillers == 0 {
+			continue
+		}
+		want := runNative(t, src)
+		for _, lang := range []render.Lang{render.English, render.German} {
+			text := toSorted(t, src, lang)
+			if got := runSorted(t, text); got != want {
+				t.Errorf("n=%d lang %d: %q, want %q\n%s", n, lang, got, want, text)
+			}
+		}
+		return
+	}
+	t.Fatal("no program with an address collision found")
+}
+
+// Constant indices are plain cells: no pointer cells, no address numbers.
+func TestConstantIndex(t *testing.T) {
+	p, err := compileC(t, `int a[3]; int main() { a[0] = 5; a[2] = a[0] + 1; putchar(a[2]); }`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range p.Entries(syntax.Assigns) {
+		for _, op := range s.Ops {
+			if op.Type&syntax.Indirect != 0 {
+				t.Errorf("indirect operand %v in %v", op, s)
+			}
+		}
+	}
+	if fmt.Sprint(p.Data) != "[5 1]" {
+		t.Errorf("numbers %v, want [5 1] (no addresses)", p.Data)
 	}
 }

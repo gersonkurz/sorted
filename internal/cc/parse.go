@@ -69,18 +69,21 @@ func (ps *parser) unsupported(p Pos, what string) {
 	ps.fail(p, "not supported in Sorted! (yet): %s", what)
 }
 
-// program = ("int" (function-definition | global-variable))*
+// program = (declspec (function-definition | global-variable))*
 func (ps *parser) program() *Program {
 	ps.prog = &Program{}
 	ps.globals = map[string]*Obj{}
 	for ps.tok().Kind != TkEOF {
-		ps.declspec()
-		name := ps.declarator()
+		char := ps.declspec()
+		d := ps.declarator()
 		if ps.equal("(") {
-			ps.function(name)
+			if char || d.array {
+				ps.fail(d.name.Pos, "main must return int")
+			}
+			ps.function(d.name)
 			continue
 		}
-		ps.globalVariable(name)
+		ps.globalVariable(d, char)
 	}
 	if ps.prog.Main == nil {
 		ps.fail(ps.tok().Pos, "no main function")
@@ -88,17 +91,32 @@ func (ps *parser) program() *Program {
 	return ps.prog
 }
 
-// declspec = "int"
-func (ps *parser) declspec() {
+// declspec = "int" | "char"; it reports whether the type is char.
+func (ps *parser) declspec() bool {
 	t := ps.tok()
-	if t.Kind == TkKeyword && t.Text != "int" {
-		ps.unsupported(t.Pos, "the type or specifier '"+t.Text+"' (int is the only type)")
+	if t.Kind == TkKeyword && t.Text != "int" && t.Text != "char" {
+		ps.unsupported(t.Pos, "the type or specifier '"+t.Text+"' (int and char are the only types)")
+	}
+	if ps.consume("char") {
+		return true
 	}
 	ps.skip("int")
+	return false
 }
 
-// declarator = ident; pointers and arrays are not in the subset.
-func (ps *parser) declarator() Token {
+// decl is a declarator: a name, and for an array its length (0 when it is
+// left to the initializer).
+type decl struct {
+	name  Token
+	array bool
+	len   int
+	lpos  Pos // where the length is, for errors
+}
+
+// declarator = ident ("[" num? "]")?
+//
+// Pointers and arrays of arrays are not in the subset.
+func (ps *parser) declarator() decl {
 	if ps.equal("*") {
 		ps.unsupported(ps.tok().Pos, "pointers")
 	}
@@ -106,10 +124,26 @@ func (ps *parser) declarator() Token {
 	if t.Kind != TkIdent {
 		ps.fail(t.Pos, "expected a variable name")
 	}
-	if ps.equal("[") {
-		ps.unsupported(ps.tok().Pos, "arrays")
+	d := decl{name: t}
+	if !ps.equal("[") {
+		return d
 	}
-	return t
+	d.array, d.lpos = true, ps.next().Pos
+	if !ps.equal("]") {
+		n := ps.next()
+		if n.Kind != TkNum {
+			ps.unsupported(n.Pos, "array lengths other than integer constants")
+		}
+		if n.Val <= 0 {
+			ps.fail(n.Pos, "the length of an array must be positive")
+		}
+		d.len = int(n.Val)
+	}
+	ps.skip("]")
+	if ps.equal("[") {
+		ps.unsupported(ps.tok().Pos, "arrays of arrays")
+	}
+	return d
 }
 
 // function = "(" "void"? ")" "{" compound-stmt; only main.
@@ -136,22 +170,36 @@ func (ps *parser) function(name Token) {
 	ps.prog.Main = ps.compoundStmt()
 }
 
-// global-variable = (declarator ("=" constant)? ("," declarator ("=" constant)?)*)? ";"
+// newObj makes the variable a declarator declares.
+func (ps *parser) newObj(d decl, char, global bool) *Obj {
+	return &Obj{Name: d.name.Text, IsGlobal: global, Char: char, Len: d.len, Pos: d.name.Pos}
+}
+
+// global-variable = (declarator ("=" global-init)? ("," declarator ("=" global-init)?)*)? ";"
+// global-init     = constant | "{" constant ("," constant)* ","? "}" | string
+//
 // The first declarator has been read already.
-func (ps *parser) globalVariable(name Token) {
+func (ps *parser) globalVariable(d decl, char bool) {
 	for {
+		name := d.name
 		if _, dup := ps.globals[name.Text]; dup {
 			ps.fail(name.Pos, "redefinition of '%s'", name.Text)
 		}
 		if name.Text == "main" && ps.prog.Main != nil {
 			ps.fail(name.Pos, "redefinition of 'main' as a variable")
 		}
-		v := &Obj{Name: name.Text, IsGlobal: true, Pos: name.Pos}
+		v := ps.newObj(d, char, true)
 		if ps.consume("=") {
-			v.Init = ps.constant()
+			if d.array {
+				v.Init = arrayInit(ps, v, d, ps.constant, func(c int32) int32 { return c })
+			} else {
+				v.Init = []int32{ps.constant()}
+			}
 			if !ps.equal(",") && !ps.equal(";") {
 				ps.unsupported(ps.tok().Pos, "global initializers other than integer constants")
 			}
+		} else if d.array && d.len == 0 {
+			ps.fail(d.lpos, "an array without a length needs an initializer")
 		}
 		ps.globals[v.Name] = v
 		ps.prog.Globals = append(ps.prog.Globals, v)
@@ -159,11 +207,11 @@ func (ps *parser) globalVariable(name Token) {
 			return
 		}
 		ps.skip(",")
-		name = ps.declarator()
+		d = ps.declarator()
 	}
 }
 
-// constant = "-"? num, the initializer of a global.
+// constant = "-"? (num | char), the initializer of a global.
 func (ps *parser) constant() int32 {
 	neg := ps.consume("-")
 	t := ps.next()
@@ -176,31 +224,98 @@ func (ps *parser) constant() int32 {
 	return t.Val
 }
 
-// declaration = "int" (declarator ("=" assign)? ("," declarator ("=" assign)?)*)? ";"
-// It becomes a block of assignment statements for the initializers.
+// arrayInit reads the initializer of array v, "{" item ("," item)* ","? "}"
+// or, for a char array, a string literal (adjacent literals are joined), and
+// returns the values, setting v.Len when the declarator left it open. A
+// string's terminating NUL is included when the array has room for it.
+// item reads one list element; char turns a string's character into one.
+func arrayInit[T any](ps *parser, v *Obj, d decl, item func() T, char func(int32) T) []T {
+	var items []T
+	t := ps.tok()
+	if t.Kind == TkStr {
+		if !v.Char {
+			ps.fail(t.Pos, "a string literal can only initialize a char array")
+		}
+		var str []byte
+		for ps.tok().Kind == TkStr {
+			str = append(str, ps.next().Str...)
+		}
+		if d.len == 0 || len(str) < d.len {
+			str = append(str, 0)
+		}
+		if d.len > 0 && len(str) > d.len {
+			ps.fail(t.Pos, "the string is longer than the array")
+		}
+		for _, c := range str {
+			items = append(items, char(int32(int8(c))))
+		}
+	} else {
+		ps.skip("{")
+		for !ps.equal("}") {
+			items = append(items, item())
+			if !ps.consume(",") {
+				break
+			}
+		}
+		ps.skip("}")
+		if len(items) == 0 {
+			ps.fail(t.Pos, "empty initializer")
+		}
+		if d.len > 0 && len(items) > d.len {
+			ps.fail(t.Pos, "too many initializers for the array")
+		}
+	}
+	if d.len == 0 {
+		v.Len = len(items)
+	}
+	return items
+}
+
+// declaration = declspec (declarator ("=" init)? ("," declarator ("=" init)?)*)? ";"
+// init        = assign | "{" assign ("," assign)* ","? "}" | string
+//
+// It becomes a block of assignment statements for the initializers. An array
+// initializer assigns every element: those it leaves out become 0, as in C.
 func (ps *parser) declaration() *Node {
 	block := &Node{Kind: NdBlock, Pos: ps.tok().Pos}
-	ps.declspec()
+	char := ps.declspec()
 	first := true
 	for !ps.consume(";") {
 		if !first {
 			ps.skip(",")
 		}
 		first = false
-		name := ps.declarator()
+		d := ps.declarator()
 		scope := ps.scopes[len(ps.scopes)-1]
-		if _, dup := scope[name.Text]; dup {
-			ps.fail(name.Pos, "redefinition of '%s'", name.Text)
+		if _, dup := scope[d.name.Text]; dup {
+			ps.fail(d.name.Pos, "redefinition of '%s'", d.name.Text)
 		}
-		v := &Obj{Name: name.Text, Pos: name.Pos}
-		scope[name.Text] = v
+		v := ps.newObj(d, char, false)
+		scope[d.name.Text] = v
 		if !ps.equal("=") {
+			if d.array && d.len == 0 {
+				ps.fail(d.lpos, "an array without a length needs an initializer")
+			}
 			continue
 		}
 		eq := ps.next()
-		lhs := &Node{Kind: NdVar, Pos: name.Pos, Var: v}
-		assign := &Node{Kind: NdAssign, Pos: eq.Pos, Lhs: lhs, Rhs: ps.assign()}
-		block.Body = append(block.Body, &Node{Kind: NdExprStmt, Pos: name.Pos, Lhs: assign})
+		assign := func(lhs, rhs *Node) {
+			n := &Node{Kind: NdAssign, Pos: eq.Pos, Lhs: lhs, Rhs: rhs}
+			block.Body = append(block.Body, &Node{Kind: NdExprStmt, Pos: d.name.Pos, Lhs: n})
+		}
+		if !d.array {
+			assign(&Node{Kind: NdVar, Pos: d.name.Pos, Var: v}, ps.assign())
+			continue
+		}
+		items := arrayInit(ps, v, d, ps.assign, func(c int32) *Node { return &Node{Kind: NdNum, Pos: eq.Pos, Val: c} })
+		for i := 0; i < v.Len; i++ {
+			rhs := &Node{Kind: NdNum, Pos: eq.Pos}
+			if i < len(items) {
+				rhs = items[i]
+			}
+			idx := &Node{Kind: NdNum, Pos: eq.Pos, Val: int32(i)}
+			assign(&Node{Kind: NdIndex, Pos: d.name.Pos, Var: v, Lhs: idx}, rhs)
+		}
 	}
 	return block
 }
@@ -248,7 +363,7 @@ func (ps *parser) stmt() *Node {
 		n := &Node{Kind: NdFor, Pos: t.Pos}
 		ps.skip("(")
 		ps.scopes = append(ps.scopes, map[string]*Obj{}) // for (int i = ...)
-		if ps.equal("int") || ps.tok().Kind == TkKeyword && isTypeKeyword(ps.tok().Text) {
+		if ps.equal("int") || ps.equal("char") || ps.tok().Kind == TkKeyword && isTypeKeyword(ps.tok().Text) {
 			n.Init = ps.declaration()
 		} else {
 			n.Init = ps.exprStmt()
@@ -298,7 +413,7 @@ func (ps *parser) compoundStmt() *Node {
 		if ps.tok().Kind == TkEOF {
 			ps.fail(ps.tok().Pos, "expected '}'")
 		}
-		if ps.equal("int") || ps.tok().Kind == TkKeyword && isTypeKeyword(ps.tok().Text) {
+		if ps.equal("int") || ps.equal("char") || ps.tok().Kind == TkKeyword && isTypeKeyword(ps.tok().Text) {
 			n.Body = append(n.Body, ps.declaration())
 		} else {
 			n.Body = append(n.Body, ps.stmt())
@@ -311,7 +426,7 @@ func (ps *parser) compoundStmt() *Node {
 
 func isTypeKeyword(s string) bool {
 	switch s {
-	case "char", "short", "long", "unsigned", "signed", "float", "double", "struct", "union",
+	case "short", "long", "unsigned", "signed", "float", "double", "struct", "union",
 		"enum", "typedef", "static", "extern", "const", "volatile", "register", "auto", "void",
 		"inline", "restrict", "_Alignas", "_Atomic", "_Bool", "_Complex", "_Imaginary",
 		"_Noreturn", "_Thread_local":
@@ -344,7 +459,7 @@ func (ps *parser) expr() *Node {
 // would continue an expression.
 var notYet = map[string]string{
 	"?": "?:", "&": "&", "|": "|", "^": "^", "<<": "<<", ">>": ">>", "&=": "&=", "|=": "|=",
-	"^=": "^=", "<<=": "<<=", ">>=": ">>=", "[": "arrays", "->": "->", ".": "structs",
+	"^=": "^=", "<<=": "<<=", ">>=": ">>=", "->": "->", ".": "structs",
 }
 
 // compound assignment operators and the operation each applies
@@ -376,9 +491,13 @@ func (ps *parser) assign() *Node {
 	return n
 }
 
-// lvalue checks that n can be assigned to by the operator at t.
+// lvalue checks that n can be assigned to by the operator at t: a scalar
+// variable or an array element (a whole array is not assignable).
 func (ps *parser) lvalue(n *Node, t Token) {
-	if n.Kind != NdVar || n.Rvalue {
+	if n.Kind == NdVar && n.Var.Len > 0 {
+		ps.unsupported(n.Pos, "using an array without an index (no pointers)")
+	}
+	if n.Kind != NdVar && n.Kind != NdIndex || n.Rvalue {
 		ps.fail(t.Pos, "the left side of '%s' must be a variable", t.Text)
 	}
 }
@@ -490,7 +609,7 @@ func (ps *parser) unary() *Node {
 		return incDec(n, t)
 	case ps.consume("+"):
 		n := ps.unary()
-		if n.Kind == NdVar {
+		if n.Kind == NdVar || n.Kind == NdIndex {
 			copied := *n
 			copied.Rvalue = true
 			n = &copied
@@ -514,21 +633,34 @@ func incDec(n *Node, t Token) *Node {
 	return &Node{Kind: NdAssign, Pos: t.Pos, Lhs: n, Rhs: &Node{Kind: kind, Pos: t.Pos, Lhs: n, Rhs: one}}
 }
 
-// postfix = primary ("++" | "--")*
+// postfix = primary ("[" expr "]" | "++" | "--")*
 //
 // As in chibicc's new_inc_dec, x++ is (x = x + 1) - 1: the hoisted
-// assignment runs first, and the value is the new x minus one.
+// assignment runs first, and the value is the new x minus one. An array can
+// only be used with an index: without pointers, there is nothing else to do
+// with it.
 func (ps *parser) postfix() *Node {
 	n := ps.primary()
-	for ps.equal("++") || ps.equal("--") {
+	for ps.equal("[") || ps.equal("++") || ps.equal("--") {
 		t := ps.next()
+		if t.Text == "[" {
+			if n.Kind != NdVar || n.Var.Len == 0 || n.Rvalue {
+				ps.fail(t.Pos, "subscripted value is not an array")
+			}
+			n = &Node{Kind: NdIndex, Pos: t.Pos, Var: n.Var, Lhs: ps.expr()}
+			ps.skip("]")
+			continue
+		}
 		ps.lvalue(n, t)
 		undo := NdSub
 		if t.Text == "--" {
 			undo = NdAdd
 		}
 		one := &Node{Kind: NdNum, Pos: t.Pos, Val: 1}
-		n = &Node{Kind: undo, Pos: t.Pos, Lhs: incDec(n, t), Rhs: one}
+		n = &Node{Kind: undo, Pos: t.Pos, Lhs: incDec(n, t), Rhs: one, WrapChar: n.Var.Char}
+	}
+	if n.Kind == NdVar && n.Var.Len > 0 {
+		ps.unsupported(n.Pos, "using an array without an index (no pointers)")
 	}
 	return n
 }
@@ -557,6 +689,8 @@ func (ps *parser) primary() *Node {
 	case t.Kind == TkNum:
 		ps.next()
 		return &Node{Kind: NdNum, Pos: t.Pos, Val: t.Val}
+	case t.Kind == TkStr:
+		ps.unsupported(t.Pos, "string literals outside char array initializers")
 	case t.Kind == TkKeyword:
 		ps.unsupported(t.Pos, "'"+t.Text+"'")
 	}

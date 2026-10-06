@@ -21,6 +21,12 @@ func sexpr(n *Node) string {
 			return "@" + n.Var.Name
 		}
 		return n.Var.Name
+	case NdIndex:
+		name := n.Var.Name
+		if n.Var.IsGlobal {
+			name = "@" + name
+		}
+		return name + "[" + sexpr(n.Lhs) + "]"
 	case NdNeg:
 		return "(neg " + sexpr(n.Lhs) + ")"
 	case NdNot:
@@ -60,7 +66,7 @@ func TestTokenize(t *testing.T) {
 	for _, tk := range toks {
 		got = append(got, fmt.Sprintf("%d:%s@%v", tk.Kind, tk.Text, tk.Pos))
 	}
-	want := "2:int@1:1 0:x@1:5 1:=@1:7 3:0x1F@1:9 1:+@1:14 3:017@1:16 1:<=@3:13 3:9@3:16 1:;@3:17 4:@3:18"
+	want := "2:int@1:1 0:x@1:5 1:=@1:7 3:0x1F@1:9 1:+@1:14 3:017@1:16 1:<=@3:13 3:9@3:16 1:;@3:17 5:@3:18"
 	if strings.Join(got, " ") != want {
 		t.Errorf("tokens\n got %s\nwant %s", strings.Join(got, " "), want)
 	}
@@ -89,6 +95,11 @@ func TestParse(t *testing.T) {
 		{"int g; int main() { int g = 1; putchar(g); }", "{ { (= g 1)} (putchar g)}"},
 		{"int main() { int a; a = +(7 / (2 - 1)); }", "{ {} (= a (/ 7 (- 2 1)))}"},
 		{"int main() { int a; (a) = 1; }", "{ {} (= a 1)}"},
+		{"int main() { int a[3] = {7}; a[a[0] - 6] += 2; putchar(a[1]++); }",
+			"{ { (= a[0] 7) (= a[1] 0) (= a[2] 0)} (= a[(- a[0] 6)] (+ a[(- a[0] 6)] 2)) (putchar (- (= a[1] (+ a[1] 1)) 1))}"},
+		{"int main() { char s[] = \"a\\n\"; char c = 'z'; for (int i = 0; s[i]; i++) putchar(s[i]); }",
+			"{ { (= s[0] 97) (= s[1] 10) (= s[2] 0)} { (= c 122)} (for { (= i 0)} s[i] (- (= i (+ i 1)) 1) (putchar s[i]))}"},
+		{"int g[2]; int main() { g[1] = g[0]; }", "{ (= @g[1] @g[0])}"},
 		{"int main() { int i; for (i = 0; i < 3; i = i + 1) putchar(i); }", "{ {} (for (= i 0) (< i 3) (= i (+ i 1)) (putchar i))}"},
 		{"int main() { for (int i = 0; ; ) { break; continue; } for (;;) ; }", "{ (for { (= i 0)} nil nil { break continue}) (for {} nil nil {})}"},
 		{"int main() { int a; a += 2; a -= 3; a *= 4; a /= 5; a %= 6; }", "{ {} (= a (+ a 2)) (= a (- a 3)) (= a (* a 4)) (= a (/ a 5)) (= a (% a 6))}"},
@@ -131,10 +142,22 @@ func TestGlobals(t *testing.T) {
 	}
 	var got []string
 	for _, g := range p.Globals {
-		got = append(got, fmt.Sprintf("%s=%d", g.Name, g.Init))
+		got = append(got, fmt.Sprintf("%s=%v", g.Name, g.Init))
 	}
-	if strings.Join(got, " ") != "a=0 b=7 c=-2" {
+	if strings.Join(got, " ") != "a=[] b=[7] c=[-2]" {
 		t.Errorf("globals %v", got)
+	}
+	p, err = Parse(`int a[3]; int b[] = {1, -2, 'x',}; char s[] = "hi" "!"; char t[5] = "ab"; char u[2] = "ab"; char c = 'q'; int main() {}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = nil
+	for _, g := range p.Globals {
+		got = append(got, fmt.Sprintf("%s:%d:%v:%v", g.Name, g.Len, g.Char, g.Init))
+	}
+	want := "a:3:false:[] b:3:false:[1 -2 120] s:4:true:[104 105 33 0] t:5:true:[97 98 0] u:2:true:[97 98] c:0:true:[113]"
+	if strings.Join(got, " ") != want {
+		t.Errorf("globals\n got %s\nwant %s", strings.Join(got, " "), want)
 	}
 }
 
@@ -157,13 +180,30 @@ func TestErrors(t *testing.T) {
 		{"int main() { putchar('\\x100'); }", "1:22: hex escape sequence out of range"},
 		{"int main() { putchar('\\777'); }", "1:22: octal escape sequence out of range"},
 		{"int main() { putchar('\xc3\xa4'); }", "1:22: not supported in Sorted! (yet): non-ASCII characters"},
-		{"int main() { char c; }", "1:14: not supported in Sorted! (yet): the type or specifier 'char' (int is the only type)"},
+		{"int main() { long c; }", "1:14: not supported in Sorted! (yet): the type or specifier 'long' (int and char are the only types)"},
 		{"int *p; int main() {}", "1:5: not supported in Sorted! (yet): pointers"},
-		{"int a[3]; int main() {}", "1:6: not supported in Sorted! (yet): arrays"},
+		{"int a[2][3]; int main() {}", "1:9: not supported in Sorted! (yet): arrays of arrays"},
+		{"int a[n]; int main() {}", "1:7: not supported in Sorted! (yet): array lengths other than integer constants"},
+		{"int a[0]; int main() {}", "1:7: the length of an array must be positive"},
+		{"int a[]; int main() {}", "1:6: an array without a length needs an initializer"},
+		{"int main() { int a[]; }", "1:19: an array without a length needs an initializer"},
+		{"int a[2] = {1, 2, 3}; int main() {}", "1:12: too many initializers for the array"},
+		{"int a[2] = {}; int main() {}", "1:12: empty initializer"},
+		{"char s[2] = \"abc\"; int main() {}", "1:13: the string is longer than the array"},
+		{"int s[] = \"abc\"; int main() {}", "1:11: a string literal can only initialize a char array"},
+		{"int main() { int a[3]; putchar(a); }", "1:32: not supported in Sorted! (yet): using an array without an index (no pointers)"},
+		{"int main() { int x; x[0] = 1; }", "1:22: subscripted value is not an array"},
+		{"int main() { int a[1]; a++; }", "1:24: not supported in Sorted! (yet): using an array without an index (no pointers)"},
+		{"int main() { int a[1]; a--; }", "1:24: not supported in Sorted! (yet): using an array without an index (no pointers)"},
+		{"int main() { int a[1]; ++a; }", "1:26: not supported in Sorted! (yet): using an array without an index (no pointers)"},
+		{"int main() { int a[1]; int b[1]; a = b; }", "1:34: not supported in Sorted! (yet): using an array without an index (no pointers)"},
+		{"int main() { int a[3]; 3[a] = 1; }", "1:25: subscripted value is not an array"},
+		{"char main() {}", "1:6: main must return int"},
+		{"int main() { putchar(\"abc); }", "1:22: unclosed string literal"},
 		{"int f() { } int main() {}", "1:5: not supported in Sorted! (yet): functions other than main"},
 		{"int main(int argc) {}", "1:10: not supported in Sorted! (yet): parameters of main"},
 		{"int main() { printf(1); }", "1:14: not supported in Sorted! (yet): calling 'printf' (putchar is the only function)"},
-		{"int main() { putchar(\"a\"); }", "1:22: not supported in Sorted! (yet): string literals"},
+		{"int main() { putchar(\"a\"); }", "1:22: not supported in Sorted! (yet): string literals outside char array initializers"},
 		{"#include <stdlib.h>\nint main() {}", "1:1: not supported in Sorted! (yet): the preprocessor (except #include <stdio.h>)"},
 		{"#define N 3\nint main() {}", "1:1: not supported in Sorted! (yet): the preprocessor (except #include <stdio.h>)"},
 		{"int main() { int x = 65; #include <stdio.h>\nputchar(x); }", "1:26: stray '#' (a preprocessing line must start with it)"},
@@ -188,8 +228,8 @@ func TestErrors(t *testing.T) {
 		{"int main() { int putchar = 0; putchar(65); }", "1:31: 'putchar' is a variable, not a function"},
 		{"int putchar; int main() { putchar(65); }", "1:27: 'putchar' is a variable, not a function"},
 		{"int main() { int inline = 1; }", "1:18: expected a variable name"},
-		{"int main() { inline int a; }", "1:14: not supported in Sorted! (yet): the type or specifier 'inline' (int is the only type)"},
-		{"int main() { _Bool b; }", "1:14: not supported in Sorted! (yet): the type or specifier '_Bool' (int is the only type)"},
+		{"int main() { inline int a; }", "1:14: not supported in Sorted! (yet): the type or specifier 'inline' (int and char are the only types)"},
+		{"int main() { _Bool b; }", "1:14: not supported in Sorted! (yet): the type or specifier '_Bool' (int and char are the only types)"},
 		{"int main() { int a; a = restrict; }", "1:25: not supported in Sorted! (yet): 'restrict'"},
 		{"int main() { _Static_assert(1, 2); }", "1:14: not supported in Sorted! (yet): '_Static_assert'"},
 		{"int main() { int a; a = 1, 2; }", "1:26: not supported in Sorted! (yet): the comma operator"},
@@ -210,5 +250,32 @@ func TestErrors(t *testing.T) {
 		if !errors.As(err, &e) || err.Error() != tt.want {
 			t.Errorf("%s\n got %v\nwant %s", tt.src, err, tt.want)
 		}
+	}
+}
+
+// Every escape sequence, in char and string literals.
+func TestEscapes(t *testing.T) {
+	escapes := map[string]int32{
+		`\a`: 7, `\b`: 8, `\t`: 9, `\n`: 10, `\v`: 11, `\f`: 12, `\r`: 13, `\e`: 27,
+		`\'`: 39, `\"`: 34, `\?`: 63, `\\`: 92, `\0`: 0, `\7`: 7, `\101`: 65, `\1012`: -1,
+		`\x41`: 65, `\xff`: -1, `\q`: 113,
+	}
+	for esc, want := range escapes {
+		if esc == `\1012` {
+			continue // two characters: covered by the string case below
+		}
+		toks, err := Tokenize("'" + esc + "'")
+		if err != nil || toks[0].Kind != TkNum || toks[0].Val != want {
+			t.Errorf("'%s': %v, %+v; want %d", esc, err, toks, want)
+		}
+		toks, err = Tokenize(`"` + esc + `"`)
+		if err != nil || len(toks[0].Str) != 1 || int32(int8(toks[0].Str[0])) != want {
+			t.Errorf(`"%s": %v, %+v; want %d`, esc, err, toks, want)
+		}
+	}
+	// \101 is one octal escape, followed by '2'.
+	toks, err := Tokenize(`"\1012"`)
+	if err != nil || string(toks[0].Str) != "A2" {
+		t.Errorf(`"\1012": %v, %q`, err, toks[0].Str)
 	}
 }

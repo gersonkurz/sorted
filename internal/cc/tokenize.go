@@ -15,6 +15,7 @@ const (
 	TkPunct                    // punctuators
 	TkKeyword                  // keywords
 	TkNum                      // numeric literals
+	TkStr                      // string literals
 	TkEOF                      // end of input
 )
 
@@ -22,7 +23,8 @@ const (
 type Token struct {
 	Kind TokenKind
 	Text string
-	Val  int32 // TkNum
+	Val  int32  // TkNum
+	Str  []byte // TkStr: the characters, escapes resolved, without the NUL
 	Pos  Pos
 }
 
@@ -109,7 +111,7 @@ func Tokenize(src string) ([]Token, error) {
 			if err != nil {
 				return nil, errorAt(pos, "%v", err)
 			}
-			add(Token{TkNum, src[:n], v, pos})
+			add(Token{Kind: TkNum, Text: src[:n], Val: v, Pos: pos})
 			advance(n)
 		case isIdent1(c):
 			n := 1
@@ -120,16 +122,21 @@ func Tokenize(src string) ([]Token, error) {
 			if keywords[src[:n]] {
 				kind = TkKeyword
 			}
-			add(Token{kind, src[:n], 0, pos})
+			add(Token{Kind: kind, Text: src[:n], Pos: pos})
 			advance(n)
 		case c == '"':
-			return nil, errorAt(pos, "not supported in Sorted! (yet): string literals")
+			str, n, err := readStringLiteral(src, pos)
+			if err != nil {
+				return nil, err
+			}
+			add(Token{Kind: TkStr, Text: src[:n], Str: str, Pos: pos})
+			advance(n)
 		case c == '\'':
 			v, n, err := readCharLiteral(src, pos)
 			if err != nil {
 				return nil, err
 			}
-			add(Token{TkNum, src[:n], v, pos})
+			add(Token{Kind: TkNum, Text: src[:n], Val: v, Pos: pos})
 			advance(n)
 		default:
 			n := 0
@@ -145,11 +152,11 @@ func Tokenize(src string) ([]Token, error) {
 			if n == 0 {
 				return nil, errorAt(pos, "invalid token")
 			}
-			add(Token{TkPunct, src[:n], 0, pos})
+			add(Token{Kind: TkPunct, Text: src[:n], Pos: pos})
 			advance(n)
 		}
 	}
-	return append(toks, Token{TkEOF, "", 0, Pos{line, col}}), nil
+	return append(toks, Token{Kind: TkEOF, Pos: Pos{line, col}}), nil
 }
 
 // readCharLiteral reads a character constant such as 'a' or '\n' and returns
@@ -184,6 +191,32 @@ func readCharLiteral(src string, pos Pos) (int32, int, error) {
 		return 0, 0, errorAt(pos, "unclosed char literal")
 	}
 	return int32(int8(c)), p + 1, nil
+}
+
+// readStringLiteral reads a string literal and returns its characters
+// (escapes resolved, no terminating NUL) and its length in the source.
+func readStringLiteral(src string, pos Pos) ([]byte, int, error) {
+	var str []byte
+	p := 1
+	for {
+		if p >= len(src) || src[p] == '\n' {
+			return nil, 0, errorAt(pos, "unclosed string literal")
+		}
+		switch c := src[p]; {
+		case c == '"':
+			return str, p + 1, nil
+		case c == '\\':
+			v, next, err := readEscapedChar(src, p+1, pos)
+			if err != nil {
+				return nil, 0, err
+			}
+			str, p = append(str, byte(v)), next
+		case c >= 0x80:
+			return nil, 0, errorAt(pos, "not supported in Sorted! (yet): non-ASCII characters")
+		default:
+			str, p = append(str, c), p+1
+		}
+	}
 }
 
 // readEscapedChar reads the escape sequence after a backslash at src[p], as

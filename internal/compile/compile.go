@@ -22,6 +22,18 @@
 //   - && and || short-circuit: in a test they become a chain of jumps, and as
 //     a value they set a temporary cell to 0 or 1 by jumping, because a
 //     product of conditions would evaluate both sides. !x is x == 0.
+//   - Arrays are runs of cells. An element with a constant index is a cell
+//     like any other. Otherwise it is reached through a pointer cell that an
+//     assignment fills just before the statement that uses it: "the cell
+//     indexed by" a cell reads Data[p-1] but writes Data[p] (the original's
+//     off-by-one, which also gives itoa.s its NUL), so a read pointer holds
+//     the element's cell number plus one and a write pointer the cell number
+//     itself. Indexing a computed value directly ("the cell indexed by the
+//     first sum") is undefined behaviour in the original, so it is avoided.
+//     Cell numbers depend on how many numbers are declared, and the
+//     addresses are declared numbers themselves; see program.
+//   - A store into a char wraps the value to -128..127, as C does, by
+//     arithmetic: ((v + 128) % 256 + 256) % 256 - 128.
 //   - putchar(e) assigns e to an output cell and runs the program's only
 //     output, which writes that cell as a character.
 //   - return jumps past the last statement.
@@ -60,6 +72,8 @@ const (
 	vProd
 	vRatio
 	vCond
+	vInd  // the cell a pointer cell (variable i) indexes
+	vAddr // an address: a declared number, the cell of variable i (see program)
 )
 
 // val is an operand before cells are numbered.
@@ -125,6 +139,11 @@ type compiler struct {
 	nvars     int
 	out       int // the output cell's variable index, -1 until needed
 
+	addrs     []int            // address numbers, as variable-cell offsets (see program)
+	fillers   int              // numbers program declared only to keep the pool size
+	addrIndex map[int]int      // offset → index in addrs
+	reads     map[*cc.Node]val // array elements whose read pointer is already set
+
 	exprs   map[valKind]*table // sums, differences, products, ratios, conditions
 	assigns table
 	jumps   []jump
@@ -135,13 +154,21 @@ type compiler struct {
 }
 
 // Compile lowers a parsed C program into Sorted! tables.
-func Compile(prog *cc.Program) (p *syntax.Program, err error) {
-	c := &compiler{
+func Compile(prog *cc.Program) (*syntax.Program, error) {
+	_, p, err := compileProgram(prog)
+	return p, err
+}
+
+// compileProgram is Compile, also returning the compiler for inspection.
+func compileProgram(prog *cc.Program) (c *compiler, p *syntax.Program, err error) {
+	c = &compiler{
 		poolIndex: map[int32]int{},
 		vars:      map[*cc.Obj]int{},
 		out:       -1,
 		exprs:     map[valKind]*table{},
 		jumpIdx:   map[jump]int{},
+		addrIndex: map[int]int{},
+		reads:     map[*cc.Node]val{},
 	}
 	for _, k := range []valKind{vSum, vDiff, vProd, vRatio, vCond} {
 		c.exprs[k] = &table{}
@@ -156,8 +183,14 @@ func Compile(prog *cc.Program) (p *syntax.Program, err error) {
 		}
 	}()
 	for _, g := range prog.Globals {
-		if g.Init != 0 {
-			c.assign(c.variable(g), c.number(g.Init, g.Pos))
+		base := c.variable(g)
+		for i, v := range g.Init {
+			if g.Char {
+				v = int32(int8(v))
+			}
+			if v != 0 {
+				c.assign(val{vVar, base.i + i}, c.number(v, g.Pos))
+			}
 		}
 	}
 	exit := -1
@@ -174,7 +207,7 @@ func Compile(prog *cc.Program) (p *syntax.Program, err error) {
 	if len(c.stmts) == 0 {
 		c.place(c.newLabel()) // a program needs at least one statement
 	}
-	return c.program(), nil
+	return c, c.program(), nil
 }
 
 func fail(pos cc.Pos, format string, args ...any) {
@@ -201,14 +234,90 @@ func (c *compiler) number(v int32, pos cc.Pos) val {
 	return val{vConst, i}
 }
 
+// variable returns the cell of a scalar, or the first cell of an array.
 func (c *compiler) variable(o *cc.Obj) val {
 	i, ok := c.vars[o]
 	if !ok {
 		i = c.nvars
-		c.nvars++
+		c.nvars += max(1, o.Len)
 		c.vars[o] = i
 	}
 	return val{vVar, i}
+}
+
+// address returns the declared number that is the cell number of variable
+// cell v plus extra (see program).
+func (c *compiler) address(v val, extra int) val {
+	off := v.i + extra
+	i, ok := c.addrIndex[off]
+	if !ok {
+		i = len(c.addrs)
+		c.addrs = append(c.addrs, off)
+		c.addrIndex[off] = i
+	}
+	return val{vAddr, i}
+}
+
+// constValue reports the value of a constant: a declared number, or 0 - n.
+func (c *compiler) constValue(v val) (int32, bool) {
+	switch v.kind {
+	case vConst:
+		return c.pool[v.i], true
+	case vDiff:
+		e := c.exprs[vDiff].entries[v.i]
+		a, okA := c.constValue(e.a)
+		b, okB := c.constValue(e.b)
+		return a - b, okA && okB
+	}
+	return 0, false
+}
+
+// mod is a % b with C's sign rule.
+func (c *compiler) mod(a, b val) val {
+	return c.expr(vDiff, a, c.expr(vProd, c.expr(vRatio, a, b, 0), b, 0), 0)
+}
+
+// wrapChar converts v to char: -128..127, as a store into a char does.
+func (c *compiler) wrapChar(v val, pos cc.Pos) val {
+	if k, ok := c.constValue(v); ok {
+		if k == int32(int8(k)) {
+			return v
+		}
+		return c.number(int32(int8(k)), pos)
+	}
+	n128, n256 := c.number(128, pos), c.number(256, pos)
+	m := c.mod(c.expr(vSum, c.mod(c.expr(vSum, v, n128, 0), n256), n256, 0), n256)
+	return c.expr(vDiff, m, n128, 0)
+}
+
+// element returns array element a[i] for reading: a cell for a constant
+// index, otherwise the cell a read pointer indexes.
+func (c *compiler) element(n *cc.Node) val {
+	if v, ok := c.reads[n]; ok {
+		return v
+	}
+	base := c.variable(n.Var)
+	if k, ok := c.constIndex(n); ok {
+		return val{vVar, base.i + k}
+	}
+	p := c.temporary()
+	c.assign(p, c.expr(vSum, c.value(n.Lhs), c.address(base, 1), 0))
+	return val{vInd, p.i}
+}
+
+// constIndex reports a constant index of a[i], checking its bounds.
+func (c *compiler) constIndex(n *cc.Node) (int, bool) {
+	if n.Lhs.Kind != cc.NdNum && !(n.Lhs.Kind == cc.NdNeg && n.Lhs.Lhs.Kind == cc.NdNum) {
+		return 0, false
+	}
+	k := int(n.Lhs.Val)
+	if n.Lhs.Kind == cc.NdNeg {
+		k = -int(n.Lhs.Lhs.Val)
+	}
+	if k < 0 || k >= n.Var.Len {
+		fail(n.Lhs.Pos, "index %d is out of range for '%s' (%d elements)", k, n.Var.Name, n.Var.Len)
+	}
+	return k, true
 }
 
 func (c *compiler) expr(k valKind, a, b val, flags int32) val {
@@ -228,13 +337,15 @@ func (c *compiler) value(n *cc.Node) val {
 		return c.number(n.Val, n.Pos)
 	case cc.NdVar:
 		return c.variable(n.Var)
+	case cc.NdIndex:
+		return c.element(n)
 	case cc.NdNeg:
 		if n.Lhs.Kind == cc.NdNum {
 			return c.number(-n.Lhs.Val, n.Pos)
 		}
 		return c.expr(vDiff, c.number(0, n.Pos), c.value(n.Lhs), 0)
 	case cc.NdAssign:
-		return c.assignment(n)
+		return c.assignment(n, true)
 	case cc.NdFuncall:
 		fail(n.Pos, "using the result of putchar is not supported yet")
 	case cc.NdNot:
@@ -249,6 +360,11 @@ func (c *compiler) value(n *cc.Node) val {
 		c.place(skip)
 		return t
 	}
+	if n.WrapChar {
+		w := *n
+		w.WrapChar = false
+		return c.wrapChar(c.value(&w), n.Pos)
+	}
 	a, b := c.value(n.Lhs), c.value(n.Rhs)
 	switch n.Kind {
 	case cc.NdAdd:
@@ -260,7 +376,7 @@ func (c *compiler) value(n *cc.Node) val {
 	case cc.NdDiv:
 		return c.expr(vRatio, a, b, 0)
 	case cc.NdMod:
-		return c.expr(vDiff, a, c.expr(vProd, c.expr(vRatio, a, b, 0), b, 0), 0)
+		return c.mod(a, b)
 	case cc.NdEq:
 		return c.eq(a, b)
 	case cc.NdNe:
@@ -349,12 +465,66 @@ func (c *compiler) assign(target, source val) {
 	c.emit(sAssign, c.assigns.add(entry{source, target, 0}))
 }
 
-// assignment lowers "x = e" and returns x.
-func (c *compiler) assignment(n *cc.Node) val {
+// assignment lowers "x = e" and, when want is set, returns x's new value.
+// For an array element with a computed index, the index is evaluated once:
+// the write pointer is set first, and the value side (x op= e and x++ read
+// the same element) reads through a read pointer derived from it.
+func (c *compiler) assignment(n *cc.Node, want bool) val {
+	lhs := n.Lhs
+	if lhs.Kind == cc.NdVar || func() bool { _, ok := c.constIndex(lhs); return ok }() {
+		target := c.value(lhs)
+		v := c.value(n.Rhs)
+		if lhs.Var.Char {
+			v = c.wrapChar(v, n.Pos)
+		}
+		c.assign(target, v)
+		return target
+	}
+	base := c.variable(lhs.Var)
+	w := c.temporary()
+	c.assign(w, c.expr(vSum, c.value(lhs.Lhs), c.address(base, 0), 0))
+	var read val
+	readPointer := func() val {
+		if read.kind != vInd {
+			r := c.temporary()
+			c.assign(r, c.expr(vSum, w, c.number(1, n.Pos), 0))
+			read = val{vInd, r.i}
+		}
+		return read
+	}
+	if uses(n.Rhs, lhs) {
+		c.reads[lhs] = readPointer()
+	}
 	v := c.value(n.Rhs)
-	target := c.variable(n.Lhs.Var)
-	c.assign(target, v)
-	return target
+	delete(c.reads, lhs)
+	if lhs.Var.Char {
+		v = c.wrapChar(v, n.Pos)
+	}
+	c.assign(val{vInd, w.i}, v)
+	if !want {
+		return val{}
+	}
+	return readPointer()
+}
+
+// uses reports whether node x occurs in n (the same node, as the parser
+// shares it between the target and value of x op= e and x++).
+func uses(n, x *cc.Node) bool {
+	if n == nil {
+		return false
+	}
+	if n == x {
+		return true
+	}
+	if uses(n.Lhs, x) || uses(n.Rhs, x) {
+		return true
+	}
+	for _, a := range n.Args {
+		if uses(a, x) {
+			return true
+		}
+	}
+	return false
 }
 
 // effects lowers an expression for its side effects only.
@@ -372,7 +542,9 @@ func (c *compiler) effects(n *cc.Node) {
 		c.assign(val{vVar, c.out}, v)
 		c.emit(sWrite, 0)
 	case cc.NdAssign:
-		c.assignment(n)
+		c.assignment(n, false)
+	case cc.NdIndex:
+		c.effects(n.Lhs)
 	case cc.NdLogAnd, cc.NdLogOr:
 		// the right side runs only when the left does not decide
 		skip := c.newLabel()
@@ -473,14 +645,53 @@ func (c *compiler) breakLabel(l *loop) int {
 
 // program lays the tables out in Code, numbers the cells (declared numbers
 // first, then variables) and resolves all references.
+//
+// Addresses are declared numbers whose value is a cell number, and cell
+// numbers start after the declared numbers. So the pool size P is fixed
+// first: the constants plus one slot per address. An address whose value
+// happens to be a constant already uses that constant's slot, and unused
+// numbers fill the pool up to P again, which keeps every cell where the
+// addresses say it is.
 func (c *compiler) program() *syntax.Program {
-	p := &syntax.Program{Data: c.pool, LabelsCount: c.labels}
+	size := len(c.pool) + len(c.addrs)
+	pool := append([]int32(nil), c.pool...)
+	slots := map[int32]int{}
+	for i, v := range pool {
+		slots[v] = i
+	}
+	addrSlot := make([]int, len(c.addrs))
+	for j, off := range c.addrs {
+		v := int64(size) + int64(off)
+		if v > largest {
+			fail(cc.Pos{}, "the program needs more memory than Sorted! numbers can address")
+		}
+		if i, ok := slots[int32(v)]; ok {
+			addrSlot[j] = i
+			continue
+		}
+		slots[int32(v)] = len(pool)
+		addrSlot[j] = len(pool)
+		pool = append(pool, int32(v))
+	}
+	for filler := int32(0); len(pool) < size; filler++ {
+		if _, used := slots[filler]; !used {
+			slots[filler] = len(pool)
+			pool = append(pool, filler)
+			c.fillers++
+		}
+	}
+
+	p := &syntax.Program{Data: pool, LabelsCount: c.labels}
 	operand := func(v val) syntax.Operand {
 		switch v.kind {
 		case vConst:
 			return syntax.Operand{Type: syntax.Number, Index: int32(v.i)}
 		case vVar:
-			return syntax.Operand{Type: syntax.Number, Index: int32(len(c.pool) + v.i)}
+			return syntax.Operand{Type: syntax.Number, Index: int32(size + v.i)}
+		case vInd:
+			return syntax.Operand{Type: syntax.Number | syntax.Indirect, Index: int32(size + v.i)}
+		case vAddr:
+			return syntax.Operand{Type: syntax.Number, Index: int32(addrSlot[v.i])}
 		}
 		types := map[valKind]syntax.OperandType{vSum: syntax.Sum, vDiff: syntax.Diff, vProd: syntax.Prod, vRatio: syntax.Ratio, vCond: syntax.Condition}
 		return syntax.Operand{Type: types[v.kind], Index: int32(v.i)}
