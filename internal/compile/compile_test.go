@@ -573,3 +573,31 @@ func TestConstantIndex(t *testing.T) {
 		t.Errorf("numbers %v, want [5 1] (no addresses)", p.Data)
 	}
 }
+
+// A program must fit Sorted!'s 193719 cells: declared numbers, variables and
+// temporaries together (#19). The array below takes the rest after 'A' (one
+// declared number) and the output cell.
+func TestMemoryLimit(t *testing.T) {
+	var e *Error
+	fits := fmt.Sprintf("int a[%d]; int main() { putchar(65); }", memory-2)
+	if _, err := compileC(t, fits); err != nil {
+		t.Errorf("exactly %d cells: %v", memory, err)
+	}
+	// Variables alone may not exceed the memory, and counting them cannot
+	// overflow, even with lengths near the int32 limit (a 32-bit int would
+	// wrap here without the early check).
+	huge := "int a[2147483647];\nint b[2];\nint main() { putchar(65); }"
+	if _, err := compileC(t, huge); !errors.As(err, &e) || err.Error() != fmt.Sprintf("1:5: the program needs more than %d memory cells, which is all Sorted! has", memory) {
+		t.Errorf("huge array: %v", err)
+	}
+	// The last cell is reachable: write it, read it back, print it.
+	last := fmt.Sprintf("int a[%d]; int main() { a[%d] = 65; putchar(a[%d]); }", memory-2, memory-3, memory-3)
+	if got := runSorted(t, toSorted(t, last, render.English)); got != "A" {
+		t.Errorf("last cell: %q, want \"A\"", got)
+	}
+	tooBig := fmt.Sprintf("int a[%d]; int main() { putchar(65); }", memory-1)
+	_, err := compileC(t, tooBig)
+	if !errors.As(err, &e) || err.Error() != fmt.Sprintf("1:1: the program needs %d memory cells; Sorted! has %d", memory+1, memory) {
+		t.Errorf("one cell too many: %v", err)
+	}
+}

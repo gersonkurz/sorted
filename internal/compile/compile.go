@@ -61,6 +61,10 @@ func (e *Error) Error() string { return e.Pos.String() + ": " + e.Msg }
 // largest is the largest number a Sorted! declaration can spell in one go.
 const largest = 999999999
 
+// memory is the number of cells a Sorted! program has (MAX_DATA_PER_PROGRAM
+// in the original's SortedSyntax.h).
+const memory = 193719
+
 // valKind says what a value refers to.
 type valKind int
 
@@ -238,11 +242,22 @@ func (c *compiler) number(v int32, pos cc.Pos) val {
 func (c *compiler) variable(o *cc.Obj) val {
 	i, ok := c.vars[o]
 	if !ok {
-		i = c.nvars
-		c.nvars += max(1, o.Len)
+		i = c.cells(max(1, o.Len), o.Pos)
 		c.vars[o] = i
 	}
 	return val{vVar, i}
+}
+
+// cells reserves n variable cells and returns the first. It fails as soon as
+// the variables alone exceed Sorted!'s memory, so the count never grows past
+// it (and cannot overflow an int on 32-bit platforms); program checks the
+// total with the declared numbers.
+func (c *compiler) cells(n int, pos cc.Pos) int {
+	if int64(c.nvars)+int64(n) > memory {
+		fail(pos, "the program needs more than %d memory cells, which is all Sorted! has", memory)
+	}
+	c.nvars += n
+	return c.nvars - n
 }
 
 // address returns the declared number that is the cell number of variable
@@ -392,8 +407,7 @@ func (c *compiler) value(n *cc.Node) val {
 
 // temporary returns a fresh cell for an intermediate value.
 func (c *compiler) temporary() val {
-	c.nvars++
-	return val{vVar, c.nvars - 1}
+	return val{vVar, c.cells(1, cc.Pos{Line: 1, Col: 1})}
 }
 
 // cond returns a condition that is true exactly when n is true (sense) or
@@ -536,8 +550,7 @@ func (c *compiler) effects(n *cc.Node) {
 	case cc.NdFuncall:
 		v := c.value(n.Args[0])
 		if c.out < 0 {
-			c.out = c.nvars
-			c.nvars++
+			c.out = c.cells(1, n.Pos)
 		}
 		c.assign(val{vVar, c.out}, v)
 		c.emit(sWrite, 0)
@@ -672,6 +685,9 @@ func (c *compiler) program() *syntax.Program {
 		slots[int32(v)] = len(pool)
 		addrSlot[j] = len(pool)
 		pool = append(pool, int32(v))
+	}
+	if cells := int64(size) + int64(c.nvars); cells > memory {
+		fail(cc.Pos{Line: 1, Col: 1}, "the program needs %d memory cells; Sorted! has %d", cells, memory)
 	}
 	for filler := int32(0); len(pool) < size; filler++ {
 		if _, used := slots[filler]; !used {
