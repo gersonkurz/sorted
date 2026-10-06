@@ -50,6 +50,34 @@ func fail(format string, args ...any) error { return &Error{fmt.Sprintf(format, 
 
 // Render writes p as Sorted! source in lang.
 func Render(p *syntax.Program, lang Lang) (string, error) {
+	text, q, err := write(p, lang)
+	if err != nil {
+		return "", err
+	}
+	if !Equal(p, q) {
+		return "", fail("the program's table layout cannot be reproduced in Sorted! text")
+	}
+	return text, nil
+}
+
+// Compose writes p as Sorted! text like Render, for programs built by the
+// compiler. Those never refer past the end of a table, so their table layout
+// does not matter and need not be reproducible; Compose checks that the text
+// parses into the same entries (SameEntries) and returns the program as the
+// parser sees it, with the layout any Sorted! interpreter will use.
+func Compose(p *syntax.Program, lang Lang) (string, *syntax.Program, error) {
+	text, q, err := write(p, lang)
+	if err != nil {
+		return "", nil, err
+	}
+	if !SameEntries(p, q) {
+		return "", nil, fail("the generated text parses into different entries")
+	}
+	return text, q, nil
+}
+
+// write renders the sentences and parses the result back.
+func write(p *syntax.Program, lang Lang) (string, *syntax.Program, error) {
 	r := &renderer{p: p, lang: lang}
 	sentences := []func() (sentence, error){
 		r.numbers, r.jumps, r.outputs, r.inputs, r.sums, r.conditions, r.labels,
@@ -59,28 +87,32 @@ func Render(p *syntax.Program, lang Lang) (string, error) {
 	for _, f := range sentences {
 		s, err := f()
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
 		b.WriteString(s.text())
 		b.WriteString("\n")
 	}
 	text := b.String()
-	if err := check(p, text); err != nil {
-		return "", err
-	}
-	return text, nil
-}
-
-// check parses text and compares the result with p.
-func check(p *syntax.Program, text string) error {
 	q, err := syntax.Parse(syntax.Filter([]byte(text)))
 	if err != nil {
-		return fail("the generated text does not parse (%v)", err)
+		return "", nil, fail("the generated text does not parse (%v)", err)
 	}
-	if !Equal(p, q) {
-		return fail("the program's table layout cannot be reproduced in Sorted! text")
+	return text, q, nil
+}
+
+// SameEntries reports whether two programs declare the same numbers and
+// labels and have the same entries in every table, wherever in Code those
+// tables lie.
+func SameEntries(p, q *syntax.Program) bool {
+	if p.LabelsCount != q.LabelsCount || fmt.Sprint(p.Data) != fmt.Sprint(q.Data) {
+		return false
 	}
-	return nil
+	for c := syntax.Sums; c < syntax.NumCategories; c++ {
+		if fmt.Sprint(p.Entries(c)) != fmt.Sprint(q.Entries(c)) {
+			return false
+		}
+	}
+	return true
 }
 
 // Equal reports whether two programs are the same in every respect the

@@ -53,15 +53,21 @@ var puncts = []string{
 func Tokenize(src string) ([]Token, error) {
 	var toks []Token
 	line, col := 1, 1
+	bol := true // nothing but whitespace and comments so far on this line
 	advance := func(n int) {
 		for _, c := range src[:n] {
 			if c == '\n' {
 				line, col = line+1, 1
+				bol = true
 			} else {
 				col++
 			}
 		}
 		src = src[n:]
+	}
+	add := func(t Token) {
+		toks = append(toks, t)
+		bol = false
 	}
 	for len(src) > 0 {
 		pos := Pos{line, col}
@@ -81,8 +87,19 @@ func Tokenize(src string) ([]Token, error) {
 				return nil, errorAt(pos, "unclosed block comment")
 			}
 			advance(n + 4)
+		case c == '#' && !bol:
+			return nil, errorAt(pos, "stray '#' (a preprocessing line must start with it)")
 		case c == '#':
-			return nil, errorAt(pos, "not supported in Sorted! (yet): the preprocessor")
+			// "#include <stdio.h>" is allowed and ignored, so that a program
+			// for Sorted! is also a C program that declares putchar.
+			n := strings.IndexByte(src, '\n')
+			if n < 0 {
+				n = len(src)
+			}
+			if strings.Join(strings.Fields(strings.Replace(src[:n], "include", " include ", 1)), " ") != "# include <stdio.h>" {
+				return nil, errorAt(pos, "not supported in Sorted! (yet): the preprocessor (except #include <stdio.h>)")
+			}
+			advance(n)
 		case isDigit(c):
 			n := 1
 			for n < len(src) && isIdent2(src[n]) {
@@ -92,7 +109,7 @@ func Tokenize(src string) ([]Token, error) {
 			if err != nil {
 				return nil, errorAt(pos, "%v", err)
 			}
-			toks = append(toks, Token{TkNum, src[:n], v, pos})
+			add(Token{TkNum, src[:n], v, pos})
 			advance(n)
 		case isIdent1(c):
 			n := 1
@@ -103,7 +120,7 @@ func Tokenize(src string) ([]Token, error) {
 			if keywords[src[:n]] {
 				kind = TkKeyword
 			}
-			toks = append(toks, Token{kind, src[:n], 0, pos})
+			add(Token{kind, src[:n], 0, pos})
 			advance(n)
 		case c == '\'' || c == '"':
 			return nil, errorAt(pos, "not supported in Sorted! (yet): character and string literals")
@@ -121,7 +138,7 @@ func Tokenize(src string) ([]Token, error) {
 			if n == 0 {
 				return nil, errorAt(pos, "invalid token")
 			}
-			toks = append(toks, Token{TkPunct, src[:n], 0, pos})
+			add(Token{TkPunct, src[:n], 0, pos})
 			advance(n)
 		}
 	}

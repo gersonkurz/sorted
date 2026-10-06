@@ -64,6 +64,8 @@ func TestTokenize(t *testing.T) {
 func TestParse(t *testing.T) {
 	tests := []struct{ src, want string }{
 		{"int main() { return 0; }", "{ (return 0)}"},
+		{"#include <stdio.h>\n  #  include   <stdio.h>  \nint main() { putchar(1); }", "{ (putchar 1)}"},
+		{"/* a */ #include <stdio.h>\n// b\n\t/* c\n d */ #include <stdio.h>\nint main() { }", "{}"},
 		{"int main(void) { }", "{}"},
 		{"int main() { int x = 1, y; y = x * 2 + 3 % 2; putchar(y); }",
 			"{ { (= x 1)} (= y (+ (* x 2) (% 3 2))) (putchar y)}"},
@@ -135,7 +137,9 @@ func TestErrors(t *testing.T) {
 		{"int main(int argc) {}", "1:10: not supported in Sorted! (yet): parameters of main"},
 		{"int main() { printf(1); }", "1:14: not supported in Sorted! (yet): calling 'printf' (putchar is the only function)"},
 		{"int main() { putchar('a'); }", "1:22: not supported in Sorted! (yet): character and string literals"},
-		{"#include <stdio.h>\nint main() {}", "1:1: not supported in Sorted! (yet): the preprocessor"},
+		{"#include <stdlib.h>\nint main() {}", "1:1: not supported in Sorted! (yet): the preprocessor (except #include <stdio.h>)"},
+		{"#define N 3\nint main() {}", "1:1: not supported in Sorted! (yet): the preprocessor (except #include <stdio.h>)"},
+		{"int main() { int x = 65; #include <stdio.h>\nputchar(x); }", "1:26: stray '#' (a preprocessing line must start with it)"},
 		{"int main() { int a = sizeof(a); }", "1:22: not supported in Sorted! (yet): 'sizeof'"},
 		{"int main() { putchar(1, 2); }", "1:23: putchar takes one argument"},
 		{"int main() { x = 1; }", "1:14: undefined variable 'x'"},

@@ -16,6 +16,9 @@
 // function it can define. With int as the only type, there is no type pass
 // yet.
 //
+// #include <stdio.h> is the one preprocessor line it accepts (and ignores), so
+// that a program for Sorted! is also a C program that declares putchar.
+//
 // Subset 1: int globals (with constant initializers) and locals, integer
 // constants, + - * / % and unary -, =, == != < <= > >=, if/else, while,
 // return, blocks, and putchar(expr).

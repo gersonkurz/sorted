@@ -72,7 +72,7 @@ The faithful port is complete. The next phase compiles a growing subset of C int
 - The C front end is a Go port of chibicc's tokenizer, parser and type pass (MIT; keep its notice), slimmed to the subset.
 - Output must be singable (that is the joke), in the style of the samples; German falls back to English per sentence where it has no form (ratios, lists of ordered differences).
 - The parser stays faithful to 2000 (Gerson, 2026-10-05): generated programs use only forms the original accepts, so they also run on `Sorted.exe`. The renderer works around the parser's gaps ("the eight number" for "eighth", German "-n" endings only where the parser reads them back: "ersten" and "einhundertersten" do, "zwanzigsten" does not) instead of the grammar being extended.
-- Every generated program must parse back into the same tables (round trip) and print what the C program prints when compiled natively (differential tests; skipped without a C compiler).
+- Every generated program must parse back into the same tables (round trip) and print what the C program prints when compiled natively (differential tests). The oracle is clang (`cc`) on macOS; Gerson uses only MSVC on Windows, where the tests skip, and declined setting up a C compiler there (2026-10-06).
 - C → Sorted! → C is free obfuscation, but the legacy `--to-c` does not preserve semantics (1-based indirect writes, every output `putchar`), so M5 adds a semantics-preserving C emitter alongside it.
 
 ## Porting decisions (made by Gerson)
@@ -99,5 +99,5 @@ exist and loads the others, so both can stand:
 Loop parameters:
 - Verify: `just verify` (gofmt check, `go vet ./...`, `go test -count 1 ./...`; works on macOS, Linux and Windows)
 - Yardstick docs: CLAUDE.md (faithfulness requirement, porting decisions, legacy pipeline, quirks); `legacy/sorted.win32/` as the semantic authority (`legacy/sorted.linux/` where identical); golden outputs captured from the original `Sorted.exe` under `testdata/`
-- Review focus: fidelity to the legacy Win32 implementation: the same programs accepted and rejected, byte-identical stdout including error messages and newlines, every quirk preserved and pinned by a test rather than silently fixed; golden expectations must come from captures, never be derived from the C++; cross-platform (Windows + macOS)
+- Review focus: fidelity to the legacy Win32 implementation: the same programs accepted and rejected, byte-identical stdout including error messages and newlines, every quirk preserved and pinned by a test rather than silently fixed; golden expectations must come from captures, never be derived from the C++; cross-platform (Windows + macOS) for the tool itself. The C-to-Sorted! differential tests use clang on macOS as the oracle and may skip where no `cc` exists; their behaviour on Windows is not a review criterion (Gerson, 2026-10-06)
 - Task list: GitHub issues on gersonkurz/sorted, one issue per [task] finding, label `review-task`
