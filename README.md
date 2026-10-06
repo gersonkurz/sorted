@@ -142,7 +142,10 @@ eight, and nine", "the sums of … and …, and of … and …".
 
 ## Things worth knowing
 
-Sorted! has no bugs, only features. The port keeps all of them:
+Sorted! has no bugs, only features. The port keeps all of them, and the
+papal bull *Ordinata non errant* ([English](docs/ordinata-non-errant.md),
+[Deutsch](docs/ordinata-non-errant.de.md)) declares them doctrine (including
+the logical operation that was never NAND):
 
 - The number words have their own spelling: fifteen is "fiveteen", forty is
   "fourty", the ninth is the "nineth" and the twelfth the "twelveth".
