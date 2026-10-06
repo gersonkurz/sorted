@@ -192,21 +192,27 @@ func TestFromC(t *testing.T) {
 			t.Errorf("lang %q: running the compiled program: %+v", lang, run)
 		}
 	}
-	// --dump and --to-c describe the compiled program as any Sorted!
-	// interpreter sees it: the same as loading the printed program.
-	r := runCLI("--from-c", cFile, "--dump", filepath.Join(dir, "a.dump"), "--to-c", filepath.Join(dir, "a.c"))
+	// --dump, --to-c and --to-c-exact describe the compiled program as any
+	// Sorted! interpreter sees it: the same as loading the printed program.
+	r := runCLI("--from-c", cFile, "--dump", filepath.Join(dir, "a.dump"), "--to-c", filepath.Join(dir, "a.c"), "--to-c-exact", filepath.Join(dir, "a.exact.c"))
 	if r.code != 0 {
 		t.Fatalf("%+v", r)
 	}
-	if r := runCLI("--dump", filepath.Join(dir, "b.dump"), "--to-c", filepath.Join(dir, "b.c"), writeProgram(t, r.stdout)); r.code != 0 {
+	if r := runCLI("--dump", filepath.Join(dir, "b.dump"), "--to-c", filepath.Join(dir, "b.c"), "--to-c-exact", filepath.Join(dir, "b.exact.c"), writeProgram(t, r.stdout)); r.code != 0 {
 		t.Fatalf("%+v", r)
 	}
-	for _, pair := range [][2]string{{"a.dump", "b.dump"}, {"a.c", "b.c"}} {
+	for _, pair := range [][2]string{{"a.dump", "b.dump"}, {"a.c", "b.c"}, {"a.exact.c", "b.exact.c"}} {
 		a, errA := os.ReadFile(filepath.Join(dir, pair[0]))
 		b, errB := os.ReadFile(filepath.Join(dir, pair[1]))
 		if errA != nil || errB != nil || len(a) == 0 || string(a) != string(b) {
 			t.Errorf("%s and %s differ (%v, %v):\n%s\n---\n%s", pair[0], pair[1], errA, errB, a, b)
 		}
+	}
+	if exact, err := os.ReadFile(filepath.Join(dir, "a.exact.c")); err != nil || !strings.HasPrefix(string(exact), "/* Written by sorted --to-c-exact") {
+		t.Errorf("--to-c-exact wrote %q, %v", exact, err)
+	}
+	if legacy, _ := os.ReadFile(filepath.Join(dir, "a.c")); !strings.HasPrefix(string(legacy), "#include \"stdio.h\"") {
+		t.Errorf("--to-c wrote %q", legacy)
 	}
 }
 

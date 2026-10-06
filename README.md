@@ -69,13 +69,16 @@ just package    # macOS/Linux: release archives for all platforms in out/dist
 ## Usage
 
 ```
-sorted [--dump FILE] [--to-c FILE] [--lang en|de] [--version] PROGRAM.s
-sorted --from-c PROGRAM.c [--lang en|de] [--dump FILE] [--to-c FILE]
+sorted [--dump FILE] [--to-c FILE] [--to-c-exact FILE] [--lang en|de] [--version] PROGRAM.s
+sorted --from-c PROGRAM.c [--lang en|de] [--dump FILE] [--to-c FILE] [--to-c-exact FILE]
 ```
 
 `sorted` parses and runs the program. `--dump` writes the parsed tables and
 `--to-c` a translation into C, the original's `/D` and `/C` options; both are
-written before the program runs. `--lang en` or `--lang de` prints the program
+written before the program runs. The original's translation does not always
+do what the program does (it writes indirect cells one off, and prints every
+number as a character), so `--to-c-exact` writes a C program that behaves
+exactly like the interpreter instead. `--lang en` or `--lang de` prints the program
 in English or German instead of running it, so `sorted --lang de hello.s` sings
 Hello World in German. `--from-c` compiles a C program into Sorted! instead
 (see "Young Adult Romance" below).
@@ -240,11 +243,22 @@ written back: a declaration may add up its parts to a number from 1000000000
 on ("ninehundredmillion onehundredmillion"), and the current renderer cannot
 spell such values.
 
-**What is coming** (issue #17): the round trip back to C. Some limits are part of the deal. There
-are no library calls, `putchar` being the only one. There is no `malloc`, just
-one big block of memory. And there is no input, because Sorted! cannot read.
-Round trip a program through C → Sorted! → C, and you get C obfuscation for
-free.
+Some limits are part of the deal. There are no library calls, `putchar` being
+the only one. There is no `malloc`, just one big block of memory. And there is
+no input, because Sorted! cannot read.
+
+**And back to C.** `sorted --from-c prog.c --to-c-exact obfuscated.c` takes a
+program on the full round trip: C → Sorted! → C. The result prints what
+`prog.c` prints, and nothing in it resembles the original. Every sum,
+difference, product, ratio and condition becomes a function named after where
+it sits in the tables, `S41`, `D7`, `C12`, every statement a case of one big
+switch, every variable a cell of `_[193719]`, and the number words are ported
+along in case the program prints cardinals. The tests take every C program
+they compile through the whole loop and compare its output with the original
+C, so this is obfuscation with a warranty. `--to-c-exact` works for any
+Sorted! program, quirks included: past-the-end references, jumps to labels
+that were never placed, 32-bit wrap-around and the run-time errors all come
+out the way the interpreter has them.
 
 ### Known kinks
 

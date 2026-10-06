@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/gersonkurz/sorted/internal/cc"
+	"github.com/gersonkurz/sorted/internal/emit"
 	"github.com/gersonkurz/sorted/internal/interp"
 	"github.com/gersonkurz/sorted/internal/render"
 	"github.com/gersonkurz/sorted/internal/syntax"
@@ -643,6 +644,14 @@ func TestDifferential(t *testing.T) {
 				if got := runSorted(t, text); got != want {
 					t.Errorf("lang %d: Sorted! printed %q, C printed %q\n%s", lang, got, want, text)
 				}
+			}
+			// and back to C (M5): the exact translation prints the same
+			p, err := syntax.Parse(syntax.Filter([]byte(toSorted(t, src, render.English))))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := runNative(t, emit.Exact(p)); got != want {
+				t.Errorf("C -> Sorted! -> C printed %q, C printed %q", got, want)
 			}
 		})
 	}

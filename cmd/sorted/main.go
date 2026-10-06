@@ -1,11 +1,14 @@
 // Command sorted runs programs written in Sorted!, the esoteric language from
 // 2000.
 //
-//	sorted [--dump FILE] [--to-c FILE] [--lang en|de] [--version] PROGRAM.s
-//	sorted --from-c PROGRAM.c [--lang en|de] [--dump FILE] [--to-c FILE]
+//	sorted [--dump FILE] [--to-c FILE] [--to-c-exact FILE] [--lang en|de] [--version] PROGRAM.s
+//	sorted --from-c PROGRAM.c [--lang en|de] [--dump FILE] [--to-c FILE] [--to-c-exact FILE]
 //
 // --dump writes the parsed tables and --to-c a translation into C, as the
-// original's /D and /C do, before the program runs. --lang prints the program
+// original's /D and /C do, before the program runs. The original's
+// translation does not always behave like the program; --to-c-exact writes
+// one that does, so C -> Sorted! -> C (--from-c with --to-c-exact) turns a C
+// program into an equivalent, thoroughly obfuscated one. --lang prints the program
 // in English or German instead of running it. --from-c compiles a C program
 // into Sorted! and prints it (in English unless --lang says otherwise).
 //
@@ -46,11 +49,12 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	showVersion := fs.Bool("version", false, "print the version and exit")
 	dumpFile := fs.String("dump", "", "write the parsed tables to `FILE` (legacy /D)")
 	cFile := fs.String("to-c", "", "write a translation into C to `FILE` (legacy /C)")
+	exactFile := fs.String("to-c-exact", "", "write a C program that behaves like the interpreter to `FILE`")
 	lang := fs.String("lang", "", "print the program in `LANG` (en or de) instead of running it")
 	fromC := fs.String("from-c", "", "compile the C program `FILE` into Sorted! and print it")
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: sorted [--dump FILE] [--to-c FILE] [--lang en|de] [--version] PROGRAM.s")
-		fmt.Fprintln(stderr, "       sorted --from-c PROGRAM.c [--lang en|de] [--dump FILE] [--to-c FILE]")
+		fmt.Fprintln(stderr, "usage: sorted [--dump FILE] [--to-c FILE] [--to-c-exact FILE] [--lang en|de] [--version] PROGRAM.s")
+		fmt.Fprintln(stderr, "       sorted --from-c PROGRAM.c [--lang en|de] [--dump FILE] [--to-c FILE] [--to-c-exact FILE]")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -70,7 +74,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if *fromC != "" {
-		return translate(*fromC, langs[*lang], *dumpFile, *cFile, stdout, stderr)
+		return translate(*fromC, langs[*lang], outputs{*cFile, *exactFile, *dumpFile}, stdout, stderr)
 	}
 	name := fs.Arg(0)
 
@@ -89,7 +93,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 	// Like the original: the C translation first, then the dump, then run.
-	code := writeFiles(p, *cFile, *dumpFile, stderr)
+	code := writeFiles(p, outputs{*cFile, *exactFile, *dumpFile}, stderr)
 	if *lang != "" {
 		text, err := render.Render(p, langs[*lang])
 		if err != nil {
@@ -109,14 +113,19 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	return code
 }
 
-// writeFiles writes the requested legacy outputs, the C translation before
+// outputs are the files a run writes besides the program's output.
+type outputs struct {
+	c, exact, dump string // --to-c, --to-c-exact, --dump
+}
+
+// writeFiles writes the requested outputs, the C translations before
 // the dump as the original does, and returns 1 if one cannot be written.
-func writeFiles(p *syntax.Program, cFile, dumpFile string, stderr io.Writer) int {
+func writeFiles(p *syntax.Program, files outputs, stderr io.Writer) int {
 	code := 0
 	for _, out := range []struct {
 		file   string
 		render func(*syntax.Program) string
-	}{{cFile, emit.C}, {dumpFile, emit.Dump}} {
+	}{{files.c, emit.C}, {files.exact, emit.Exact}, {files.dump, emit.Dump}} {
 		if out.file == "" {
 			continue
 		}
@@ -130,7 +139,7 @@ func writeFiles(p *syntax.Program, cFile, dumpFile string, stderr io.Writer) int
 
 // translate compiles a C program into Sorted! and prints it. --dump and
 // --to-c describe the compiled program as any Sorted! interpreter sees it.
-func translate(name string, lang render.Lang, dumpFile, cFile string, stdout, stderr io.Writer) int {
+func translate(name string, lang render.Lang, files outputs, stdout, stderr io.Writer) int {
 	src, err := os.ReadFile(name)
 	if err != nil {
 		fmt.Fprintf(stderr, "sorted: %v\n", err)
@@ -151,7 +160,7 @@ func translate(name string, lang render.Lang, dumpFile, cFile string, stdout, st
 		fmt.Fprintf(stderr, "sorted: %s: %v\n", name, err)
 		return 1
 	}
-	code := writeFiles(p, cFile, dumpFile, stderr)
+	code := writeFiles(p, files, stderr)
 	if _, err := fmt.Fprint(stdout, text); err != nil {
 		fmt.Fprintf(stderr, "sorted: %v\n", err)
 		return 1
