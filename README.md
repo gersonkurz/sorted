@@ -69,8 +69,8 @@ just package    # macOS/Linux: release archives for all platforms in out/dist
 ## Usage
 
 ```
-sorted [--dump FILE] [--to-c FILE] [--lang en|de] [--version] PROGRAM.s
-sorted --from-c PROGRAM.c [--lang en|de] [--dump FILE] [--to-c FILE]
+sorted [--dump FILE] [--to-c FILE] [--lang en|de | --english | --german] [--version] PROGRAM.s
+sorted --from-c PROGRAM.c [--lang en|de | --english | --german] [--dump FILE] [--to-c FILE]
 ```
 
 `sorted` parses and runs the program. `--dump` writes the parsed tables, as
@@ -79,10 +79,12 @@ the Sorted! one; both are written before the program runs. The original's `/C`
 had a C translation too, but it does not do what the program does: it prints
 every number as a character, so `fibo.s` comes out as raw bytes instead of
 "one, one, two, three", and it writes indirect cells one off, so `itoa.s`
-moves its famous NUL. `--to-c` replaces it. `--lang en` or `--lang de` prints the program
-in English or German instead of running it, so `sorted --lang de hello.s` sings
-Hello World in German. `--from-c` compiles a C program into Sorted! instead
-(see "Young Adult Romance" below).
+moves its famous NUL. `--to-c` replaces it. `--lang en` (or `--english`) and `--lang de` (or
+`--german`) print the program in English or German instead of running it, so
+`sorted --german hello.s` sings Hello World in German. `--from-c` compiles a C
+program into Sorted! instead (see "Young Adult Romance" below). Sorted! has no
+favourite language, so unless you ask for one, each run of `--from-c` picks
+English or German at random.
 
 What the program prints, and the original's diagnostics, go to stdout exactly
 as the original printed them:
@@ -190,8 +192,8 @@ getting serious in the other direction: the same binary now compiles C into
 Sorted!.
 
 ```
-sorted --from-c fizzbuzz.c > fizzbuzz.s
-sorted --from-c fizzbuzz.c --lang de > fizzbuzz-de.s
+sorted --from-c fizzbuzz.c --english > fizzbuzz.s
+sorted --from-c fizzbuzz.c --german > fizzbuzz-de.s
 sorted fizzbuzz.s
 ```
 

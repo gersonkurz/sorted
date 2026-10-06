@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/gersonkurz/sorted/internal/render"
 )
 
 type result struct {
@@ -232,6 +234,15 @@ func TestLang(t *testing.T) {
 	if r.code != 0 || normalise(r.stdout) != "Hello, World." {
 		t.Errorf("running the German version: %+v", r)
 	}
+	hello := filepath.Join("..", "..", "legacy", "sorted.win32", "hello.s")
+	for flag, head := range map[string]string{"--english": "This code uses the numbers", "--german": "Dieses Programm benutzt die Zahlen"} {
+		if r := runCLI(flag, hello); r.code != 0 || !strings.HasPrefix(r.stdout, head) {
+			t.Errorf("%s: %+v", flag, r)
+		}
+	}
+	if r := runCLI("--english", "--lang", "de", hello); r.code != 2 || !strings.Contains(r.stderr, "usage: sorted") {
+		t.Errorf("two choices: %+v", r)
+	}
 	if r := runCLI("--lang", "fr", "hello.s"); r.code != 2 || !strings.Contains(r.stderr, "usage: sorted") {
 		t.Errorf("unknown language: %+v", r)
 	}
@@ -245,17 +256,45 @@ func TestFromC(t *testing.T) {
 	if err := os.WriteFile(cFile, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	for lang, head := range map[string]string{"": "This code uses the numbers", "de": "Dieses Programm benutzt die Zahlen"} {
-		args := []string{"--from-c", cFile}
-		if lang != "" {
-			args = append(args, "--lang", lang)
-		}
-		r := runCLI(args...)
-		if r.code != 0 || r.stderr != "" || !strings.HasPrefix(r.stdout, head) {
-			t.Fatalf("lang %q: %+v", lang, r)
+	const en, de = "This code uses the numbers", "Dieses Programm benutzt die Zahlen"
+	for _, tt := range []struct {
+		flags []string
+		head  string
+	}{
+		{[]string{"--lang", "en"}, en}, {[]string{"--english"}, en},
+		{[]string{"--lang", "de"}, de}, {[]string{"--german"}, de},
+	} {
+		r := runCLI(append([]string{"--from-c", cFile}, tt.flags...)...)
+		if r.code != 0 || r.stderr != "" || !strings.HasPrefix(r.stdout, tt.head) {
+			t.Fatalf("%v: %+v", tt.flags, r)
 		}
 		if run := runCLI(writeProgram(t, r.stdout)); run.code != 0 || run.stdout != "HIJ\n" {
-			t.Errorf("lang %q: running the compiled program: %+v", lang, run)
+			t.Errorf("%v: running the compiled program: %+v", tt.flags, run)
+		}
+	}
+	// Without a choice, the language is whatever pickLang picks...
+	defer func(pick func() render.Lang) { pickLang = pick }(pickLang)
+	for lang, head := range map[render.Lang]string{render.English: en, render.German: de} {
+		pickLang = func() render.Lang { return lang }
+		if r := runCLI("--from-c", cFile); r.code != 0 || !strings.HasPrefix(r.stdout, head) {
+			t.Errorf("picked %d: %+v", lang, r)
+		}
+	}
+	// ...and pickLang picks either: 40 runs show both, unless chance is
+	// against it 1 time in 2^39.
+	pickLang = defaultPick
+	seen := map[string]bool{}
+	for range 40 {
+		r := runCLI("--from-c", cFile)
+		seen[r.stdout[:strings.Index(r.stdout, " ")]] = true
+	}
+	if !seen["This"] || !seen["Dieses"] || len(seen) != 2 {
+		t.Errorf("languages picked: %v", seen)
+	}
+	// One choice at most.
+	for _, flags := range [][]string{{"--english", "--german"}, {"--lang", "en", "--german"}, {"--lang", "de", "--english"}} {
+		if r := runCLI(append([]string{"--from-c", cFile}, flags...)...); r.code != 2 || !strings.Contains(r.stderr, "usage: sorted") {
+			t.Errorf("%v: %+v", flags, r)
 		}
 	}
 	// --dump and --to-c describe the compiled program as any Sorted!
