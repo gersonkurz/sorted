@@ -31,7 +31,8 @@ type parser struct {
 	scopes  []map[string]*Obj
 	globals map[string]*Obj
 	prog    *Program
-	loops   int // nesting depth of loops, for break and continue
+	loops   int       // nesting depth of loops, for break and continue
+	fn      *Function // the function being parsed, nil in main
 }
 
 func (ps *parser) tok() Token  { return ps.toks[ps.i] }
@@ -69,19 +70,30 @@ func (ps *parser) unsupported(p Pos, what string) {
 	ps.fail(p, "not supported in Sorted! (yet): %s", what)
 }
 
-// program = (declspec (function-definition | global-variable))*
+// program = ((declspec | "void") (function | global-variable))*
 func (ps *parser) program() *Program {
-	ps.prog = &Program{}
+	ps.prog = &Program{Funcs: map[string]*Function{}}
 	ps.globals = map[string]*Obj{}
 	for ps.tok().Kind != TkEOF {
-		char := ps.declspec()
+		void := ps.consume("void")
+		char := !void && ps.declspec()
 		d := ps.declarator()
 		if ps.equal("(") {
-			if char || d.array {
-				ps.fail(d.name.Pos, "main must return int")
+			if d.array {
+				ps.unsupported(d.name.Pos, "functions returning arrays")
 			}
-			ps.function(d.name)
+			if d.name.Text == "main" {
+				if char || void {
+					ps.fail(d.name.Pos, "main must return int")
+				}
+				ps.function(d.name)
+			} else {
+				ps.otherFunction(d.name, void, char)
+			}
 			continue
+		}
+		if void {
+			ps.fail(d.name.Pos, "a variable cannot be void")
 		}
 		ps.globalVariable(d, char)
 	}
@@ -146,11 +158,8 @@ func (ps *parser) declarator() decl {
 	return d
 }
 
-// function = "(" "void"? ")" "{" compound-stmt; only main.
+// function = "(" "void"? ")" "{" compound-stmt, for main.
 func (ps *parser) function(name Token) {
-	if name.Text != "main" {
-		ps.unsupported(name.Pos, "functions other than main")
-	}
 	if ps.prog.Main != nil {
 		ps.fail(name.Pos, "redefinition of main")
 	}
@@ -170,6 +179,89 @@ func (ps *parser) function(name Token) {
 	ps.prog.Main = ps.compoundStmt()
 }
 
+// otherFunction = "(" params ")" ("{" compound-stmt | ";")
+// params        = "void" | param ("," param)*
+// param         = declspec ident?   (names may be left out in a prototype)
+//
+// A prototype declares the function for calls before its definition; the
+// definition must agree with it.
+func (ps *parser) otherFunction(name Token, void, char bool) {
+	if _, dup := ps.globals[name.Text]; dup {
+		ps.fail(name.Pos, "redefinition of '%s' as a function", name.Text)
+	}
+	fn := &Function{Name: name.Text, Void: void, Char: char, Pos: name.Pos}
+	ps.skip("(")
+	if ps.equal("void") && ps.toks[ps.i+1].Text == ")" {
+		ps.next()
+	}
+	var names []Token
+	for !ps.equal(")") {
+		if len(fn.Params) > 0 {
+			ps.skip(",")
+		}
+		if ps.equal("void") {
+			ps.fail(ps.tok().Pos, "a parameter cannot be void")
+		}
+		pchar := ps.declspec()
+		if ps.equal("*") {
+			ps.unsupported(ps.tok().Pos, "pointers")
+		}
+		var pname Token
+		if ps.tok().Kind == TkIdent {
+			pname = ps.next()
+		}
+		if ps.equal("[") {
+			ps.unsupported(ps.tok().Pos, "array parameters (no pointers)")
+		}
+		fn.Params = append(fn.Params, &Obj{Name: pname.Text, Char: pchar, Pos: pname.Pos})
+		names = append(names, pname)
+	}
+	ps.skip(")")
+	prev, declared := ps.prog.Funcs[name.Text]
+	if declared {
+		if prev.Void != fn.Void || prev.Char != fn.Char || len(prev.Params) != len(fn.Params) {
+			ps.fail(name.Pos, "conflicting declarations of '%s'", name.Text)
+		}
+		for i := range fn.Params {
+			if prev.Params[i].Char != fn.Params[i].Char {
+				ps.fail(name.Pos, "conflicting declarations of '%s'", name.Text)
+			}
+		}
+	}
+	if ps.consume(";") {
+		if !declared {
+			ps.prog.Funcs[name.Text] = fn
+		}
+		return
+	}
+	if declared && prev.Defined {
+		ps.fail(name.Pos, "redefinition of '%s'", name.Text)
+	}
+	if !ps.equal("{") {
+		ps.fail(ps.tok().Pos, "expected the body of '%s'", name.Text)
+	}
+	scope := map[string]*Obj{}
+	for i, n := range names {
+		if n.Text == "" {
+			ps.fail(name.Pos, "parameter %d of '%s' has no name", i+1, name.Text)
+		}
+		if _, dup := scope[n.Text]; dup {
+			ps.fail(n.Pos, "redefinition of parameter '%s'", n.Text)
+		}
+		scope[n.Text] = fn.Params[i]
+	}
+	if declared { // calls parsed so far point at the prototype: complete it
+		prev.Params = fn.Params
+		fn = prev
+	}
+	fn.Defined = true
+	ps.prog.Funcs[name.Text] = fn
+	ps.next()
+	ps.fn = fn
+	fn.Body = ps.block(scope) // the parameters live in the body's own scope
+	ps.fn = nil
+}
+
 // newObj makes the variable a declarator declares.
 func (ps *parser) newObj(d decl, char, global bool) *Obj {
 	return &Obj{Name: d.name.Text, IsGlobal: global, Char: char, Len: d.len, Pos: d.name.Pos}
@@ -187,6 +279,9 @@ func (ps *parser) globalVariable(d decl, char bool) {
 		}
 		if name.Text == "main" && ps.prog.Main != nil {
 			ps.fail(name.Pos, "redefinition of 'main' as a variable")
+		}
+		if _, fn := ps.prog.Funcs[name.Text]; fn {
+			ps.fail(name.Pos, "redefinition of '%s' as a variable", name.Text)
 		}
 		v := ps.newObj(d, char, true)
 		if ps.consume("=") {
@@ -335,6 +430,9 @@ func (ps *parser) stmt() *Node {
 		ps.next()
 		n := &Node{Kind: NdReturn, Pos: t.Pos}
 		if !ps.equal(";") {
+			if ps.fn != nil && ps.fn.Void {
+				ps.fail(ps.tok().Pos, "a void function cannot return a value")
+			}
 			n.Lhs = ps.expr()
 		}
 		ps.skip(";")
@@ -406,9 +504,12 @@ func (ps *parser) loopBody() *Node {
 }
 
 // compound-stmt = (declaration | stmt)* "}"
-func (ps *parser) compoundStmt() *Node {
+func (ps *parser) compoundStmt() *Node { return ps.block(map[string]*Obj{}) }
+
+// block parses a compound statement whose declarations go into scope.
+func (ps *parser) block(scope map[string]*Obj) *Node {
 	n := &Node{Kind: NdBlock, Pos: ps.tok().Pos}
-	ps.scopes = append(ps.scopes, map[string]*Obj{})
+	ps.scopes = append(ps.scopes, scope)
 	for !ps.equal("}") {
 		if ps.tok().Kind == TkEOF {
 			ps.fail(ps.tok().Pos, "expected '}'")
@@ -698,19 +799,32 @@ func (ps *parser) primary() *Node {
 	return nil
 }
 
-// funcall = ident "(" assign ")"; putchar is the only function.
+// funcall = ident "(" (assign ("," assign)*)? ")"
+//
+// putchar is the only library function; any other must be declared
+// (defined, or a prototype) before it is called.
 func (ps *parser) funcall(name Token) *Node {
+	n := &Node{Kind: NdFuncall, Pos: name.Pos, Func: name.Text}
+	want := 1
 	if name.Text != "putchar" {
-		ps.unsupported(name.Pos, "calling '"+name.Text+"' (putchar is the only function)")
+		fn, ok := ps.prog.Funcs[name.Text]
+		if !ok {
+			if name.Text == "main" {
+				ps.unsupported(name.Pos, "calling main (recursion)")
+			}
+			ps.unsupported(name.Pos, "calling '"+name.Text+"' (putchar is the only library function, and other functions must be declared first)")
+		}
+		n.Fn, want = fn, len(fn.Params)
 	}
 	ps.skip("(")
-	n := &Node{Kind: NdFuncall, Pos: name.Pos, Func: name.Text}
-	if ps.equal(")") {
-		ps.fail(ps.tok().Pos, "putchar takes one argument")
+	for !ps.equal(")") {
+		if len(n.Args) > 0 {
+			ps.skip(",")
+		}
+		n.Args = append(n.Args, ps.assign())
 	}
-	n.Args = append(n.Args, ps.assign())
-	if !ps.equal(")") {
-		ps.fail(ps.tok().Pos, "putchar takes one argument")
+	if len(n.Args) != want {
+		ps.fail(ps.tok().Pos, "%s takes %d argument(s), not %d", name.Text, want, len(n.Args))
 	}
 	ps.next()
 	return n

@@ -45,6 +45,7 @@ package compile
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/gersonkurz/sorted/internal/cc"
 	"github.com/gersonkurz/sorted/internal/syntax"
@@ -155,6 +156,34 @@ type compiler struct {
 	labels  int
 	stmts   []stmt
 	loops   []*loop
+
+	ret   *returnTo                  // where return goes in the code being lowered
+	exit  int                        // label after everything, where main's return goes; -1 until needed
+	funcs map[*cc.Function]*function // the functions main reaches
+	order []*function                // the same, in the order their code is laid out
+}
+
+// returnTo says what a return does: store the value in rv (when the
+// function has one) and jump to label.
+type returnTo struct {
+	label int // -1 until needed (main only)
+	rv    val
+	hasRV bool
+	char  bool // the value wraps to char
+}
+
+// function is a function main reaches. Its code exists once. A call stores
+// the arguments in the parameter cells, the call site's number in ra, and
+// jumps to entry; a return jumps to the dispatch, a chain of jumps that
+// goes back to the call site whose number ra holds. A function called from
+// one place only needs neither ra nor the chain: it returns straight there.
+type function struct {
+	decl     *cc.Function
+	entry    int   // label of the first statement
+	dispatch int   // label returns jump to: the dispatch chain, or the one return label
+	ra, rv   val   // return-address cell (several call sites) and result cell
+	nsites   int   // call sites in reachable code
+	sites    []int // return label of each call site, by number
 }
 
 // Compile lowers a parsed C program into Sorted! tables.
@@ -173,6 +202,8 @@ func compileProgram(prog *cc.Program) (c *compiler, p *syntax.Program, err error
 		jumpIdx:   map[jump]int{},
 		addrIndex: map[int]int{},
 		reads:     map[*cc.Node]val{},
+		funcs:     map[*cc.Function]*function{},
+		exit:      -1,
 	}
 	for _, k := range []valKind{vSum, vDiff, vProd, vRatio, vCond} {
 		c.exprs[k] = &table{}
@@ -197,16 +228,29 @@ func compileProgram(prog *cc.Program) (c *compiler, p *syntax.Program, err error
 			}
 		}
 	}
-	exit := -1
+	c.functions(prog)
+
+	// main first; a final return just ends the program, unless functions
+	// follow, which main must jump over.
+	c.ret = &returnTo{label: -1}
 	for i, s := range prog.Main.Body {
-		if s.Kind == cc.NdReturn && i == len(prog.Main.Body)-1 {
-			c.effects(s.Lhs) // a final return just ends the program
+		if s.Kind == cc.NdReturn && i == len(prog.Main.Body)-1 && len(c.order) == 0 {
+			c.effects(s.Lhs)
 			continue
 		}
-		c.stmt(s, &exit)
+		c.stmt(s)
 	}
-	if exit >= 0 {
-		c.place(exit)
+	if len(c.order) > 0 {
+		c.jumpTo(c.exitLabel(), -1)
+	}
+	for _, f := range c.order {
+		c.functionBody(f)
+	}
+	for _, f := range c.order {
+		c.dispatch(f)
+	}
+	if c.exit >= 0 {
+		c.place(c.exit)
 	}
 	if len(c.stmts) == 0 {
 		c.place(c.newLabel()) // a program needs at least one statement
@@ -362,7 +406,13 @@ func (c *compiler) value(n *cc.Node) val {
 	case cc.NdAssign:
 		return c.assignment(n, true)
 	case cc.NdFuncall:
-		fail(n.Pos, "using the result of putchar is not supported yet")
+		if n.Fn == nil {
+			fail(n.Pos, "using the result of putchar is not supported yet")
+		}
+		if n.Fn.Void {
+			fail(n.Pos, "'%s' returns nothing (void)", n.Fn.Name)
+		}
+		return c.call(n)
 	case cc.NdNot:
 		return c.not(c.value(n.Lhs), n.Pos)
 	case cc.NdLogAnd, cc.NdLogOr:
@@ -380,7 +430,7 @@ func (c *compiler) value(n *cc.Node) val {
 		w.WrapChar = false
 		return c.wrapChar(c.value(&w), n.Pos)
 	}
-	a, b := c.value(n.Lhs), c.value(n.Rhs)
+	a, b := c.operands(n.Lhs, n.Rhs)
 	switch n.Kind {
 	case cc.NdAdd:
 		return c.expr(vSum, a, b, 0)
@@ -405,6 +455,47 @@ func (c *compiler) value(n *cc.Node) val {
 	return val{}
 }
 
+// operands lowers the two operands of a binary operator, left first. Values
+// are lazy, so when the right side calls a function, which may change the
+// cells the left value reads (and does in "(g = 65) + reset()"), the left
+// value is settled into a temporary before the call.
+func (c *compiler) operands(l, r *cc.Node) (val, val) {
+	a := c.value(l)
+	if hasCall(r) {
+		a = c.settle(a)
+	}
+	return a, c.value(r)
+}
+
+// settle returns v's current value in a temporary, or v if it is constant.
+func (c *compiler) settle(v val) val {
+	if _, ok := c.constValue(v); ok || v.kind == vAddr {
+		return v
+	}
+	t := c.temporary()
+	c.assign(t, v)
+	return t
+}
+
+// hasCall reports whether n calls a user function.
+func hasCall(n *cc.Node) bool {
+	if n == nil {
+		return false
+	}
+	if n.Kind == cc.NdFuncall && n.Fn != nil {
+		return true
+	}
+	if hasCall(n.Lhs) || hasCall(n.Rhs) {
+		return true
+	}
+	for _, a := range n.Args {
+		if hasCall(a) {
+			return true
+		}
+	}
+	return false
+}
+
 // temporary returns a fresh cell for an intermediate value.
 func (c *compiler) temporary() val {
 	return val{vVar, c.cells(1, cc.Pos{Line: 1, Col: 1})}
@@ -416,11 +507,11 @@ func (c *compiler) temporary() val {
 func (c *compiler) cond(n *cc.Node, sense bool) val {
 	switch {
 	case n.Kind == cc.NdEq && sense, n.Kind == cc.NdNe && !sense:
-		return c.eq(c.value(n.Lhs), c.value(n.Rhs))
+		return c.eq(c.operands(n.Lhs, n.Rhs))
 	case n.Kind == cc.NdLt && sense:
-		return c.lt(c.value(n.Lhs), c.value(n.Rhs))
+		return c.lt(c.operands(n.Lhs, n.Rhs))
 	case n.Kind == cc.NdLe && !sense:
-		a, b := c.value(n.Lhs), c.value(n.Rhs)
+		a, b := c.operands(n.Lhs, n.Rhs)
 		return c.lt(b, a)
 	case sense:
 		return c.not(c.not(c.value(n), n.Pos), n.Pos)
@@ -548,6 +639,10 @@ func (c *compiler) effects(n *cc.Node) {
 	}
 	switch n.Kind {
 	case cc.NdFuncall:
+		if n.Fn != nil {
+			c.call(n)
+			return
+		}
 		v := c.value(n.Args[0])
 		if c.out < 0 {
 			c.out = c.cells(1, n.Pos)
@@ -573,32 +668,28 @@ func (c *compiler) effects(n *cc.Node) {
 	}
 }
 
-func (c *compiler) stmt(n *cc.Node, exit *int) {
+func (c *compiler) stmt(n *cc.Node) {
 	switch n.Kind {
 	case cc.NdBlock:
 		for _, s := range n.Body {
-			c.stmt(s, exit)
+			c.stmt(s)
 		}
 	case cc.NdExprStmt:
 		c.effects(n.Lhs)
 	case cc.NdReturn:
-		c.effects(n.Lhs)
-		if *exit < 0 {
-			*exit = c.newLabel()
-		}
-		c.jumpTo(*exit, -1)
+		c.returning(n)
 	case cc.NdIf:
 		end := c.newLabel()
 		if n.Els == nil {
 			c.jumpIfFalse(n.Cond, end)
-			c.stmt(n.Then, exit)
+			c.stmt(n.Then)
 		} else {
 			els := c.newLabel()
 			c.jumpIfFalse(n.Cond, els)
-			c.stmt(n.Then, exit)
+			c.stmt(n.Then)
 			c.jumpTo(end, -1)
 			c.place(els)
-			c.stmt(n.Els, exit)
+			c.stmt(n.Els)
 		}
 		c.place(end)
 	case cc.NdWhile:
@@ -606,18 +697,18 @@ func (c *compiler) stmt(n *cc.Node, exit *int) {
 		l := &loop{brk: -1, cont: top}
 		c.place(top)
 		c.jumpIfFalse(n.Cond, c.breakLabel(l))
-		c.body(l, n.Then, exit)
+		c.body(l, n.Then)
 		c.jumpTo(top, -1)
 		c.place(l.brk)
 	case cc.NdFor:
-		c.stmt(n.Init, exit)
+		c.stmt(n.Init)
 		top := c.newLabel()
 		l := &loop{brk: -1, cont: -1}
 		c.place(top)
 		if n.Cond != nil {
 			c.jumpIfFalse(n.Cond, c.breakLabel(l))
 		}
-		c.body(l, n.Then, exit)
+		c.body(l, n.Then)
 		if l.cont >= 0 {
 			c.place(l.cont)
 		}
@@ -639,10 +730,159 @@ func (c *compiler) stmt(n *cc.Node, exit *int) {
 	}
 }
 
+// --- functions ---
+
+// functions finds the functions main reaches, in the order of first call,
+// counts their call sites, rejects recursion, and gives each its labels and
+// cells.
+func (c *compiler) functions(prog *cc.Program) {
+	onStack := map[*cc.Function]bool{}
+	var visit func(body *cc.Node)
+	visit = func(body *cc.Node) {
+		walk(body, func(call *cc.Node) {
+			fn := call.Fn
+			if !fn.Defined {
+				fail(call.Pos, "'%s' is declared but never defined", fn.Name)
+			}
+			if onStack[fn] {
+				fail(call.Pos, "recursion is not supported yet ('%s' calls itself, directly or indirectly)", fn.Name)
+			}
+			f, seen := c.funcs[fn]
+			if !seen {
+				f = &function{decl: fn}
+				c.funcs[fn] = f
+				c.order = append(c.order, f)
+				onStack[fn] = true
+				visit(fn.Body)
+				onStack[fn] = false
+			}
+			f.nsites++
+		})
+	}
+	visit(prog.Main)
+	for _, f := range c.order {
+		f.entry, f.dispatch = c.newLabel(), c.newLabel()
+		if f.nsites > 1 {
+			f.ra = c.temporary()
+		}
+		if !f.decl.Void {
+			f.rv = c.temporary()
+		}
+	}
+}
+
+// walk calls visit for every call of a user function in n, in source order.
+func walk(n *cc.Node, visit func(*cc.Node)) {
+	if n == nil {
+		return
+	}
+	for _, m := range []*cc.Node{n.Lhs, n.Rhs, n.Cond, n.Then, n.Els, n.Init, n.Inc} {
+		walk(m, visit)
+	}
+	for _, m := range n.Body {
+		walk(m, visit)
+	}
+	for _, m := range n.Args {
+		walk(m, visit)
+	}
+	if n.Kind == cc.NdFuncall && n.Fn != nil {
+		visit(n)
+	}
+}
+
+// call lowers a call of a user function and returns its result (a copy, so
+// that a later call cannot overwrite it before it is used). The arguments
+// are evaluated first, all of them, since one may call the same function;
+// each is settled when a later one calls a function (see operands).
+func (c *compiler) call(n *cc.Node) val {
+	f := c.funcs[n.Fn]
+	args := make([]val, len(n.Args))
+	for i, a := range n.Args {
+		args[i] = c.value(a)
+		if slices.ContainsFunc(n.Args[i+1:], hasCall) {
+			args[i] = c.settle(args[i])
+		}
+	}
+	for i, p := range n.Fn.Params {
+		v := args[i]
+		if p.Char {
+			v = c.wrapChar(v, n.Pos)
+		}
+		c.assign(c.variable(p), v)
+	}
+	ret := f.dispatch // the only call site returns straight here
+	if f.nsites > 1 {
+		ret = c.newLabel()
+		c.assign(f.ra, c.number(int32(len(f.sites)), n.Pos))
+	}
+	f.sites = append(f.sites, ret)
+	c.jumpTo(f.entry, -1)
+	c.place(ret)
+	if n.Fn.Void {
+		return val{}
+	}
+	t := c.temporary()
+	c.assign(t, f.rv)
+	return t
+}
+
+// functionBody lays out a function's code: its entry label, its body, and a
+// return for falling off the end.
+func (c *compiler) functionBody(f *function) {
+	c.ret = &returnTo{label: f.dispatch, rv: f.rv, hasRV: !f.decl.Void, char: f.decl.Char}
+	c.place(f.entry)
+	c.stmt(f.decl.Body)
+	if b := f.decl.Body.Body; len(b) == 0 || b[len(b)-1].Kind != cc.NdReturn {
+		c.jumpTo(f.dispatch, -1)
+	}
+}
+
+// dispatch lays out the chain that sends a return back to its call site:
+// "go to return label k if ra is k", the last one unconditionally.
+func (c *compiler) dispatch(f *function) {
+	if f.nsites < 2 {
+		return
+	}
+	c.place(f.dispatch)
+	last := len(f.sites) - 1
+	for k, label := range f.sites[:last] {
+		c.jumpTo(label, c.eq(f.ra, c.number(int32(k), f.decl.Pos)).i)
+	}
+	c.jumpTo(f.sites[last], -1)
+}
+
+// returning lowers return: the value, if the function has one, goes to its
+// result cell; then jump to where returns go.
+func (c *compiler) returning(n *cc.Node) {
+	r := c.ret
+	if r.hasRV && n.Lhs != nil {
+		v := c.value(n.Lhs)
+		if r.char {
+			v = c.wrapChar(v, n.Pos)
+		}
+		c.assign(r.rv, v)
+	} else {
+		c.effects(n.Lhs)
+	}
+	label := r.label
+	if label < 0 {
+		label = c.exitLabel()
+	}
+	c.jumpTo(label, -1)
+}
+
+// exitLabel returns the label after all code, where main's return goes.
+func (c *compiler) exitLabel() int {
+	if c.exit < 0 {
+		c.exit = c.newLabel()
+	}
+	return c.exit
+}
+
 // body lowers a loop body with l as the innermost loop.
-func (c *compiler) body(l *loop, n *cc.Node, exit *int) {
+func (c *compiler) body(l *loop, n *cc.Node) {
 	c.loops = append(c.loops, l)
-	c.stmt(n, exit)
+	c.stmt(n)
 	c.loops = c.loops[:len(c.loops)-1]
 }
 

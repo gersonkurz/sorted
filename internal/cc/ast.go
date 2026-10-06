@@ -25,7 +25,8 @@
 // and character constants, a[i], + - * / % and unary -, =, the compound
 // assignments += -= *= /= %=, ++ and -- (prefix and postfix), == != < <= >
 // >=, && || !, if/else, while, for, break, continue, return, blocks, and
-// putchar(expr). As in chibicc, x op= e is x = x op e, ++x is x = x + 1 and
+// putchar(expr), and functions with int and char parameters returning int,
+// char or void (prototypes included), called by name. As in chibicc, x op= e is x = x op e, ++x is x = x + 1 and
 // x++ is (x = x + 1) - 1; in the subset x is always a plain variable, so
 // evaluating it twice is harmless.
 package cc
@@ -87,8 +88,9 @@ type Node struct {
 
 	Body []*Node // block
 
-	Func string  // called function (putchar)
-	Args []*Node // call arguments
+	Func string    // called function
+	Fn   *Function // the function called, nil for putchar
+	Args []*Node   // call arguments
 
 	Var *Obj  // NdVar, NdIndex (the array; Lhs is the index)
 	Val int32 // NdNum
@@ -103,10 +105,23 @@ type Node struct {
 	WrapChar bool
 }
 
+// Function is a function other than main. Its parameters and locals are
+// plain cells: without recursion, each call has the function to itself.
+type Function struct {
+	Name    string
+	Params  []*Obj
+	Void    bool // returns nothing
+	Char    bool // returns char (the result wraps to -128..127)
+	Body    *Node
+	Defined bool // false for a prototype not (yet) followed by a definition
+	Pos     Pos
+}
+
 // Program is a parsed translation unit.
 type Program struct {
 	Globals []*Obj
-	Main    *Node // the body of main, a block
+	Main    *Node                // the body of main, a block
+	Funcs   map[string]*Function // the other functions, by name
 }
 
 // Pos is a position in the source, 1-based.

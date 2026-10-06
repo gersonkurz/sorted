@@ -46,7 +46,11 @@ func sexpr(n *Node) string {
 	case NdExprStmt:
 		return sexpr(n.Lhs)
 	case NdFuncall:
-		return "(" + n.Func + " " + sexpr(n.Args[0]) + ")"
+		parts := []string{n.Func}
+		for _, a := range n.Args {
+			parts = append(parts, sexpr(a))
+		}
+		return "(" + strings.Join(parts, " ") + ")"
 	case NdBlock:
 		parts := []string{"{"}
 		for _, b := range n.Body {
@@ -200,15 +204,33 @@ func TestErrors(t *testing.T) {
 		{"int main() { int a[3]; 3[a] = 1; }", "1:25: subscripted value is not an array"},
 		{"char main() {}", "1:6: main must return int"},
 		{"int main() { putchar(\"abc); }", "1:22: unclosed string literal"},
-		{"int f() { } int main() {}", "1:5: not supported in Sorted! (yet): functions other than main"},
+		{"int f(int a, int a) { } int main() {}", "1:18: redefinition of parameter 'a'"},
+		{"int f(int x) { int x = 65; return x; } int main() {}", "1:20: redefinition of 'x'"},
+		{"int f(int) { } int main() {}", "1:5: parameter 1 of 'f' has no name"},
+		{"int f(void x) { } int main() {}", "1:7: a parameter cannot be void"},
+		{"int f(int a[]) { } int main() {}", "1:12: not supported in Sorted! (yet): array parameters (no pointers)"},
+		{"int f(int *p) { } int main() {}", "1:11: not supported in Sorted! (yet): pointers"},
+		{"int f(int a); char f(int a) { } int main() {}", "1:20: conflicting declarations of 'f'"},
+		{"int f(int a); int f(char a) { } int main() {}", "1:19: conflicting declarations of 'f'"},
+		{"int f(int a); int f(int a, int b); int main() {}", "1:19: conflicting declarations of 'f'"},
+		{"int f() { } int f() { } int main() {}", "1:17: redefinition of 'f'"},
+		{"int f() int main() {}", "1:9: expected the body of 'f'"},
+		{"int g; int g() { } int main() {}", "1:12: redefinition of 'g' as a function"},
+		{"int g() { } int g; int main() {}", "1:17: redefinition of 'g' as a variable"},
+		{"void v; int main() {}", "1:6: a variable cannot be void"},
+		{"int a[2](); int main() {}", "1:5: not supported in Sorted! (yet): functions returning arrays"},
+		{"void f() { return 1; } int main() {}", "1:19: a void function cannot return a value"},
+		{"int f(int a) { } int main() { f(); }", "1:33: f takes 1 argument(s), not 0"},
+		{"int main() { g(); } int g() { }", "1:14: not supported in Sorted! (yet): calling 'g' (putchar is the only library function, and other functions must be declared first)"},
+		{"int main() { main(); }", "1:14: not supported in Sorted! (yet): calling main (recursion)"},
 		{"int main(int argc) {}", "1:10: not supported in Sorted! (yet): parameters of main"},
-		{"int main() { printf(1); }", "1:14: not supported in Sorted! (yet): calling 'printf' (putchar is the only function)"},
+		{"int main() { printf(1); }", "1:14: not supported in Sorted! (yet): calling 'printf' (putchar is the only library function, and other functions must be declared first)"},
 		{"int main() { putchar(\"a\"); }", "1:22: not supported in Sorted! (yet): string literals outside char array initializers"},
 		{"#include <stdlib.h>\nint main() {}", "1:1: not supported in Sorted! (yet): the preprocessor (except #include <stdio.h>)"},
 		{"#define N 3\nint main() {}", "1:1: not supported in Sorted! (yet): the preprocessor (except #include <stdio.h>)"},
 		{"int main() { int x = 65; #include <stdio.h>\nputchar(x); }", "1:26: stray '#' (a preprocessing line must start with it)"},
 		{"int main() { int a = sizeof(a); }", "1:22: not supported in Sorted! (yet): 'sizeof'"},
-		{"int main() { putchar(1, 2); }", "1:23: putchar takes one argument"},
+		{"int main() { putchar(1, 2); }", "1:26: putchar takes 1 argument(s), not 2"},
 		{"int main() { x = 1; }", "1:14: undefined variable 'x'"},
 		{"int main() { int a; int a; }", "1:25: redefinition of 'a'"},
 		{"int main() { 1 = 2; }", "1:16: the left side of '=' must be a variable"},
@@ -240,7 +262,7 @@ func TestErrors(t *testing.T) {
 		{"int g int main() {}", "1:7: expected ','"},
 		{"int g = h; int main() {}", "1:9: not supported in Sorted! (yet): global initializers other than integer constants"},
 		{"int 5; int main() {}", "1:5: expected a variable name"},
-		{"int main() { putchar(); }", "1:22: putchar takes one argument"},
+		{"int main() { putchar(); }", "1:22: putchar takes 1 argument(s), not 0"},
 		{"int main() { int a; a = ); }", "1:25: expected an expression"},
 		{"int main() { int a; a = while; }", "1:25: not supported in Sorted! (yet): 'while'"},
 	}
@@ -277,5 +299,35 @@ func TestEscapes(t *testing.T) {
 	toks, err := Tokenize(`"\1012"`)
 	if err != nil || string(toks[0].Str) != "A2" {
 		t.Errorf(`"\1012": %v, %q`, err, toks[0].Str)
+	}
+}
+
+func TestFunctions(t *testing.T) {
+	p, err := Parse(`int add(int a, int b);
+char up(char c) { return c - 32; }
+void say(void) { putchar(up('a')); }
+int main() { say(); putchar(add(1, 2)); }
+int add(int x, int y) { return x + y; }`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	add, up, say := p.Funcs["add"], p.Funcs["up"], p.Funcs["say"]
+	if !add.Defined || len(add.Params) != 2 || add.Params[0].Name != "x" || add.Void || add.Char {
+		t.Errorf("add: %+v", add)
+	}
+	if !up.Char || len(up.Params) != 1 || !up.Params[0].Char || sexpr(up.Body) != "{ (return (- c 32))}" {
+		t.Errorf("up: %+v, %s", up, sexpr(up.Body))
+	}
+	if !say.Void || len(say.Params) != 0 {
+		t.Errorf("say: %+v", say)
+	}
+	// The call in main, parsed before the definition, points at the
+	// completed declaration, whose parameters are the definition's.
+	call := p.Main.Body[1].Lhs.Args[0]
+	if call.Fn != add || sexpr(p.Main) != "{ (say) (putchar (add 1 2))}" {
+		t.Errorf("main: %s, fn %p want %p", sexpr(p.Main), call.Fn, add)
+	}
+	if sexpr(add.Body) != "{ (return (+ x y))}" {
+		t.Errorf("add body: %s", sexpr(add.Body))
 	}
 }

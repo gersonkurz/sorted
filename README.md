@@ -191,10 +191,11 @@ sorted --from-c fizzbuzz.c --lang de > fizzbuzz-de.s
 sorted fizzbuzz.s
 ```
 
-**What works today.** A growing subset of C: a single `main`, `int` and `char`
-variables and one-dimensional arrays of them (globals with constant
-initializers, locals in nested blocks, `{...}` lists and string literals for
-arrays), integer constants up to 999999999 and character constants (`'a'`,
+**What works today.** A growing subset of C: functions with `int` and `char`
+parameters returning `int`, `char` or `void` (prototypes included, recursion
+not yet), `int` and `char` variables and one-dimensional arrays of them
+(globals with constant initializers, locals in nested blocks, `{...}` lists
+and string literals for arrays), integer constants up to 999999999 and character constants (`'a'`,
 `'\n'`, `'\x41'`), `a[i]`, `+ - * / %`, comparisons, `&&`, `||` and `!`
 (short-circuiting, as in C), assignment including `+=` and friends, `++` and
 `--`, `if`/`else`, `while`, `for`, `break`, `continue`, `return`, and
@@ -211,7 +212,11 @@ products and ratios, comparisons become conditions, and `if` and `while`
 become labels and jumps. Arrays are runs of cells, reached through pointer
 cells: for the same pointer, "the cell indexed by" reads the cell before the
 one it writes, the same off-by-one that makes `itoa.s` print a NUL, so the
-compiler keeps one pointer for reading and one for writing. Every program the compiler writes is parsed back to
+compiler keeps one pointer for reading and one for writing. Sorted! has no
+call stack, so each function exists once: a call stores its arguments in the
+parameter cells and its own number in a return-address cell, and a return
+jumps through a chain of "go to the call site if the return address is ..."
+back to where it came from. Every program the compiler writes is parsed back to
 make sure it is the same program, and the tests check that it prints exactly
 what the C program prints when compiled with clang.
 
@@ -223,8 +228,8 @@ written back: a declaration may add up its parts to a number from 1000000000
 on ("ninehundredmillion onehundredmillion"), and the current renderer cannot
 spell such values.
 
-**What is coming** (issues #15 to #17): functions, then recursion, then the
-round trip back to C. Some limits are part of the deal. There
+**What is coming** (issues #16 and #17): recursion and bitwise operators, then
+the round trip back to C. Some limits are part of the deal. There
 are no library calls, `putchar` being the only one. There is no `malloc`, just
 one big block of memory. And there is no input, because Sorted! cannot read.
 Round trip a program through C → Sorted! → C, and you get C obfuscation for

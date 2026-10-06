@@ -194,6 +194,78 @@ int main() {
 
 	"nothing": `int main() { }`,
 
+	"functions": `#include <stdio.h>
+void printNum(int n);
+int calls = 0;
+int add(int a, int b) { calls++; return a + b; }
+int square(int x) { return x * x; }
+int gcd(int a, int b) { while (b != 0) { int t = b; b = a % b; a = t; } return a; }
+int isPrime(int n) {
+	if (n < 2) return 0;
+	for (int d = 2; d * d <= n; d++) if (n % d == 0) return 0;
+	return 1;
+}
+char narrow(int v) { return v; }
+int asChar(char c) { return c; }
+void shout(char c) { putchar(c); putchar(c); putchar('\n'); }
+void nothing(void) { return; }
+int main() {
+	printNum(add(2, 3));
+	printNum(square(add(1, 2)));
+	printNum(add(add(1, 2), add(5, 4)));
+	printNum(square(3) + square(4));
+	printNum(gcd(1071, 462));
+	for (int i = 0; i < 20; i++) if (isPrime(i)) printNum(i);
+	printNum(narrow(200));
+	printNum(asChar(200) * 1000 + asChar(-129));
+	shout(321);
+	nothing();
+	printNum(calls);
+	return 0;
+}
+void printNum(int n) {
+	if (n < 0) { putchar('-'); n = -n; }
+	int p = 1;
+	while (p <= n / 10) p *= 10;
+	while (p > 0) { putchar('0' + n / p % 10); p /= 10; }
+	putchar('\n');
+}`,
+
+	"single call": `#include <stdio.h>
+int twice(int x) { return x + x; }
+void line(void) { putchar('-'); putchar('\n'); }
+int main() { putchar('A' + twice(3)); line(); }`,
+
+	"functions calling functions": `#include <stdio.h>
+void digit(int d) { putchar('0' + d); }
+void number(int n) { if (n >= 10) digit(n / 10); digit(n % 10); }
+void pair(int a, int b) { number(a); putchar(','); number(b); putchar('\n'); }
+int fib(int n) { int a = 0, b = 1; while (n-- > 0) { int t = a + b; a = b; b = t; } return a; }
+int main() {
+	for (int i = 0; i < 12; i++) pair(i, fib(i));
+	int s = 0;
+	for (int i = 0; i < 5; i++) s += fib(i) * fib(i + 1);
+	pair(s, fib(10) - fib(9));
+}`,
+
+	"values across calls": `#include <stdio.h>
+int g;
+int reset(void) { g = 66; return 0; }
+int first(int a, int b) { return a; }
+int second(int a, int b) { return b; }
+int shadow(int x) { { int x = 7; g = x; } return x; }
+int main() {
+	putchar(first(g = 65, reset()));
+	putchar((g = 65) + reset());
+	putchar(second(reset(), g = 67));
+	if ((g = 65) != reset() + 65) putchar('N'); else putchar('Y');
+	if ((g = 65) <= reset() + 65) putchar('Y'); else putchar('N');
+	if ((g = 65) < reset() + 66 || g == 0) putchar('Y'); else putchar('N');
+	int s = shadow(80);
+	putchar(s + g);
+	putchar('\n');
+}`,
+
 	"strings": `#include <stdio.h>
 char greeting[] = "Hello, " "World!\n";
 int main() {
@@ -489,6 +561,11 @@ func TestErrors(t *testing.T) {
 		{`int g = -1000000000; int main() { }`, "1:5: constants above 999999999 are not supported yet (1000000000)"},
 		{`int main() { int a = -999999999; putchar(a); }`, ""},
 		{`int main() { int a = putchar(65); }`, "1:22: using the result of putchar is not supported yet"},
+		{`int f(int n) { return f(n); } int main() { f(1); }`, "1:23: recursion is not supported yet ('f' calls itself, directly or indirectly)"},
+		{`int g(int n); int f(int n) { return g(n); } int g(int n) { return f(n); } int main() { f(1); }`, "1:67: recursion is not supported yet ('f' calls itself, directly or indirectly)"},
+		{`int f(int n); int main() { f(1); }`, "1:28: 'f' is declared but never defined"},
+		{`void f(void) { } int main() { int a = f(); }`, "1:39: 'f' returns nothing (void)"},
+		{`int f(int n) { return f(n); } int main() { }`, ""},
 		{`int a[3]; int main() { a[3] = 1; }`, "1:26: index 3 is out of range for 'a' (3 elements)"},
 		{`int a[3]; int main() { putchar(a[-1]); }`, "1:34: index -1 is out of range for 'a' (3 elements)"},
 	}
