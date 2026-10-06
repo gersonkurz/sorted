@@ -70,13 +70,15 @@ just package    # macOS/Linux: release archives for all platforms in out/dist
 
 ```
 sorted [--dump FILE] [--to-c FILE] [--lang en|de] [--version] PROGRAM.s
+sorted --from-c PROGRAM.c [--lang en|de] [--dump FILE] [--to-c FILE]
 ```
 
 `sorted` parses and runs the program. `--dump` writes the parsed tables and
 `--to-c` a translation into C, the original's `/D` and `/C` options; both are
 written before the program runs. `--lang en` or `--lang de` prints the program
 in English or German instead of running it, so `sorted --lang de hello.s` sings
-Hello World in German.
+Hello World in German. `--from-c` compiles a C program into Sorted! instead
+(see "Young Adult Romance" below).
 
 What the program prints, and the original's diagnostics, go to stdout exactly
 as the original printed them:
@@ -180,30 +182,46 @@ simple, documented result instead: here, a run-time error.
 
 Sorted! and C have been seeing each other since 2000: the original could
 already turn any Sorted! program into C (`--to-c`). Now the relationship is
-getting serious in the other direction. A compiler from C to Sorted! is under
-way, in the same binary.
-
-**What works today.** The second half of that compiler: `--lang en` or
-`--lang de` writes a program back out as Sorted! text, so translating between
-English and German comes free. Every text it writes is parsed back to make sure
-it is the same program, and it only uses forms the 2000 parser knows, so
-whatever it writes also runs on the original `Sorted.exe`. A few programs that
-run fine cannot be written back: a declaration may add up its parts to a
-number from 1000000000 on ("ninehundredmillion onehundredmillion"), and the
-current renderer cannot spell such values.
-
-**What is coming** (issues #13 to #17):
+getting serious in the other direction: the same binary now compiles C into
+Sorted!.
 
 ```
-sorted --from-c prog.c [--lang de] > prog.s
+sorted --from-c fizzbuzz.c > fizzbuzz.s
+sorted --from-c fizzbuzz.c --lang de > fizzbuzz-de.s
+sorted fizzbuzz.s
 ```
 
-It starts with a small subset of C (`main`, `int` variables, arithmetic,
-`if`, `while`, `putchar`) and grows: arrays and strings, functions, then
-recursion. Some limits are part of the deal. There are no library calls,
-`putchar` being the only one. There is no `malloc`, just one big block of
-memory. And there is no input, because Sorted! cannot read. Round trip a
-program through C → Sorted! → C, and you get C obfuscation for free.
+**What works today.** A small subset of C: a single `main`, `int` variables
+(globals with constant initializers, and locals in nested blocks), integer
+constants up to 999999999, `+ - * / %`, comparisons, assignment, `if`/`else`,
+`while`, `return`, and `putchar`. `#include <stdio.h>` is allowed, so the same
+file compiles with a C compiler too; anything else gets a precise "not
+supported in Sorted! (yet)" with its line and column. The front end is a Go
+port of [chibicc](https://github.com/rui314/chibicc), Rui Ueyama's small C
+compiler (MIT license).
+
+Constants become the declared numbers, each declared once, which turns "thou
+shalt not have the same cardinal more than once" into constant pooling.
+Variables live in the cells after them, arithmetic becomes sums, differences,
+products and ratios, comparisons become conditions, and `if` and `while`
+become labels and jumps. Every program the compiler writes is parsed back to
+make sure it is the same program, and the tests check that it prints exactly
+what the C program prints when compiled with clang.
+
+`--lang en` or `--lang de` also writes an existing Sorted! program back out, so
+translating between English and German comes free. Everything the compiler
+and the translator write uses only forms the 2000 parser knows, so it also
+runs on the original `Sorted.exe`. A few programs that run fine cannot be
+written back: a declaration may add up its parts to a number from 1000000000
+on ("ninehundredmillion onehundredmillion"), and the current renderer cannot
+spell such values.
+
+**What is coming** (issues #14 to #17): arrays and strings, `for`, `&&` and
+`||`, then functions, then recursion. Some limits are part of the deal. There
+are no library calls, `putchar` being the only one. There is no `malloc`, just
+one big block of memory. And there is no input, because Sorted! cannot read.
+Round trip a program through C → Sorted! → C, and you get C obfuscation for
+free.
 
 ### Known kinks
 
@@ -250,8 +268,9 @@ just run legacy/sorted.win32/fibo.s
 The packages follow the original's pipeline: `internal/syntax` (source filter
 and parser), `internal/numbers` (number words), `internal/interp`
 (interpreter), `internal/emit` (`/D` and `/C` output), `internal/render`
-(programs back to Sorted! text), and the command in
-`cmd/sorted`.
+(programs back to Sorted! text), and the command in `cmd/sorted`. The C
+compiler adds `internal/cc` (the chibicc-derived front end) and
+`internal/compile` (lowering C to Sorted! tables).
 
 ## License
 

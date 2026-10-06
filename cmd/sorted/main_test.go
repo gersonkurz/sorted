@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -167,5 +168,90 @@ func TestLang(t *testing.T) {
 	}
 	if r := runCLI("--lang", "fr", "hello.s"); r.code != 2 || !strings.Contains(r.stderr, "usage: sorted") {
 		t.Errorf("unknown language: %+v", r)
+	}
+}
+
+// --from-c compiles C into Sorted! and prints it; the printed program runs.
+func TestFromC(t *testing.T) {
+	dir := t.TempDir()
+	cFile := filepath.Join(dir, "hi.c")
+	src := "#include <stdio.h>\nint main() { int i = 0; while (i < 3) { putchar(72 + i); i = i + 1; } putchar(10); }\n"
+	if err := os.WriteFile(cFile, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for lang, head := range map[string]string{"": "This code uses the numbers", "de": "Dieses Programm benutzt die Zahlen"} {
+		args := []string{"--from-c", cFile}
+		if lang != "" {
+			args = append(args, "--lang", lang)
+		}
+		r := runCLI(args...)
+		if r.code != 0 || r.stderr != "" || !strings.HasPrefix(r.stdout, head) {
+			t.Fatalf("lang %q: %+v", lang, r)
+		}
+		if run := runCLI(writeProgram(t, r.stdout)); run.code != 0 || run.stdout != "HIJ\n" {
+			t.Errorf("lang %q: running the compiled program: %+v", lang, run)
+		}
+	}
+	// --dump and --to-c describe the compiled program as any Sorted!
+	// interpreter sees it: the same as loading the printed program.
+	r := runCLI("--from-c", cFile, "--dump", filepath.Join(dir, "a.dump"), "--to-c", filepath.Join(dir, "a.c"))
+	if r.code != 0 {
+		t.Fatalf("%+v", r)
+	}
+	if r := runCLI("--dump", filepath.Join(dir, "b.dump"), "--to-c", filepath.Join(dir, "b.c"), writeProgram(t, r.stdout)); r.code != 0 {
+		t.Fatalf("%+v", r)
+	}
+	for _, pair := range [][2]string{{"a.dump", "b.dump"}, {"a.c", "b.c"}} {
+		a, errA := os.ReadFile(filepath.Join(dir, pair[0]))
+		b, errB := os.ReadFile(filepath.Join(dir, pair[1]))
+		if errA != nil || errB != nil || len(a) == 0 || string(a) != string(b) {
+			t.Errorf("%s and %s differ (%v, %v):\n%s\n---\n%s", pair[0], pair[1], errA, errB, a, b)
+		}
+	}
+}
+
+// failingWriter fails every write, like a full disk behind a redirect.
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("disk full") }
+
+// A program that cannot be printed is a failure, not a truncated success.
+func TestPrintFailure(t *testing.T) {
+	cFile := filepath.Join(t.TempDir(), "x.c")
+	if err := os.WriteFile(cFile, []byte("int main() { putchar(65); }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for name, args := range map[string][]string{
+		"--from-c": {"--from-c", cFile},
+		"--lang":   {"--lang", "de", filepath.Join("..", "..", "legacy", "sorted.win32", "hello.s")},
+	} {
+		var stderr bytes.Buffer
+		if code := run(args, strings.NewReader(""), failingWriter{}, &stderr); code != 1 || stderr.String() != "sorted: disk full\n" {
+			t.Errorf("%s: exit %d, stderr %q", name, code, stderr.String())
+		}
+	}
+}
+
+func TestFromCErrors(t *testing.T) {
+	dir := t.TempDir()
+	bad := filepath.Join(dir, "bad.c")
+	if err := os.WriteFile(bad, []byte("int main() {\n  int a;\n  a += 1;\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if r := runCLI("--from-c", bad); r.code != 1 || r.stdout != "" || r.stderr != "sorted: "+bad+":3:5: not supported in Sorted! (yet): +=\n" {
+		t.Errorf("syntax: %+v", r)
+	}
+	big := filepath.Join(dir, "big.c")
+	if err := os.WriteFile(big, []byte("int main() { putchar(1000000000); }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if r := runCLI("--from-c", big); r.code != 1 || !strings.Contains(r.stderr, big+":1:22: constants above 999999999") {
+		t.Errorf("lowering: %+v", r)
+	}
+	if r := runCLI("--from-c", filepath.Join(dir, "nothere.c")); r.code != 1 || !strings.HasPrefix(r.stderr, "sorted: ") {
+		t.Errorf("missing file: %+v", r)
+	}
+	if r := runCLI("--from-c", bad, "extra.s"); r.code != 2 || !strings.Contains(r.stderr, "sorted --from-c PROGRAM.c") {
+		t.Errorf("extra argument: %+v", r)
 	}
 }
