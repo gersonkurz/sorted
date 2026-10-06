@@ -12,19 +12,19 @@
 // Differences from chibicc: errors are returned instead of ending the
 // process; constructs outside the subset are rejected with a message saying
 // so; % is added, as are comments, hexadecimal and octal literals and block
-// scopes; putchar is the only function a program can call, and main the only
-// function it can define. With int as the only type, there is no type pass
-// yet.
+// scopes; putchar is the only library function. With int and char as the
+// only types, there is no type pass yet.
 //
-// #include <stdio.h> is the one preprocessor line it accepts (and ignores), so
-// that a program for Sorted! is also a C program that declares putchar.
+// A small preprocessor (Preprocess) runs #define and #undef and accepts
+// #include <stdio.h>, so that a program for Sorted! is also a C program that
+// declares putchar.
 //
 // The subset: int and char variables and one-dimensional arrays of them,
-// global (with constant initializers) and local (initializers are
+// global (with constant expressions as initializers) and local (initializers are
 // assignments, with {...} lists and string literals for arrays), integer
 // and character constants, a[i], + - * / % and unary -, =, the compound
-// assignments += -= *= /= %=, ++ and -- (prefix and postfix), == != < <= >
-// >=, && || !, if/else, while, for, break, continue, return, blocks, and
+// assignments += -= *= /= %= &= |= ^= <<= >>=, ++ and -- (prefix and
+// postfix), == != < <= > >=, && || !, & | ^ ~ << >>, if/else, while, for, break, continue, return, blocks, and
 // putchar(expr), and functions with int and char parameters returning int,
 // char or void (prototypes included), called by name. As in chibicc, x op= e is x = x op e, ++x is x = x + 1 and
 // x++ is (x = x + 1) - 1; in the subset x is always a plain variable, so

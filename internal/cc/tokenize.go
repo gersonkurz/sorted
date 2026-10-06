@@ -26,6 +26,11 @@ type Token struct {
 	Val  int32  // TkNum
 	Str  []byte // TkStr: the characters, escapes resolved, without the NUL
 	Pos  Pos
+
+	bol   bool     // first token on its line (a '#' there starts a directive)
+	space bool     // whitespace or a comment comes before it
+	line  int      // logical line: a newline inside a comment does not end one
+	hide  []string // macros not to expand again in this token (see Preprocess)
 }
 
 // keywords are all keywords of C17, the dialect clang compiles by default.
@@ -47,7 +52,7 @@ func init() {
 // parser can name them.
 var puncts = []string{
 	"<<=", ">>=", "...",
-	"==", "!=", "<=", ">=", "&&", "||", "++", "--", "+=", "-=", "*=", "/=", "%=",
+	"##", "==", "!=", "<=", ">=", "&&", "||", "++", "--", "+=", "-=", "*=", "/=", "%=",
 	"&=", "|=", "^=", "<<", ">>", "->",
 }
 
@@ -55,7 +60,8 @@ var puncts = []string{
 func Tokenize(src string) ([]Token, error) {
 	var toks []Token
 	line, col := 1, 1
-	bol := true // nothing but whitespace and comments so far on this line
+	bol := true  // nothing but whitespace and comments so far on this line
+	logical := 1 // lines, not counting newlines inside comments
 	advance := func(n int) {
 		for _, c := range src[:n] {
 			if c == '\n' {
@@ -67,41 +73,36 @@ func Tokenize(src string) ([]Token, error) {
 		}
 		src = src[n:]
 	}
+	space := false
 	add := func(t Token) {
+		t.bol, t.line, t.space = bol, logical, space
 		toks = append(toks, t)
-		bol = false
+		bol, space = false, false
 	}
 	for len(src) > 0 {
 		pos := Pos{line, col}
 		c := src[0]
 		switch {
 		case c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f':
+			if c == '\n' {
+				logical++
+			}
 			advance(1)
+			space = true
 		case strings.HasPrefix(src, "//"):
 			n := strings.IndexByte(src, '\n')
 			if n < 0 {
 				n = len(src)
 			}
 			advance(n)
+			space = true
 		case strings.HasPrefix(src, "/*"):
 			n := strings.Index(src[2:], "*/")
 			if n < 0 {
 				return nil, errorAt(pos, "unclosed block comment")
 			}
 			advance(n + 4)
-		case c == '#' && !bol:
-			return nil, errorAt(pos, "stray '#' (a preprocessing line must start with it)")
-		case c == '#':
-			// "#include <stdio.h>" is allowed and ignored, so that a program
-			// for Sorted! is also a C program that declares putchar.
-			n := strings.IndexByte(src, '\n')
-			if n < 0 {
-				n = len(src)
-			}
-			if strings.Join(strings.Fields(strings.Replace(src[:n], "include", " include ", 1)), " ") != "# include <stdio.h>" {
-				return nil, errorAt(pos, "not supported in Sorted! (yet): the preprocessor (except #include <stdio.h>)")
-			}
-			advance(n)
+			space = true
 		case isDigit(c):
 			n := 1
 			for n < len(src) && isIdent2(src[n]) {
@@ -146,7 +147,7 @@ func Tokenize(src string) ([]Token, error) {
 					break
 				}
 			}
-			if n == 0 && strings.IndexByte("+-*/%=<>!&|^~?:;,.(){}[]", c) >= 0 {
+			if n == 0 && strings.IndexByte("+-*/%=<>!&|^~?:;,.(){}[]#", c) >= 0 {
 				n = 1
 			}
 			if n == 0 {

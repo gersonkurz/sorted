@@ -199,9 +199,12 @@ and string literals for arrays), integer constants (decimal, hex, octal) and
 character constants (`'a'`, `'\n'`, `'\x41'`), `a[i]`, `+ - * / %`,
 comparisons, `&&`, `||` and `!` (short-circuiting, as in C), the bitwise `& |
 ^ ~ << >>`, assignment including `+=`, `<<=` and friends, `++` and `--`,
-`if`/`else`, `while`, `for`, `break`, `continue`, `return`, and `putchar`. `#include <stdio.h>` is
-allowed, so the same file compiles with a C compiler too; anything else gets a
-precise "not supported in Sorted! (yet)" with its line and column. The front end is a Go
+`if`/`else`, `while`, `for`, `break`, `continue`, `return`, and `putchar`.
+The preprocessor knows `#define` (with and without parameters) and `#undef`,
+and array lengths and global initializers can be constant expressions.
+`#include <stdio.h>` is allowed, so the same file compiles with a C compiler
+too; anything else gets a precise "not supported in Sorted! (yet)" with its
+line and column. The front end is a Go
 port of [chibicc](https://github.com/rui314/chibicc), Rui Ueyama's small C
 compiler (MIT license).
 
@@ -237,8 +240,7 @@ written back: a declaration may add up its parts to a number from 1000000000
 on ("ninehundredmillion onehundredmillion"), and the current renderer cannot
 spell such values.
 
-**What is coming** (issues #16 and #17): `#define`, then
-the round trip back to C. Some limits are part of the deal. There
+**What is coming** (issue #17): the round trip back to C. Some limits are part of the deal. There
 are no library calls, `putchar` being the only one. There is no `malloc`, just
 one big block of memory. And there is no input, because Sorted! cannot read.
 Round trip a program through C → Sorted! → C, and you get C obfuscation for

@@ -80,7 +80,7 @@ func (c *compiler) bitwise(n *cc.Node) {
 	for _, m := range n.Args {
 		c.bitwise(m)
 	}
-	if _, ok := constant(n); ok {
+	if _, ok := cc.Fold(n); ok {
 		return
 	}
 	call := func(name string, args ...*cc.Node) {
@@ -98,7 +98,7 @@ func (c *compiler) bitwise(n *cc.Node) {
 		k := bitsCoefficients[n.Kind]
 		call("bits", n.Lhs, n.Rhs, num(k[0]), num(k[1]))
 	case cc.NdShl, cc.NdShr:
-		if k, ok := constant(n.Rhs); ok {
+		if k, ok := cc.Fold(n.Rhs); ok {
 			if k < 0 || k > 31 {
 				fail(n.Rhs.Pos, "shift count %d is out of range (0 to 31)", k)
 			}
@@ -109,63 +109,10 @@ func (c *compiler) bitwise(n *cc.Node) {
 	}
 }
 
-// constant folds an expression of integer constants and the arithmetic and
-// bitwise operators, as 32-bit C does. Division by zero, the one overflowing
-// division and shift counts outside 0..31 do not fold.
-func constant(n *cc.Node) (int32, bool) {
-	switch n.Kind {
-	case cc.NdNum:
-		return n.Val, true
-	case cc.NdNeg, cc.NdBitNot:
-		a, ok := constant(n.Lhs)
-		if n.Kind == cc.NdNeg {
-			return -a, ok
-		}
-		return ^a, ok
-	case cc.NdAdd, cc.NdSub, cc.NdMul, cc.NdDiv, cc.NdMod, cc.NdBitAnd, cc.NdBitOr, cc.NdBitXor, cc.NdShl, cc.NdShr:
-	default:
-		return 0, false
-	}
-	a, okA := constant(n.Lhs)
-	b, okB := constant(n.Rhs)
-	if !okA || !okB {
-		return 0, false
-	}
-	switch n.Kind {
-	case cc.NdAdd:
-		return a + b, true
-	case cc.NdSub:
-		return a - b, true
-	case cc.NdMul:
-		return a * b, true
-	case cc.NdDiv, cc.NdMod:
-		if b == 0 || a == math.MinInt32 && b == -1 {
-			return 0, false
-		}
-		if n.Kind == cc.NdDiv {
-			return a / b, true
-		}
-		return a % b, true
-	case cc.NdBitAnd:
-		return a & b, true
-	case cc.NdBitOr:
-		return a | b, true
-	case cc.NdBitXor:
-		return a ^ b, true
-	}
-	if b < 0 || b > 31 {
-		return 0, false
-	}
-	if n.Kind == cc.NdShl {
-		return int32(uint32(a) << b), true
-	}
-	return a >> b, true
-}
-
 // mask reports k when n is the constant 2^k - 1 (k at most 30), for which
 // x & n is the non-negative remainder of x by 2^k.
 func mask(n *cc.Node) (int, bool) {
-	v, ok := constant(n)
+	v, ok := cc.Fold(n)
 	if !ok || v < 0 || v == math.MaxInt32 || v&(v+1) != 0 {
 		return 0, false
 	}
@@ -179,7 +126,7 @@ func mask(n *cc.Node) (int, bool) {
 
 // bitValue lowers what bitwise left to value (see there).
 func (c *compiler) bitValue(n *cc.Node) val {
-	if k, ok := constant(n); ok {
+	if k, ok := cc.Fold(n); ok {
 		return c.number(k, n.Pos)
 	}
 	switch n.Kind {
@@ -195,12 +142,12 @@ func (c *compiler) bitValue(n *cc.Node) val {
 		p := c.number(1<<k, n.Pos)
 		return c.mod(c.expr(vSum, c.mod(c.value(x), p), p, 0), p)
 	case cc.NdShl: // x << k == x * 2^k (and 2^31 is -2^31 in 32 bits)
-		k, _ := constant(n.Rhs)
+		k, _ := cc.Fold(n.Rhs)
 		return c.expr(vProd, c.value(n.Lhs), c.number(int32(uint32(1)<<k), n.Pos), 0)
 	}
 	// x >> k: the ratio truncates towards zero, the shift floors, so one less
 	// when the ratio times 2^k came out above x. x >> 31 is -(x < 0).
-	k, _ := constant(n.Rhs)
+	k, _ := cc.Fold(n.Rhs)
 	x := c.value(n.Lhs)
 	if k == 0 {
 		return x

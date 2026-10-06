@@ -374,6 +374,55 @@ int main() {
 	permute(0); putchar('\n'); line(count);
 }`,
 
+	"macros": `#include <stdio.h>
+#define N 8
+#define LAST (N - 1)
+#define SQ(x) ((x) * (x))
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define BIT(k) (1 << (k))
+#define FLAGS (BIT(0) | BIT(3) | BIT(5))
+#define PUT(c) putchar(c)
+#define NL PUT('\n')
+#define TIMES(n, body) for (int i_ = 0; i_ < (n); i_++) { body; }
+#define PRINT_DIGIT(d) PUT('0' + (d) % 10)
+#define EMPTY
+#define TWICE(f, x) f(f(x))
+#define IGNORE(x) 7
+#define PAIR(a, b) a + b
+#define N2 /*
+      */ (2)
+int table[N * 2];
+int primes[] = {2, 3, 5, 7, 11, SQ(4) - 3};
+int flags = FLAGS, neg = -N * 2, big = BIT(30) + (BIT(30) - 1), small = -2147483647 - 1;
+char hello[N] = {'H', 'i', '!' EMPTY};
+int inc(int x) { return x + 1; }
+int A = 65, F = 66;
+#define A F
+#define F(x) A
+int main() {
+	PUT(A(0)); PRINT_DIGIT(IGNORE(PAIR(1))); PRINT_DIGIT(N2); NL;
+	for (int i = 0; i < N * 2; i++) table[i] = SQ(i - LAST);
+	for (int i = 0; i < N * 2; i++) { PRINT_DIGIT(table[i] / 10); PRINT_DIGIT(table[i]); PUT(' '); }
+	NL;
+	for (int i = 0; i < 6; i++) { PRINT_DIGIT(primes[i] / 10); PRINT_DIGIT(primes[i]); PUT(' '); }
+	NL;
+	PRINT_DIGIT(flags / 10); PRINT_DIGIT(flags); NL;
+	if (flags & BIT(3)) PUT('Y'); else PUT('N');
+	if (flags & BIT(4)) PUT('Y'); else PUT('N');
+	NL;
+	PRINT_DIGIT(-neg / 10); PRINT_DIGIT(-neg); NL;
+	if (big == 2147483647 && small < -2147483647 && small + 1 == -2147483647) PUT('B'); NL;
+	for (int i = 0; hello[i]; i++) PUT(hello[i]);
+	NL;
+	TIMES(3, PUT('*'));
+	NL;
+	PRINT_DIGIT(TWICE(inc, 5)); PRINT_DIGIT(SQ(inc(2))); NL;
+#undef N
+#define N 3
+	PRINT_DIGIT(N); NL;
+	return 0;
+}`,
+
 	"strings": `#include <stdio.h>
 char greeting[] = "Hello, " "World!\n";
 int main() {

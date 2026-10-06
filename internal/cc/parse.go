@@ -12,6 +12,10 @@ func Parse(src string) (prog *Program, err error) {
 	if err != nil {
 		return nil, err
 	}
+	toks, err = Preprocess(toks)
+	if err != nil {
+		return nil, err
+	}
 	ps := &parser{toks: toks}
 	defer func() {
 		if r := recover(); r != nil {
@@ -142,14 +146,12 @@ func (ps *parser) declarator() decl {
 	}
 	d.array, d.lpos = true, ps.next().Pos
 	if !ps.equal("]") {
-		n := ps.next()
-		if n.Kind != TkNum {
-			ps.unsupported(n.Pos, "array lengths other than integer constants")
+		pos := ps.tok().Pos
+		n := ps.constant("array lengths other than integer constants")
+		if n <= 0 {
+			ps.fail(pos, "the length of an array must be positive")
 		}
-		if n.Val <= 0 {
-			ps.fail(n.Pos, "the length of an array must be positive")
-		}
-		d.len = int(n.Val)
+		d.len = int(n)
 	}
 	ps.skip("]")
 	if ps.equal("[") {
@@ -268,7 +270,7 @@ func (ps *parser) newObj(d decl, char, global bool) *Obj {
 }
 
 // global-variable = (declarator ("=" global-init)? ("," declarator ("=" global-init)?)*)? ";"
-// global-init     = constant | "{" constant ("," constant)* ","? "}" | string
+// global-init     = constant-expr | "{" constant-expr ("," constant-expr)* ","? "}" | string
 //
 // The first declarator has been read already.
 func (ps *parser) globalVariable(d decl, char bool) {
@@ -286,9 +288,9 @@ func (ps *parser) globalVariable(d decl, char bool) {
 		v := ps.newObj(d, char, true)
 		if ps.consume("=") {
 			if d.array {
-				v.Init = arrayInit(ps, v, d, ps.constant, func(c int32) int32 { return c })
+				v.Init = arrayInit(ps, v, d, ps.initializer, func(c int32) int32 { return c })
 			} else {
-				v.Init = []int32{ps.constant()}
+				v.Init = []int32{ps.initializer()}
 			}
 			if !ps.equal(",") && !ps.equal(";") {
 				ps.unsupported(ps.tok().Pos, "global initializers other than integer constants")
@@ -306,17 +308,20 @@ func (ps *parser) globalVariable(d decl, char bool) {
 	}
 }
 
-// constant = "-"? (num | char), the initializer of a global.
-func (ps *parser) constant() int32 {
-	neg := ps.consume("-")
-	t := ps.next()
-	if t.Kind != TkNum {
-		ps.unsupported(t.Pos, "global initializers other than integer constants")
+// initializer parses the initializer of a global: a constant expression.
+func (ps *parser) initializer() int32 {
+	return ps.constant("global initializers other than integer constants")
+}
+
+// constant parses an integer constant expression (see Fold); anything else
+// is what.
+func (ps *parser) constant(what string) int32 {
+	pos := ps.tok().Pos
+	v, ok := Fold(ps.logor())
+	if !ok {
+		ps.unsupported(pos, what)
 	}
-	if neg {
-		return -t.Val
-	}
-	return t.Val
+	return v
 }
 
 // arrayInit reads the initializer of array v, "{" item ("," item)* ","? "}"

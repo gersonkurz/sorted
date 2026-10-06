@@ -190,7 +190,8 @@ func TestErrors(t *testing.T) {
 		{"int main() { long c; }", "1:14: not supported in Sorted! (yet): the type or specifier 'long' (int and char are the only types)"},
 		{"int *p; int main() {}", "1:5: not supported in Sorted! (yet): pointers"},
 		{"int a[2][3]; int main() {}", "1:9: not supported in Sorted! (yet): arrays of arrays"},
-		{"int a[n]; int main() {}", "1:7: not supported in Sorted! (yet): array lengths other than integer constants"},
+		{"int a[n]; int main() {}", "1:7: undefined variable 'n'"},
+		{"int n; int a[n]; int main() {}", "1:14: not supported in Sorted! (yet): array lengths other than integer constants"},
 		{"int a[0]; int main() {}", "1:7: the length of an array must be positive"},
 		{"int a[]; int main() {}", "1:6: an array without a length needs an initializer"},
 		{"int main() { int a[]; }", "1:19: an array without a length needs an initializer"},
@@ -231,8 +232,23 @@ func TestErrors(t *testing.T) {
 		{"int main(int argc) {}", "1:10: not supported in Sorted! (yet): parameters of main"},
 		{"int main() { printf(1); }", "1:14: not supported in Sorted! (yet): calling 'printf' (putchar is the only library function, and other functions must be declared first)"},
 		{"int main() { putchar(\"a\"); }", "1:22: not supported in Sorted! (yet): string literals outside char array initializers"},
-		{"#include <stdlib.h>\nint main() {}", "1:1: not supported in Sorted! (yet): the preprocessor (except #include <stdio.h>)"},
-		{"#define N 3\nint main() {}", "1:1: not supported in Sorted! (yet): the preprocessor (except #include <stdio.h>)"},
+		{"#include <stdlib.h>\nint main() {}", "1:1: not supported in Sorted! (yet): #include other than <stdio.h>"},
+		{"#if 1\nint main() {}", "1:1: not supported in Sorted! (yet): #if (the preprocessor knows #define, #undef and #include <stdio.h>)"},
+		{"#include \"x.h\"\nint main() {}", "1:1: not supported in Sorted! (yet): #include other than <stdio.h>"},
+		{"#define\nint main() {}", "1:2: #define needs a macro name (an identifier)"},
+		{"#define int long\nint main() {}", "1:2: #define needs a macro name (an identifier)"},
+		{"#define S(x) #x\nint main() {}", "1:14: not supported in Sorted! (yet): '#' in macros"},
+		{"#define C(a, b) a ## b\nint main() {}", "1:19: not supported in Sorted! (yet): '##' in macros"},
+		{"#define V(...) 1\nint main() {}", "1:11: not supported in Sorted! (yet): variadic macros"},
+		{"#define F(a, a) 1\nint main() {}", "1:14: duplicate parameter 'a' in macro 'F'"},
+		{"#define F(a b) 1\nint main() {}", "1:9: expected ')' after the parameters of macro 'F'"},
+		{"#define F(1) 1\nint main() {}", "1:11: expected a parameter name in macro 'F'"},
+		{"#undef\nint main() {}", "1:2: #undef needs exactly one macro name"},
+		{"#define F(a, b) a\nint main() { putchar(F(1)); }", "2:22: macro 'F' takes 2 argument(s), not 1"},
+		{"#define F() 1\nint main() { putchar(F(2)); }", "2:22: macro 'F' takes 0 argument(s), not 1"},
+		{"#define F(a) a\nint main() { putchar(F(1", "2:22: unterminated call of macro 'F'"},
+		{"#define F(a) a\nint main() { putchar(F(1,\n#define X\n)); }", "3:1: not supported in Sorted! (yet): directives inside the arguments of a macro"},
+		{"#define N 3\n#undef N\nint main() { putchar(N); }", "3:22: undefined variable 'N'"},
 		{"int main() { int x = 65; #include <stdio.h>\nputchar(x); }", "1:26: stray '#' (a preprocessing line must start with it)"},
 		{"int main() { int a = sizeof(a); }", "1:22: not supported in Sorted! (yet): 'sizeof'"},
 		{"int main() { putchar(1, 2); }", "1:26: putchar takes 1 argument(s), not 2"},
@@ -262,10 +278,10 @@ func TestErrors(t *testing.T) {
 		{"int main() { int a; a = 1, 2; }", "1:26: not supported in Sorted! (yet): the comma operator"},
 		{"int main();", "1:11: expected the body of main"},
 		{"int main() {} int main() {}", "1:19: redefinition of main"},
-		{"int g = 1 + 2; int main() {}", "1:11: not supported in Sorted! (yet): global initializers other than integer constants"},
+		{"int g = 1 / 0; int main() {}", "1:9: not supported in Sorted! (yet): global initializers other than integer constants"},
 		{"int g = 1 int main() {}", "1:11: not supported in Sorted! (yet): global initializers other than integer constants"},
 		{"int g int main() {}", "1:7: expected ','"},
-		{"int g = h; int main() {}", "1:9: not supported in Sorted! (yet): global initializers other than integer constants"},
+		{"int h; int g = h; int main() {}", "1:16: not supported in Sorted! (yet): global initializers other than integer constants"},
 		{"int 5; int main() {}", "1:5: expected a variable name"},
 		{"int main() { putchar(); }", "1:22: putchar takes 1 argument(s), not 0"},
 		{"int main() { int a; a = ); }", "1:25: expected an expression"},
@@ -281,6 +297,82 @@ func TestErrors(t *testing.T) {
 }
 
 // Every escape sequence, in char and string literals.
+func TestPreprocess(t *testing.T) {
+	tests := []struct{ src, want string }{
+		{"#define N 3\nint main() { putchar(N); }", "{ (putchar 3)}"},
+		{"#define A B\n#define B 7\nint main() { putchar(A); }", "{ (putchar 7)}"},
+		{"int v;\n#define v v + 1\nint main() { putchar(v); }", "{ (putchar (+ @v 1))}"},
+		{"#define SQ(x) ((x) * (x))\nint main() { putchar(SQ(1 + 2)); }", "{ (putchar (* (+ 1 2) (+ 1 2)))}"},
+		{"#define MAX(a, b) ((a) > (b) ? (a) : (b))\n#define ADD(a, b) a + b\nint main() { putchar(ADD((1, 2), 3)); }", ""},
+		{"#define ADD(a, b) (a + b)\nint main() { putchar(ADD(ADD(1, 2), 3)); }", "{ (putchar (+ (+ 1 2) 3))}"},
+		{"#define F(a) a * 2\n#define G F\nint main() { putchar(G(3)); }", "{ (putchar (* 3 2))}"},
+		{"#define F(a) a\nint main() { int F = 1; putchar(F); }", "{ { (= F 1)} (putchar F)}"},
+		{"#define F (a) + a\nint main() { int a = 4; putchar(F); }", "{ { (= a 4)} (putchar (+ a a))}"},
+		{"#define E()\nint main() { putchar(1 E()); }", "{ (putchar 1)}"},
+		{"int f(int a) { return a; }\n#define f(x) x(1)\nint main() { putchar(f(f)); }", "{ (putchar (f 1))}"},
+		{"#define N 3\n#undef N\n#define N 4\nint main() { putchar(N); }", "{ (putchar 4)}"},
+		{"#\n# /* comment */\nint main() { }", "{}"},
+		{"#define L 1 /* spans\n lines */ + 2\nint main() { putchar(L); }", "{ (putchar (+ 1 2))}"},
+		{"#define N /*\n      */ (1)\nint main() { putchar(N); }", "{ (putchar 1)}"},
+		{"#define N/**/(1)\nint main() { putchar(N); }", "{ (putchar 1)}"},
+		{"#define IGNORE(x) 65\n#define PAIR(a, b) a + b\nint main() { putchar(IGNORE(PAIR(1))); }", "{ (putchar 65)}"},
+		{"#define TWICE(x) x + x\n#define ONE 1\nint main() { putchar(TWICE(ONE)); }", "{ (putchar (+ 1 1))}"},
+		{"int A = 65, F = 66;\n#define A F\n#define F(x) A\nint main() { putchar(A(0)); }", "{ (putchar @F)}"},
+		{"int A = 65, F = 66;\n#define F(x) A\n#define A F(0)\nint main() { putchar(A); }", "{ (putchar @A)}"},
+		{"#define N 10\nint a[N * 2 + 1]; int g = N << 2 | 1, h = -N, k = 'a' + (N > 3); int main() { putchar(g); }", "{ (putchar @g)}"},
+	}
+	for _, tt := range tests {
+		p, err := Parse(tt.src)
+		if tt.want == "" { // only to check that the macro is accepted, its use is not
+			if err == nil || !strings.Contains(err.Error(), "the comma operator") {
+				t.Errorf("%s: %v", tt.src, err)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("%s: %v", tt.src, err)
+			continue
+		}
+		if got := sexpr(p.Main); got != tt.want {
+			t.Errorf("%s:\n got %s\nwant %s", tt.src, got, tt.want)
+		}
+	}
+	p, err := Parse("#define N 10\nint a[N * 2 + 1]; int g = N << 2 | 1, h = -N, k = 'a' + (N > 3); char s[N] = {N, N + 1}; int main() { }")
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := p.Globals
+	if g[0].Len != 21 || g[1].Init[0] != 41 || g[2].Init[0] != -10 || g[3].Init[0] != 98 || g[4].Len != 10 || g[4].Init[1] != 11 {
+		t.Errorf("globals %+v %+v %+v %+v %+v", g[0], g[1], g[2], g[3], g[4])
+	}
+}
+
+// Fold evaluates constant expressions in 32 bits (overflow wraps), and
+// refuses division by zero, INT_MIN / -1 and shift counts outside 0..31.
+func TestFold(t *testing.T) {
+	for expr, want := range map[string]int32{
+		"7 + 3 * 2 - 10 / 3 % 2": 12, "-7 / 2": -3, "-7 % 2": -1, "2147483647 + 1": -2147483648,
+		"6 & 3": 2, "6 | 3": 7, "6 ^ 3": 5, "~5": -6, "1 << 31": -2147483648, "-16 >> 2": -4,
+		"3 == 3": 1, "3 != 3": 0, "2 < 3": 1, "3 <= 2": 0, "3 > 2": 1, "2 >= 3": 0,
+		"!0": 1, "!7": 0, "2 && 3": 1, "2 && 0": 0, "0 || 0": 0, "0 || 5": 1,
+		"0 && 1 / 0": 0, "1 || 1 / 0": 1, "(-2147483647 - 1) / 1": -2147483648,
+	} {
+		p, err := Parse("int g = " + expr + "; int main() {}")
+		if err != nil {
+			t.Errorf("%s: %v", expr, err)
+			continue
+		}
+		if got := p.Globals[0].Init[0]; got != want {
+			t.Errorf("%s = %d, want %d", expr, got, want)
+		}
+	}
+	for _, expr := range []string{"1 / 0", "1 % 0", "(-2147483647 - 1) / -1", "(-2147483647 - 1) % -1", "1 << 32", "1 >> -1", "1 && 1 / 0", "0 || 1 / 0", "!(1 / 0)", "~(1 / 0)", "-(1 / 0)"} {
+		if _, err := Parse("int g = " + expr + "; int main() {}"); err == nil || !strings.Contains(err.Error(), "global initializers other than integer constants") {
+			t.Errorf("%s: %v", expr, err)
+		}
+	}
+}
+
 func TestEscapes(t *testing.T) {
 	escapes := map[string]int32{
 		`\a`: 7, `\b`: 8, `\t`: 9, `\n`: 10, `\v`: 11, `\f`: 12, `\r`: 13, `\e`: 27,
