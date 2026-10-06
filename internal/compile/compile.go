@@ -32,6 +32,12 @@
 //     first sum") is undefined behaviour in the original, so it is avoided.
 //     Cell numbers depend on how many numbers are declared, and the
 //     addresses are declared numbers themselves; see program.
+//   - Sorted! has no bit operations (logical operations cannot be
+//     referenced), so & | ^ ~ << >> are arithmetic: constants fold, ~x is
+//     -1 - x, shifts by a constant are products or floored ratios, x &
+//     (2^k - 1) is a remainder, and the rest call runtime functions written
+//     in the C subset (see runtime.go). Numbers beyond what a declaration
+//     spells (999999999) are 1000000 * q + r.
 //   - A store into a char wraps the value to -128..127, as C does, by
 //     arithmetic: ((v + 128) % 256 + 256) % 256 - 128.
 //   - putchar(e) assigns e to an output cell and runs the program's only
@@ -44,7 +50,10 @@
 package compile
 
 import (
+	"cmp"
 	"fmt"
+	"maps"
+	"math"
 	"slices"
 
 	"github.com/gersonkurz/sorted/internal/cc"
@@ -161,6 +170,7 @@ type compiler struct {
 	exit  int                        // label after everything, where main's return goes; -1 until needed
 	funcs map[*cc.Function]*function // the functions main reaches
 	order []*function                // the same, in the order their code is laid out
+	rt    map[string]*cc.Function    // the runtime library, parsed on first use (see runtime)
 }
 
 // returnTo says what a return does: store the value in rv (when the
@@ -228,6 +238,12 @@ func compileProgram(prog *cc.Program) (c *compiler, p *syntax.Program, err error
 			}
 		}
 	}
+	c.bitwise(prog.Main)
+	for _, f := range slices.SortedFunc(maps.Values(prog.Funcs), func(a, b *cc.Function) int {
+		return cmp.Or(cmp.Compare(a.Pos.Line, b.Pos.Line), cmp.Compare(a.Pos.Col, b.Pos.Col))
+	}) {
+		c.bitwise(f.Body)
+	}
 	c.functions(prog)
 
 	// main first; a final return just ends the program, unless functions
@@ -265,13 +281,20 @@ func fail(pos cc.Pos, format string, args ...any) {
 // --- values ---
 
 // number returns a constant value, declaring it if necessary. Negative
-// values are 0 - n.
+// values are 0 - n (and -2^31 is -2147483647 - 1); values beyond what a
+// declaration can spell are 1000000 * q + r.
 func (c *compiler) number(v int32, pos cc.Pos) val {
-	if v < 0 { // never -2147483648: C has no such literal, only -2147483647 - 1
+	switch {
+	case v == math.MinInt32:
+		return c.expr(vDiff, c.number(v+1, pos), c.number(1, pos), 0)
+	case v < 0:
 		return c.expr(vDiff, c.number(0, pos), c.number(-v, pos), 0)
-	}
-	if v > largest {
-		fail(pos, "constants above %d are not supported yet (%d)", largest, v)
+	case v > largest:
+		e := c.expr(vProd, c.number(1000000, pos), c.number(v/1000000, pos), 0)
+		if v%1000000 == 0 {
+			return e
+		}
+		return c.expr(vSum, e, c.number(v%1000000, pos), 0)
 	}
 	i, ok := c.poolIndex[v]
 	if !ok {
@@ -317,15 +340,22 @@ func (c *compiler) address(v val, extra int) val {
 	return val{vAddr, i}
 }
 
-// constValue reports the value of a constant: a declared number, or 0 - n.
+// constValue reports the value of a constant: a declared number, or one
+// that number builds from them (0 - n, 1000000 * q + r).
 func (c *compiler) constValue(v val) (int32, bool) {
 	switch v.kind {
 	case vConst:
 		return c.pool[v.i], true
-	case vDiff:
-		e := c.exprs[vDiff].entries[v.i]
+	case vDiff, vSum, vProd:
+		e := c.exprs[v.kind].entries[v.i]
 		a, okA := c.constValue(e.a)
 		b, okB := c.constValue(e.b)
+		switch v.kind {
+		case vSum:
+			return a + b, okA && okB
+		case vProd:
+			return a * b, okA && okB
+		}
 		return a - b, okA && okB
 	}
 	return 0, false
@@ -415,6 +445,8 @@ func (c *compiler) value(n *cc.Node) val {
 		return c.call(n)
 	case cc.NdNot:
 		return c.not(c.value(n.Lhs), n.Pos)
+	case cc.NdBitNot, cc.NdBitAnd, cc.NdBitOr, cc.NdBitXor, cc.NdShl, cc.NdShr:
+		return c.bitValue(n)
 	case cc.NdLogAnd, cc.NdLogOr:
 		// t = 0; if (n) t = 1;  so that the right side runs only when needed
 		t := c.temporary()

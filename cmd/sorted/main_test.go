@@ -235,17 +235,17 @@ func TestPrintFailure(t *testing.T) {
 func TestFromCErrors(t *testing.T) {
 	dir := t.TempDir()
 	bad := filepath.Join(dir, "bad.c")
-	if err := os.WriteFile(bad, []byte("int main() {\n  int a;\n  a &= 1;\n}\n"), 0o644); err != nil {
+	if err := os.WriteFile(bad, []byte("int main() {\n  int a;\n  a = a ? 1 : 2;\n}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if r := runCLI("--from-c", bad); r.code != 1 || r.stdout != "" || r.stderr != "sorted: "+bad+":3:5: not supported in Sorted! (yet): &=\n" {
+	if r := runCLI("--from-c", bad); r.code != 1 || r.stdout != "" || r.stderr != "sorted: "+bad+":3:9: not supported in Sorted! (yet): ?:\n" {
 		t.Errorf("syntax: %+v", r)
 	}
 	big := filepath.Join(dir, "big.c")
-	if err := os.WriteFile(big, []byte("int main() { putchar(1000000000); }\n"), 0o644); err != nil {
+	if err := os.WriteFile(big, []byte("int main() { putchar(1 << 32); }\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if r := runCLI("--from-c", big); r.code != 1 || !strings.Contains(r.stderr, big+":1:22: constants above 999999999") {
+	if r := runCLI("--from-c", big); r.code != 1 || !strings.Contains(r.stderr, big+":1:27: shift count 32 is out of range") {
 		t.Errorf("lowering: %+v", r)
 	}
 	if r := runCLI("--from-c", filepath.Join(dir, "nothere.c")); r.code != 1 || !strings.HasPrefix(r.stderr, "sorted: ") {

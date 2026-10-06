@@ -12,7 +12,7 @@ func sexpr(n *Node) string {
 	if n == nil {
 		return "nil"
 	}
-	ops := map[NodeKind]string{NdAdd: "+", NdSub: "-", NdMul: "*", NdDiv: "/", NdMod: "%", NdEq: "==", NdNe: "!=", NdLt: "<", NdLe: "<=", NdAssign: "=", NdLogAnd: "&&", NdLogOr: "||"}
+	ops := map[NodeKind]string{NdAdd: "+", NdSub: "-", NdMul: "*", NdDiv: "/", NdMod: "%", NdEq: "==", NdNe: "!=", NdLt: "<", NdLe: "<=", NdAssign: "=", NdLogAnd: "&&", NdLogOr: "||", NdBitAnd: "&", NdBitOr: "|", NdBitXor: "^", NdShl: "<<", NdShr: ">>"}
 	switch n.Kind {
 	case NdNum:
 		return fmt.Sprint(n.Val)
@@ -31,6 +31,8 @@ func sexpr(n *Node) string {
 		return "(neg " + sexpr(n.Lhs) + ")"
 	case NdNot:
 		return "(! " + sexpr(n.Lhs) + ")"
+	case NdBitNot:
+		return "(~ " + sexpr(n.Lhs) + ")"
 	case NdFor:
 		return "(for " + sexpr(n.Init) + " " + sexpr(n.Cond) + " " + sexpr(n.Inc) + " " + sexpr(n.Then) + ")"
 	case NdBreak:
@@ -111,6 +113,10 @@ func TestParse(t *testing.T) {
 		{"int main() { int a; a = !a || a && !(a == 1); }", "{ {} (= a (|| (! a) (&& a (! (== a 1)))))}"},
 		{"int main() { putchar('A'); putchar('\\n'); putchar('\\x41'); putchar('\\101'); putchar('\\0'); putchar('\\''); putchar('\\q'); putchar('\\xff'); }",
 			"{ (putchar 65) (putchar 10) (putchar 65) (putchar 65) (putchar 0) (putchar 39) (putchar 113) (putchar -1)}"},
+		{"int main() { int a; a = 1 | 2 ^ 3 & 4 == 5 || 6 && 7 | 8; }", "{ {} (= a (|| (| 1 (^ 2 (& 3 (== 4 5)))) (&& 6 (| 7 8))))}"},
+		{"int main() { int a; a = 1 << 2 + 3 < 4 >> 5 - ~6 * 7; }", "{ {} (= a (< (<< 1 (+ 2 3)) (>> 4 (- 5 (* (~ 6) 7)))))}"},
+		{"int main() { int a; a = 1 << 2 >> 3 & ~~4; }", "{ {} (= a (& (>> (<< 1 2) 3) (~ (~ 4))))}"},
+		{"int main() { int a; a &= 1; a |= 2; a ^= 3; a <<= 4; a >>= 5; }", "{ {} (= a (& a 1)) (= a (| a 2)) (= a (^ a 3)) (= a (<< a 4)) (= a (>> a 5))}"},
 		{"int main() { int bool = 1, true = 2; putchar(bool + true); }", "{ { (= bool 1) (= true 2)} (putchar (+ bool true))}"},
 	}
 	for _, tt := range tests {
@@ -169,9 +175,6 @@ func TestErrors(t *testing.T) {
 	tests := []struct{ src, want string }{
 		{"int main() { do ; while (0); }", "1:14: not supported in Sorted! (yet): 'do'"},
 		{"int main() { int a; a = a ? 1 : 2; }", "1:27: not supported in Sorted! (yet): ?:"},
-		{"int main() { int a; a &= 1; }", "1:23: not supported in Sorted! (yet): &="},
-		{"int main() { int a; a = 1 & 2; }", "1:27: not supported in Sorted! (yet): &"},
-		{"int main() { int a = ~1; }", "1:22: not supported in Sorted! (yet): unary '~'"},
 		{"int main() { break; }", "1:14: 'break' outside a loop"},
 		{"int main() { if (1) continue; }", "1:21: 'continue' outside a loop"},
 		{"int main() { int a; a++++; }", "1:24: the left side of '++' must be a variable"},
@@ -206,6 +209,8 @@ func TestErrors(t *testing.T) {
 		{"int main() { putchar(\"abc); }", "1:22: unclosed string literal"},
 		{"int f(int a, int a) { } int main() {}", "1:18: redefinition of parameter 'a'"},
 		{"int f(int x) { int x = 65; return x; } int main() {}", "1:20: redefinition of 'x'"},
+		{"int main() { int a; a = &a; }", "1:25: not supported in Sorted! (yet): unary '&'"},
+		{"int main() { int a; a = 1 ? 2 : 3; }", "1:27: not supported in Sorted! (yet): ?:"},
 		{"int f(int) { } int main() {}", "1:5: parameter 1 of 'f' has no name"},
 		{"int f(void x) { } int main() {}", "1:7: a parameter cannot be void"},
 		{"int f(int a[]) { } int main() {}", "1:12: not supported in Sorted! (yet): array parameters (no pointers)"},

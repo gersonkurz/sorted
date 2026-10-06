@@ -266,6 +266,50 @@ int main() {
 	putchar('\n');
 }`,
 
+	"bitwise": `#include <stdio.h>
+int pn; int pp;
+int v[7] = {0, 1, 12, -1, -12, 2147483647, -2147483647};
+int sum(int a, int b) { return (a ^ b) + ((a & b) << 1); }
+int main() {
+	for (int i = 0; i < 7; i++)
+		for (int j = 0; j < 7; j++) {
+			int a = v[i], b = v[j];
+			` + printNum("(a & b) % 1000") + printNum("(a | b) % 1000") + printNum("(a ^ b) % 1000") + `
+		}
+	for (int i = 0; i < 7; i++) {
+		int a = v[i];
+		` + printNum("~a / 3") + printNum("a >> 3") + printNum("a >> 31") + printNum("a >> 0") + printNum("a & 255") +
+		printNum("255 & a") + printNum("a & 0") + printNum("(a & 1073741823) % 1000") + `
+	}
+	for (int n = 0; n < 31; n += 3) {
+		` + printNum("1 << n") + printNum("(5 << n / 2) >> n / 3") + printNum("-12345 >> n") + printNum("(1 << 30) >> n") + `
+	}
+	` + printNum("(1 << 4) | 3") + printNum("0xF0 ^ 0x3C") + printNum("~0") + printNum("-17 >> 2") + printNum("5 << 2") + `
+	` + printNum("sum(1234, 4321)") + printNum("sum(-77, 7)") + `
+	int x = 0x5A;
+	x &= 0x0F; ` + printNum("x") + `
+	x |= 0x30; ` + printNum("x") + `
+	x ^= 0xFF; ` + printNum("x") + `
+	x <<= 3; ` + printNum("x") + `
+	x >>= 2; ` + printNum("x") + `
+	int s = 5;
+	x = 1000; x >>= s; ` + printNum("x") + `
+	x <<= s - 2; ` + printNum("x") + `
+	char c = 100;
+	c <<= 1; ` + printNum("c") + `
+	c = 0x7F; c ^= 0xFF; ` + printNum("c") + `
+	int a[4] = {1, 2, 3, 4};
+	int k = 1;
+	a[k++] |= 8; a[k] <<= s; a[3] ^= a[1];
+	` + printNum("a[0] * 1000000 + a[1] * 10000 + a[2] * 10 + a[3]") + `
+	` + printNum("2147483647") + printNum("2000000000") + printNum("1234567890") + printNum("-1000000000") + printNum("1000000") + `
+	int big = -2147483647 - 1;
+	` + printNum("~2147483647 / 1000") + printNum("(~2147483647 == big) + (big >> 3) / 1000") + `
+	` + printNum("big / 1000") + printNum("big + 2147483647") + printNum("(big >> 31) + (big & 7)") + `
+	if ((x & 1) || (x | 2) == 3) putchar('Y'); else putchar('N');
+	putchar('\n');
+}`,
+
 	"strings": `#include <stdio.h>
 char greeting[] = "Hello, " "World!\n";
 int main() {
@@ -521,6 +565,35 @@ func TestSharing(t *testing.T) {
 	}
 }
 
+// Bitwise operators that arithmetic can do need no runtime function (so no
+// loop, no jump): constants fold, ~x is -1 - x, shifts by a constant are a
+// product or a floored ratio, and x & (2^k - 1) is a remainder. The rest call
+// the runtime library.
+func TestBitwiseArithmetic(t *testing.T) {
+	for src, jumps := range map[string]bool{
+		`int main() { putchar((1 << 4) | 3 ^ ~0x10 & 0xFF); }`:                               false,
+		`int main() { int x = 7; putchar(~x + (x << 3) + (x >> 2) + (x & 15) + (63 & x)); }`: false,
+		`int main() { int x = 7; putchar(x & 6); }`:                                          true,
+		`int main() { int x = 7; putchar(1 << x); }`:                                         true,
+		`int main() { int x = 7; putchar(x | 1); }`:                                          true,
+	} {
+		p, err := compileC(t, src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := p.Tables[syntax.Jumps].Count > 0; got != jumps {
+			t.Errorf("%s: jumps %v, want %v", src, got, jumps)
+		}
+	}
+	p, err := compileC(t, `int main() { putchar((1 << 4) | 3); }`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprint(p.Data) != "[19]" {
+		t.Errorf("numbers %v, want the folded [19]", p.Data)
+	}
+}
+
 // Negative constants are 0 - n; they need zero and the magnitude.
 func TestNegativeConstant(t *testing.T) {
 	p, err := compileC(t, `int g = -7; int main() { putchar(-3 + 0 * g); }`)
@@ -556,9 +629,9 @@ func TestReturn(t *testing.T) {
 
 func TestErrors(t *testing.T) {
 	tests := []struct{ src, want string }{
-		{`int main() { int a = 1000000000; }`, "1:22: constants above 999999999 are not supported yet (1000000000)"},
-		{`int main() { int a = -2147483647 - 1; }`, "1:22: constants above 999999999 are not supported yet (2147483647)"},
-		{`int g = -1000000000; int main() { }`, "1:5: constants above 999999999 are not supported yet (1000000000)"},
+		{`int main() { int a = 1 << 32; }`, "1:27: shift count 32 is out of range (0 to 31)"},
+		{`int main() { int a, b = a >> -1; }`, "1:30: shift count -1 is out of range (0 to 31)"},
+		{`int f(int x) { return x << 40; } int main() { }`, "1:28: shift count 40 is out of range (0 to 31)"},
 		{`int main() { int a = -999999999; putchar(a); }`, ""},
 		{`int main() { int a = putchar(65); }`, "1:22: using the result of putchar is not supported yet"},
 		{`int f(int n) { return f(n); } int main() { f(1); }`, "1:23: recursion is not supported yet ('f' calls itself, directly or indirectly)"},

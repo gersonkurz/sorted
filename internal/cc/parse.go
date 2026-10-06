@@ -558,16 +558,16 @@ func (ps *parser) expr() *Node {
 
 // operators that are C but not (yet) in the subset, rejected where they
 // would continue an expression.
-var notYet = map[string]string{
-	"?": "?:", "&": "&", "|": "|", "^": "^", "<<": "<<", ">>": ">>", "&=": "&=", "|=": "|=",
-	"^=": "^=", "<<=": "<<=", ">>=": ">>=", "->": "->", ".": "structs",
-}
+var notYet = map[string]string{"?": "?:", "->": "->", ".": "structs"}
 
 // compound assignment operators and the operation each applies
-var assignOps = map[string]NodeKind{"+=": NdAdd, "-=": NdSub, "*=": NdMul, "/=": NdDiv, "%=": NdMod}
+var assignOps = map[string]NodeKind{
+	"+=": NdAdd, "-=": NdSub, "*=": NdMul, "/=": NdDiv, "%=": NdMod,
+	"&=": NdBitAnd, "|=": NdBitOr, "^=": NdBitXor, "<<=": NdShl, ">>=": NdShr,
+}
 
 // assign    = logor (assign-op assign)?
-// assign-op = "=" | "+=" | "-=" | "*=" | "/=" | "%="
+// assign-op = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^=" | "<<=" | ">>="
 //
 // As in chibicc's to_assign, x op= e is x = x op e.
 func (ps *parser) assign() *Node {
@@ -613,14 +613,43 @@ func (ps *parser) logor() *Node {
 	return n
 }
 
-// logand = equality ("&&" equality)*
+// logand = bitor ("&&" bitor)*
 func (ps *parser) logand() *Node {
-	n := ps.equality()
+	n := ps.bitor()
 	for ps.equal("&&") {
 		t := ps.next()
-		n = &Node{Kind: NdLogAnd, Pos: t.Pos, Lhs: n, Rhs: ps.equality()}
+		n = &Node{Kind: NdLogAnd, Pos: t.Pos, Lhs: n, Rhs: ps.bitor()}
 	}
 	return n
+}
+
+// binary parses a left-associative level: next (op next)*.
+func (ps *parser) binary(next func() *Node, ops map[string]NodeKind) *Node {
+	n := next()
+	for {
+		t := ps.tok()
+		kind, ok := ops[t.Text]
+		if !ok || t.Kind != TkPunct {
+			return n
+		}
+		ps.next()
+		n = &Node{Kind: kind, Pos: t.Pos, Lhs: n, Rhs: next()}
+	}
+}
+
+// bitor = bitxor ("|" bitxor)*
+func (ps *parser) bitor() *Node {
+	return ps.binary(ps.bitxor, map[string]NodeKind{"|": NdBitOr})
+}
+
+// bitxor = bitand ("^" bitand)*
+func (ps *parser) bitxor() *Node {
+	return ps.binary(ps.bitand, map[string]NodeKind{"^": NdBitXor})
+}
+
+// bitand = equality ("&" equality)*
+func (ps *parser) bitand() *Node {
+	return ps.binary(ps.equality, map[string]NodeKind{"&": NdBitAnd})
 }
 
 // equality = relational ("==" relational | "!=" relational)*
@@ -639,25 +668,30 @@ func (ps *parser) equality() *Node {
 	}
 }
 
-// relational = add ("<" add | "<=" add | ">" add | ">=" add)*
+// relational = shift ("<" shift | "<=" shift | ">" shift | ">=" shift)*
 // As in chibicc, a > b is b < a and a >= b is b <= a.
 func (ps *parser) relational() *Node {
-	n := ps.add()
+	n := ps.shift()
 	for {
 		t := ps.tok()
 		switch {
 		case ps.consume("<"):
-			n = &Node{Kind: NdLt, Pos: t.Pos, Lhs: n, Rhs: ps.add()}
+			n = &Node{Kind: NdLt, Pos: t.Pos, Lhs: n, Rhs: ps.shift()}
 		case ps.consume("<="):
-			n = &Node{Kind: NdLe, Pos: t.Pos, Lhs: n, Rhs: ps.add()}
+			n = &Node{Kind: NdLe, Pos: t.Pos, Lhs: n, Rhs: ps.shift()}
 		case ps.consume(">"):
-			n = &Node{Kind: NdLt, Pos: t.Pos, Lhs: ps.add(), Rhs: n}
+			n = &Node{Kind: NdLt, Pos: t.Pos, Lhs: ps.shift(), Rhs: n}
 		case ps.consume(">="):
-			n = &Node{Kind: NdLe, Pos: t.Pos, Lhs: ps.add(), Rhs: n}
+			n = &Node{Kind: NdLe, Pos: t.Pos, Lhs: ps.shift(), Rhs: n}
 		default:
 			return n
 		}
 	}
+}
+
+// shift = add ("<<" add | ">>" add)*
+func (ps *parser) shift() *Node {
+	return ps.binary(ps.add, map[string]NodeKind{"<<": NdShl, ">>": NdShr})
 }
 
 // add = mul ("+" mul | "-" mul)*
@@ -694,7 +728,7 @@ func (ps *parser) mul() *Node {
 	}
 }
 
-// unary = ("+" | "-" | "!") unary
+// unary = ("+" | "-" | "!" | "~") unary
 //
 //	| ("++" | "--") unary
 //	| postfix
@@ -703,6 +737,8 @@ func (ps *parser) unary() *Node {
 	switch {
 	case ps.consume("!"):
 		return &Node{Kind: NdNot, Pos: t.Pos, Lhs: ps.unary()}
+	case ps.consume("~"):
+		return &Node{Kind: NdBitNot, Pos: t.Pos, Lhs: ps.unary()}
 	case ps.consume("++"), ps.consume("--"):
 		// ++x is x = x + 1
 		n := ps.unary()
@@ -718,7 +754,7 @@ func (ps *parser) unary() *Node {
 		return n
 	case ps.consume("-"):
 		return &Node{Kind: NdNeg, Pos: t.Pos, Lhs: ps.unary()}
-	case ps.equal("~"), ps.equal("&"), ps.equal("*"):
+	case ps.equal("&"), ps.equal("*"):
 		ps.unsupported(t.Pos, "unary '"+t.Text+"'")
 	}
 	return ps.postfix()

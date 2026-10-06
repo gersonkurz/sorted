@@ -44,6 +44,12 @@ const (
 	NdDiv                      // /
 	NdMod                      // %
 	NdNeg                      // unary -
+	NdBitAnd                   // &
+	NdBitOr                    // |
+	NdBitXor                   // ^
+	NdBitNot                   // ~
+	NdShl                      // <<
+	NdShr                      // >>
 	NdEq                       // ==
 	NdNe                       // !=
 	NdLt                       // <
