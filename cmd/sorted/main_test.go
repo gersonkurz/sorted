@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -44,6 +46,28 @@ func TestUsage(t *testing.T) {
 
 // normalise applies the golden-test rule: CRLF is LF and a final newline is
 // ignored.
+// runC compiles a C file with the host compiler and returns what the program
+// prints. It skips the test when there is no C compiler.
+func runC(t *testing.T, file string) string {
+	t.Helper()
+	compiler, err := exec.LookPath("cc")
+	if err != nil {
+		t.Skip("no C compiler (cc) on PATH")
+	}
+	bin := filepath.Join(t.TempDir(), "prog")
+	if runtime.GOOS == "windows" {
+		bin += ".exe"
+	}
+	if out, err := exec.Command(compiler, "-std=c17", "-w", "-o", bin, file).CombinedOutput(); err != nil {
+		t.Fatalf("cc: %v\n%s", err, out)
+	}
+	out, err := exec.Command(bin).Output()
+	if err != nil {
+		t.Fatalf("running %s: %v", file, err)
+	}
+	return string(out)
+}
+
 func normalise(s string) string {
 	return strings.TrimSuffix(strings.ReplaceAll(s, "\r\n", "\n"), "\n")
 }
@@ -126,8 +150,11 @@ func TestUnwritableOutputFile(t *testing.T) {
 }
 
 // TestGolden is the end-to-end suite: each sample runs through the CLI with
-// --to-c and --dump, and its output, C translation and table dump must
-// equal what Sorted.exe produced (testdata/golden, see README.md there).
+// --to-c and --dump, and its output and table dump must equal what
+// Sorted.exe produced (testdata/golden, see README.md there). The C
+// translation, compiled, must print the same output too (where there is a C
+// compiler); it is not compared with the original's /C captures, which do
+// not (see internal/emit).
 // The diagnostics captures are checked by TestMissingFile and
 // TestParseFailure.
 func TestGolden(t *testing.T) {
@@ -142,14 +169,15 @@ func TestGolden(t *testing.T) {
 			if got, want := normalise(r.stdout), normalise(golden(t, name+".out")); got != want {
 				t.Errorf("output %q, want %q", got, want)
 			}
-			for file, capture := range map[string]string{cFile: name + ".c", dumpFile: name + ".dump"} {
-				got, err := os.ReadFile(file)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if want := golden(t, capture); string(got) != want {
-					t.Errorf("%s:\n%s\nwant:\n%s", capture, got, want)
-				}
+			got, err := os.ReadFile(dumpFile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want := golden(t, name+".dump"); string(got) != want {
+				t.Errorf("%s.dump:\n%s\nwant:\n%s", name, got, want)
+			}
+			if got, want := normalise(runC(t, cFile)), normalise(golden(t, name+".out")); got != want {
+				t.Errorf("--to-c output %q, want %q", got, want)
 			}
 		})
 	}
@@ -192,27 +220,24 @@ func TestFromC(t *testing.T) {
 			t.Errorf("lang %q: running the compiled program: %+v", lang, run)
 		}
 	}
-	// --dump, --to-c and --to-c-exact describe the compiled program as any
-	// Sorted! interpreter sees it: the same as loading the printed program.
-	r := runCLI("--from-c", cFile, "--dump", filepath.Join(dir, "a.dump"), "--to-c", filepath.Join(dir, "a.c"), "--to-c-exact", filepath.Join(dir, "a.exact.c"))
+	// --dump and --to-c describe the compiled program as any Sorted!
+	// interpreter sees it: the same as loading the printed program.
+	r := runCLI("--from-c", cFile, "--dump", filepath.Join(dir, "a.dump"), "--to-c", filepath.Join(dir, "a.c"))
 	if r.code != 0 {
 		t.Fatalf("%+v", r)
 	}
-	if r := runCLI("--dump", filepath.Join(dir, "b.dump"), "--to-c", filepath.Join(dir, "b.c"), "--to-c-exact", filepath.Join(dir, "b.exact.c"), writeProgram(t, r.stdout)); r.code != 0 {
+	if r := runCLI("--dump", filepath.Join(dir, "b.dump"), "--to-c", filepath.Join(dir, "b.c"), writeProgram(t, r.stdout)); r.code != 0 {
 		t.Fatalf("%+v", r)
 	}
-	for _, pair := range [][2]string{{"a.dump", "b.dump"}, {"a.c", "b.c"}, {"a.exact.c", "b.exact.c"}} {
+	for _, pair := range [][2]string{{"a.dump", "b.dump"}, {"a.c", "b.c"}} {
 		a, errA := os.ReadFile(filepath.Join(dir, pair[0]))
 		b, errB := os.ReadFile(filepath.Join(dir, pair[1]))
 		if errA != nil || errB != nil || len(a) == 0 || string(a) != string(b) {
 			t.Errorf("%s and %s differ (%v, %v):\n%s\n---\n%s", pair[0], pair[1], errA, errB, a, b)
 		}
 	}
-	if exact, err := os.ReadFile(filepath.Join(dir, "a.exact.c")); err != nil || !strings.HasPrefix(string(exact), "/* Written by sorted --to-c-exact") {
-		t.Errorf("--to-c-exact wrote %q, %v", exact, err)
-	}
-	if legacy, _ := os.ReadFile(filepath.Join(dir, "a.c")); !strings.HasPrefix(string(legacy), "#include \"stdio.h\"") {
-		t.Errorf("--to-c wrote %q", legacy)
+	if c, err := os.ReadFile(filepath.Join(dir, "a.c")); err != nil || !strings.HasPrefix(string(c), "/* Written by sorted --to-c") {
+		t.Errorf("--to-c wrote %q, %v", c, err)
 	}
 }
 

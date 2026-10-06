@@ -34,18 +34,6 @@ func golden(t *testing.T, name string) string {
 	return strings.ReplaceAll(readFile(t, "testdata", "golden", name), "\r\n", "\n")
 }
 
-// The /C output of all four samples, byte for byte, against what Sorted.exe
-// generated for them (testdata/golden/<sample>.c, captured 2026-10-04).
-func TestCMatchesCaptures(t *testing.T) {
-	for _, name := range []string{"hello", "hallo", "fibo", "itoa"} {
-		t.Run(name, func(t *testing.T) {
-			if got, want := C(parseSample(t, name)), golden(t, name+".c"); got != want {
-				t.Errorf("got:\n%s\nwant:\n%s", got, want)
-			}
-		})
-	}
-}
-
 // The /D dump of all four samples, byte for byte (testdata/golden/<sample>.dump,
 // captured 2026-10-04 and 2026-10-05). ELEMENTS exceeding the entries
 // (hallo: 26 for 23) pins the TypeCount that withdrawn single entries leave
@@ -60,7 +48,7 @@ func TestDumpMatchesCaptures(t *testing.T) {
 	}
 }
 
-// minimal declares no numbers, so the C data line has no initialiser.
+// minimal declares no numbers and nothing but one output.
 const minimal = `This code does not use any numbers.
 This code does never go anywhere.
 This code writes the first number as a character.
@@ -85,19 +73,6 @@ func parseMinimal(t *testing.T) *syntax.Program {
 	return p
 }
 
-// Without numbers the original writes "long _[193719];" and a single newline
-// (no blank line before the macros). Follows from reading GenerateSourceInC.
-func TestCWithoutNumbers(t *testing.T) {
-	got := C(parseMinimal(t))
-	if !strings.Contains(got, "#include \"string.h\"\n\nlong _[193719];\n#define N(x) _[x-1]\n") {
-		t.Errorf("data line:\n%s", got)
-	}
-	// The newline after every fourth item counts the B(...) entry too.
-	if !strings.HasSuffix(got, "d(W);\nE(W)B(1,H(N(1)))F int main(int,char*[]) {W(1);W(1);W(1);\n{ F\n") {
-		t.Errorf("body:\n%s", got)
-	}
-}
-
 // The withdrawn single statement leaves TypeCount ahead of the entries, so
 // the empty tables after it start past the end of Code; the dump must still
 // render every category.
@@ -108,27 +83,5 @@ func TestDumpEmptyTablesPastCode(t *testing.T) {
 		"3 STATEMENTS: { (0,WRITE),0}, { (0,WRITE),0}, { (0,WRITE),0}\n0 JUMPS: \n"
 	if got != want {
 		t.Errorf("got:\n%q\nwant:\n%q", got, want)
-	}
-}
-
-// A jump statement past the jump table reads the next Code slot, here a zero
-// slot: an unconditional jump to label 1. Follows from GenerateSourceInC
-// indexing psJ[] without a bounds check into the static Code array.
-func TestCJumpPastTable(t *testing.T) {
-	p := parseMinimal(t)
-	stmts := p.Tables[syntax.Statements]
-	p.Code[stmts.Index].Ops[0] = syntax.Operand{Type: syntax.Jump, Index: 7}
-	if got := C(p); !strings.Contains(got, "{UJ(1);W(1);W(1);\n{ F\n") {
-		t.Errorf("main:\n%s", got)
-	}
-}
-
-// Read operands render as "r(k)". The parser never produces a reference to
-// an input, so this needs a hand-built statement.
-func TestCReadOperandLetter(t *testing.T) {
-	p := parseMinimal(t)
-	p.Code[p.Tables[syntax.Statements].Index].Ops[0] = syntax.Operand{Type: syntax.Read, Index: 0}
-	if got := C(p); !strings.Contains(got, "{r(1);W(1);W(1);\n{ F\n") {
-		t.Errorf("main:\n%s", got)
 	}
 }

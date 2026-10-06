@@ -69,16 +69,17 @@ just package    # macOS/Linux: release archives for all platforms in out/dist
 ## Usage
 
 ```
-sorted [--dump FILE] [--to-c FILE] [--to-c-exact FILE] [--lang en|de] [--version] PROGRAM.s
-sorted --from-c PROGRAM.c [--lang en|de] [--dump FILE] [--to-c FILE] [--to-c-exact FILE]
+sorted [--dump FILE] [--to-c FILE] [--lang en|de] [--version] PROGRAM.s
+sorted --from-c PROGRAM.c [--lang en|de] [--dump FILE] [--to-c FILE]
 ```
 
-`sorted` parses and runs the program. `--dump` writes the parsed tables and
-`--to-c` a translation into C, the original's `/D` and `/C` options; both are
-written before the program runs. The original's translation does not always
-do what the program does (it writes indirect cells one off, and prints every
-number as a character), so `--to-c-exact` writes a C program that behaves
-exactly like the interpreter instead. `--lang en` or `--lang de` prints the program
+`sorted` parses and runs the program. `--dump` writes the parsed tables, as
+the original's `/D` does, and `--to-c` a C program that behaves exactly like
+the Sorted! one; both are written before the program runs. The original's `/C`
+had a C translation too, but it does not do what the program does: it prints
+every number as a character, so `fibo.s` comes out as raw bytes instead of
+"one, one, two, three", and it writes indirect cells one off, so `itoa.s`
+moves its famous NUL. `--to-c` replaces it. `--lang en` or `--lang de` prints the program
 in English or German instead of running it, so `sorted --lang de hello.s` sings
 Hello World in German. `--from-c` compiles a C program into Sorted! instead
 (see "Young Adult Romance" below).
@@ -184,7 +185,7 @@ simple, documented result instead: here, a run-time error.
 ## Young Adult Romance
 
 Sorted! and C have been seeing each other since 2000: the original could
-already turn any Sorted! program into C (`--to-c`). Now the relationship is
+already turn Sorted! programs into C (`/C`, if not always correctly). Now the relationship is
 getting serious in the other direction: the same binary now compiles C into
 Sorted!.
 
@@ -247,7 +248,7 @@ Some limits are part of the deal. There are no library calls, `putchar` being
 the only one. There is no `malloc`, just one big block of memory. And there is
 no input, because Sorted! cannot read.
 
-**And back to C.** `sorted --from-c prog.c --to-c-exact obfuscated.c` takes a
+**And back to C.** `sorted --from-c prog.c --to-c obfuscated.c` takes a
 program on the full round trip: C → Sorted! → C. The result prints what
 `prog.c` prints, and nothing in it resembles the original. Every sum,
 difference, product, ratio and condition becomes a function named after where
@@ -255,7 +256,7 @@ it sits in the tables, `S41`, `D7`, `C12`, every statement a case of one big
 switch, every variable a cell of `_[193719]`, and the number words are ported
 along in case the program prints cardinals. The tests take every C program
 they compile through the whole loop and compare its output with the original
-C, so this is obfuscation with a warranty. `--to-c-exact` works for any
+C, so this is obfuscation with a warranty. `--to-c` works for any
 Sorted! program, quirks included: past-the-end references, jumps to labels
 that were never placed, 32-bit wrap-around and the run-time errors all come
 out the way the interpreter has them.
@@ -304,7 +305,7 @@ just run legacy/sorted.win32/fibo.s
 
 The packages follow the original's pipeline: `internal/syntax` (source filter
 and parser), `internal/numbers` (number words), `internal/interp`
-(interpreter), `internal/emit` (`/D` and `/C` output), `internal/render`
+(interpreter), `internal/emit` (`/D` dump and C translation), `internal/render`
 (programs back to Sorted! text), and the command in `cmd/sorted`. The C
 compiler adds `internal/cc` (the chibicc-derived front end) and
 `internal/compile` (lowering C to Sorted! tables).

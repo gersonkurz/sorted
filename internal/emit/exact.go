@@ -10,11 +10,11 @@ import (
 
 // Exact renders p as a C program that behaves exactly like the interpreter
 // (internal/interp) running p: the same output, the same input handling, the
-// same runtime errors (on stderr, exit status 1). Unlike the legacy /C
-// translation (C), it keeps the interpreter's semantics where the original's
-// translation does not: 0-based indirect writes, every output format, 32-bit
-// wrap-around, evaluation order and depth, and references past the end of a
-// table, which read whatever the static Code array holds there.
+// same runtime errors (on stderr, exit status 1). It keeps the interpreter's
+// semantics where the original's own translation (/C, not ported, see the
+// package comment) did not: 0-based indirect writes and every output format;
+// and so 32-bit wrap-around, evaluation order and depth, and references past
+// the end of a table, which read whatever the static Code array holds there.
 //
 // The tables are resolved while the C is written: every expression a program
 // can evaluate becomes a function named after its code slot, and every
@@ -246,7 +246,7 @@ func (x *exact) render() string {
 	return b.String()
 }
 
-const exactHeader = `/* Written by sorted --to-c-exact: behaves like the Sorted! interpreter. */
+const exactHeader = `/* Written by sorted --to-c: behaves like the Sorted! interpreter. */
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>

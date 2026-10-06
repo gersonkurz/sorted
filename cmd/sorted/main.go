@@ -1,15 +1,15 @@
 // Command sorted runs programs written in Sorted!, the esoteric language from
 // 2000.
 //
-//	sorted [--dump FILE] [--to-c FILE] [--to-c-exact FILE] [--lang en|de] [--version] PROGRAM.s
-//	sorted --from-c PROGRAM.c [--lang en|de] [--dump FILE] [--to-c FILE] [--to-c-exact FILE]
+//	sorted [--dump FILE] [--to-c FILE] [--lang en|de] [--version] PROGRAM.s
+//	sorted --from-c PROGRAM.c [--lang en|de] [--dump FILE] [--to-c FILE]
 //
-// --dump writes the parsed tables and --to-c a translation into C, as the
-// original's /D and /C do, before the program runs. The original's
-// translation does not always behave like the program; --to-c-exact writes
-// one that does, so C -> Sorted! -> C (--from-c with --to-c-exact) turns a C
-// program into an equivalent, thoroughly obfuscated one. --lang prints the program
-// in English or German instead of running it. --from-c compiles a C program
+// Before the program runs, --dump writes the parsed tables, as the
+// original's /D does, and --to-c a C program that behaves exactly like it
+// (unlike the original's /C, which is not ported), so C -> Sorted! -> C
+// (--from-c with --to-c) turns a C program into an equivalent, thoroughly
+// obfuscated one. --lang prints the program in English or German instead
+// of running it. --from-c compiles a C program
 // into Sorted! and prints it (in English unless --lang says otherwise).
 //
 // The flags are modern; what a program prints, and the diagnostics of the
@@ -48,13 +48,12 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	showVersion := fs.Bool("version", false, "print the version and exit")
 	dumpFile := fs.String("dump", "", "write the parsed tables to `FILE` (legacy /D)")
-	cFile := fs.String("to-c", "", "write a translation into C to `FILE` (legacy /C)")
-	exactFile := fs.String("to-c-exact", "", "write a C program that behaves like the interpreter to `FILE`")
+	cFile := fs.String("to-c", "", "write a C program that behaves like this one to `FILE`")
 	lang := fs.String("lang", "", "print the program in `LANG` (en or de) instead of running it")
 	fromC := fs.String("from-c", "", "compile the C program `FILE` into Sorted! and print it")
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: sorted [--dump FILE] [--to-c FILE] [--to-c-exact FILE] [--lang en|de] [--version] PROGRAM.s")
-		fmt.Fprintln(stderr, "       sorted --from-c PROGRAM.c [--lang en|de] [--dump FILE] [--to-c FILE] [--to-c-exact FILE]")
+		fmt.Fprintln(stderr, "usage: sorted [--dump FILE] [--to-c FILE] [--lang en|de] [--version] PROGRAM.s")
+		fmt.Fprintln(stderr, "       sorted --from-c PROGRAM.c [--lang en|de] [--dump FILE] [--to-c FILE]")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -74,7 +73,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if *fromC != "" {
-		return translate(*fromC, langs[*lang], outputs{*cFile, *exactFile, *dumpFile}, stdout, stderr)
+		return translate(*fromC, langs[*lang], outputs{*cFile, *dumpFile}, stdout, stderr)
 	}
 	name := fs.Arg(0)
 
@@ -93,7 +92,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 	// Like the original: the C translation first, then the dump, then run.
-	code := writeFiles(p, outputs{*cFile, *exactFile, *dumpFile}, stderr)
+	code := writeFiles(p, outputs{*cFile, *dumpFile}, stderr)
 	if *lang != "" {
 		text, err := render.Render(p, langs[*lang])
 		if err != nil {
@@ -115,17 +114,17 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 
 // outputs are the files a run writes besides the program's output.
 type outputs struct {
-	c, exact, dump string // --to-c, --to-c-exact, --dump
+	c, dump string // --to-c, --dump
 }
 
-// writeFiles writes the requested outputs, the C translations before
-// the dump as the original does, and returns 1 if one cannot be written.
+// writeFiles writes the requested outputs, the C translation before the
+// dump as the original does, and returns 1 if one cannot be written.
 func writeFiles(p *syntax.Program, files outputs, stderr io.Writer) int {
 	code := 0
 	for _, out := range []struct {
 		file   string
 		render func(*syntax.Program) string
-	}{{files.c, emit.C}, {files.exact, emit.Exact}, {files.dump, emit.Dump}} {
+	}{{files.c, emit.Exact}, {files.dump, emit.Dump}} {
 		if out.file == "" {
 			continue
 		}
