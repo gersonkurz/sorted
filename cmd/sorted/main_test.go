@@ -225,6 +225,108 @@ func TestExamples(t *testing.T) {
 
 // --lang prints the program instead of running it; the printed program runs
 // like the original.
+// A language may be named in any language Sorted! speaks or will, ignoring
+// case and accents, with --lang or as a flag of its own.
+func TestLanguageNames(t *testing.T) {
+	hello := filepath.Join("..", "..", "legacy", "sorted.win32", "hello.s")
+	const en, de = "This code uses the numbers", "Dieses Programm benutzt die Zahlen"
+	for _, tt := range []struct {
+		args []string
+		head string
+	}{
+		{[]string{"--lang", "Englisch"}, en}, {[]string{"--anglais"}, en}, {[]string{"--INGLESE"}, en},
+		{[]string{"--lang=inglês"}, en}, {[]string{"--ingles"}, en}, {[]string{"--英語"}, en},
+		{[]string{"--lang", "yingyu"}, en}, {[]string{"-eigo"}, en}, {[]string{"--en"}, en},
+		{[]string{"--deutsch"}, de}, {[]string{"--lang", "German"}, de}, {[]string{"--allemand"}, de},
+		{[]string{"--alemao"}, de}, {[]string{"--lang", "德语"}, de}, {[]string{"--déyǔ"}, de},
+		{[]string{"--deutsch", "--german"}, de},
+	} {
+		r := runCLI(append(tt.args, hello)...)
+		if r.code != 0 || !strings.HasPrefix(r.stdout, tt.head) {
+			t.Errorf("%v: %+v", tt.args, r)
+		}
+	}
+	for _, name := range []string{"Französisch", "franzosisch", "franzoesisch", "vaudois", "Waadtlaendisch", "italiano", "português", "日本語", "中文", "zhongwen", "pǔtōnghuà"} {
+		if r := runCLI("--lang", name, hello); r.code != 2 || r.stderr != "sorted: Sorted! does not speak "+name+" yet\n" {
+			t.Errorf("%s: %+v", name, r)
+		}
+	}
+	if r := runCLI("--deutsch", "--anglais", hello); r.code != 2 || !strings.Contains(r.stderr, "usage: sorted") {
+		t.Errorf("two languages: %+v", r)
+	}
+	if r := runCLI("--lang", "Deutsch", "--", "--english"); r.code != 1 || !strings.Contains(r.stdout, "--english is not intelligible") {
+		t.Errorf("after --, a name is a file: %+v", r)
+	}
+	// Decomposed accents and kana name the same language as precomposed ones.
+	for _, args := range [][]string{{"--lang", "ingle\u0302s"}, {"--ingle\u0302s"}, {"--lang", "yi\u0304ngyu\u030c"}, {"--englisch"}} {
+		if r := runCLI(append(args, hello)...); r.code != 0 || !strings.HasPrefix(r.stdout, en) {
+			t.Errorf("%q: %+v", args, r)
+		}
+	}
+	for _, args := range [][]string{{"--lang", "\u30c8\u3099イツ語"}, {"--alema\u0303o"}, {"--de\u0301yu\u030c"}} {
+		if r := runCLI(append(args, hello)...); r.code != 0 || !strings.HasPrefix(r.stdout, de) {
+			t.Errorf("%q: %+v", args, r)
+		}
+	}
+	if r := runCLI("--lang", "Franzo\u0308sisch", hello); r.code != 2 || !strings.Contains(r.stderr, "does not speak") {
+		t.Errorf("decomposed umlaut: %+v", r)
+	}
+	if r := runCLI("--lang", "\u30db\u309aルトカ\u3099ル語", hello); r.code != 2 || !strings.Contains(r.stderr, "does not speak") {
+		t.Errorf("decomposed kana: %+v", r)
+	}
+	// A name is only a flag where a flag can be: not as an option's value,
+	// nor after the program. These write files, so they run in a temporary
+	// directory on a copy of hello.s, which a rejected command must leave
+	// alone.
+	src, err := os.ReadFile(hello)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(t.TempDir())
+	if err := os.WriteFile("prog.s", src, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if r := runCLI("--dump", "--english", "prog.s"); r.code != 0 {
+		t.Errorf("--dump to a file named --english: %+v", r)
+	} else if _, err := os.Stat("--english"); err != nil {
+		t.Errorf("the dump was not written to --english: %v", err)
+	}
+	if r := runCLI("--to-c", "--english", "prog.s", "prog.s"); r.code != 2 || !strings.Contains(r.stderr, "usage: sorted") {
+		t.Errorf("--to-c --english with two programs: %+v", r)
+	}
+	if got, _ := os.ReadFile("prog.s"); string(got) != string(src) {
+		t.Errorf("prog.s was changed by a rejected command")
+	}
+	if r := runCLI("--dump=--english", "--deutsch", "prog.s"); r.code != 0 || !strings.HasPrefix(r.stdout, de) {
+		t.Errorf("--dump=NAME and a language: %+v", r)
+	}
+	if r := runCLI("prog.s", "--deutsch"); r.code != 2 || !strings.Contains(r.stderr, "usage: sorted") {
+		t.Errorf("a name after the program: %+v", r)
+	}
+	if r := runCLI("--version", "--deutsch", "prog.s"); r.code != 0 || !strings.HasPrefix(r.stdout, "sorted ") {
+		t.Errorf("a bool flag before a name: %+v", r)
+	}
+	if r := runCLI("--help"); !strings.Contains(r.stderr, "en: English, Englisch, anglais") || !strings.Contains(r.stderr, "zh (not yet): Mandarin") {
+		t.Errorf("help: %q", r.stderr)
+	}
+}
+
+// keys folds case and accents however they are encoded, and keeps kana
+// voicing, which is no accent.
+func TestKeys(t *testing.T) {
+	same := [][2]string{{"Français", "francais"}, {"franc\u0327ais", "FRANCAIS"}, {"Straße", "strasse"},
+		{"Französisch", "franzoesisch"}, {"Franzo\u0308sisch", "franzosisch"}, {"ドイツ語", "\u30c8\u3099イツ語"}, {"yīngyǔ", "YINGYU"}}
+	for _, p := range same {
+		a, b := keys(p[0]), keys(p[1])
+		if a[0] != b[0] && a[1] != b[1] {
+			t.Errorf("%q and %q differ: %q, %q", p[0], p[1], a, b)
+		}
+	}
+	if keys("ド") == keys("ト") {
+		t.Errorf("voicing dropped: %q", keys("ド"))
+	}
+}
+
 func TestLang(t *testing.T) {
 	r := runCLI("--lang", "de", filepath.Join("..", "..", "legacy", "sorted.win32", "hello.s"))
 	if r.code != 0 || r.stderr != "" || !strings.HasPrefix(r.stdout, "Dieses Programm benutzt die Zahlen") || !strings.HasSuffix(r.stdout, "Hervorragend.\n") {
@@ -243,8 +345,11 @@ func TestLang(t *testing.T) {
 	if r := runCLI("--english", "--lang", "de", hello); r.code != 2 || !strings.Contains(r.stderr, "usage: sorted") {
 		t.Errorf("two choices: %+v", r)
 	}
-	if r := runCLI("--lang", "fr", "hello.s"); r.code != 2 || !strings.Contains(r.stderr, "usage: sorted") {
+	if r := runCLI("--lang", "klingon", "hello.s"); r.code != 2 || !strings.Contains(r.stderr, "usage: sorted") {
 		t.Errorf("unknown language: %+v", r)
+	}
+	if r := runCLI("--lang", "fr", "hello.s"); r.code != 2 || r.stderr != "sorted: Sorted! does not speak fr yet\n" {
+		t.Errorf("a language not spoken yet: %+v", r)
 	}
 }
 

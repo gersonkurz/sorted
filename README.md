@@ -69,8 +69,8 @@ just package    # macOS/Linux: release archives for all platforms in out/dist
 ## Usage
 
 ```
-sorted [--dump FILE] [--to-c FILE] [--lang en|de | --english | --german] [--version] PROGRAM.s
-sorted --from-c PROGRAM.c [--lang en|de | --english | --german] [--dump FILE] [--to-c FILE]
+sorted [--dump FILE] [--to-c FILE] [--lang NAME | --NAME] [--version] PROGRAM.s
+sorted --from-c PROGRAM.c [--lang NAME | --NAME] [--dump FILE] [--to-c FILE]
 ```
 
 `sorted` parses and runs the program. `--dump` writes the parsed tables, as
@@ -79,12 +79,15 @@ the Sorted! one; both are written before the program runs. The original's `/C`
 had a C translation too, but it does not do what the program does: it prints
 every number as a character, so `fibo.s` comes out as raw bytes instead of
 "one, one, two, three", and it writes indirect cells one off, so `itoa.s`
-moves its famous NUL. `--to-c` replaces it. `--lang en` (or `--english`) and `--lang de` (or
-`--german`) print the program in English or German instead of running it, so
-`sorted --german hello.s` sings Hello World in German. `--from-c` compiles a C
-program into Sorted! instead (see "Young Adult Romance" below). Sorted! has no
-favourite language, so unless you ask for one, each run of `--from-c` picks
-English or German at random.
+moves its famous NUL. `--to-c` replaces it. `--lang NAME`, or just `--NAME`, prints the program in that
+language instead of running it, so `sorted --deutsch hello.s` sings Hello
+World in German. Sorted! has no favourite language, not even for naming
+languages: NAME may be the language's name in any language Sorted! speaks or
+will, ignoring case and accents (`--english`, `--Englisch`, `--anglais`,
+`--lang inglês`, `--英語`, `--lang en`; `sorted --help` lists them all).
+`--from-c` compiles a C program into Sorted! instead (see "Young Adult
+Romance" below), and unless you ask for a language, each run picks one at
+random.
 
 What the program prints, and the original's diagnostics, go to stdout exactly
 as the original printed them:

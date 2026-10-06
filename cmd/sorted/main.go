@@ -1,18 +1,19 @@
 // Command sorted runs programs written in Sorted!, the esoteric language from
 // 2000.
 //
-//	sorted [--dump FILE] [--to-c FILE] [--lang en|de | --english | --german] [--version] PROGRAM.s
-//	sorted --from-c PROGRAM.c [--lang en|de | --english | --german] [--dump FILE] [--to-c FILE]
+//	sorted [--dump FILE] [--to-c FILE] [--lang NAME | --NAME] [--version] PROGRAM.s
+//	sorted --from-c PROGRAM.c [--lang NAME | --NAME] [--dump FILE] [--to-c FILE]
 //
 // Before the program runs, --dump writes the parsed tables, as the
 // original's /D does, and --to-c a C program that behaves exactly like it
 // (unlike the original's /C, which is not ported), so C -> Sorted! -> C
 // (--from-c with --to-c) turns a C program into an equivalent, thoroughly
-// obfuscated one. --lang en or --english, and --lang de or --german, print
-// the program in English or German instead of running it. --from-c
-// compiles a C program into Sorted! and prints it; Sorted! is bilingual and
-// does not prefer either language, so unless one is asked for, each run
-// picks one at random.
+// obfuscated one. --lang NAME, or just --NAME, prints the program in that
+// language instead of running it, and NAME may name it in any language
+// Sorted! speaks (--english, --deutsch, --lang anglais, --英語; see
+// langs.go). --from-c compiles a C program into Sorted! and prints it;
+// Sorted! does not prefer any language, so unless one is asked for, each
+// run picks one at random.
 //
 // The flags are modern; what a program prints, and the diagnostics of the
 // original (on stdout, byte for byte), are those of the Win32 Sorted.exe.
@@ -63,15 +64,15 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	showVersion := fs.Bool("version", false, "print the version and exit")
 	dumpFile := fs.String("dump", "", "write the parsed tables to `FILE` (legacy /D)")
 	cFile := fs.String("to-c", "", "write a C program that behaves like this one to `FILE`")
-	lang := fs.String("lang", "", "print the program in `LANG` (en or de) instead of running it")
-	english := fs.Bool("english", false, "the same as --lang en")
-	german := fs.Bool("german", false, "the same as --lang de")
+	lang := fs.String("lang", "", "print the program in the language `NAME` (see below) instead of running it")
 	fromC := fs.String("from-c", "", "compile the C program `FILE` into Sorted! and print it")
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: sorted [--dump FILE] [--to-c FILE] [--lang en|de | --english | --german] [--version] PROGRAM.s")
-		fmt.Fprintln(stderr, "       sorted --from-c PROGRAM.c [--lang en|de | --english | --german] [--dump FILE] [--to-c FILE]")
+		fmt.Fprintln(stderr, "usage: sorted [--dump FILE] [--to-c FILE] [--lang NAME | --NAME] [--version] PROGRAM.s")
+		fmt.Fprintln(stderr, "       sorted --from-c PROGRAM.c [--lang NAME | --NAME] [--dump FILE] [--to-c FILE]")
 		fs.PrintDefaults()
+		fmt.Fprint(stderr, languageHelp())
 	}
+	args, named := languageFlags(fs, args)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -79,31 +80,34 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, "sorted", version)
 		return 0
 	}
-	langs := map[string]render.Lang{"en": render.English, "de": render.German}
 	positional := 1 // the Sorted! program, unless compiling from C
 	if *fromC != "" {
 		positional = 0
 	}
-	chosen := 0 // --lang, --english, --german: at most one
-	for _, set := range []bool{*lang != "", *english, *german} {
-		if set {
-			chosen++
+	if *lang != "" {
+		named = append(named, *lang)
+	}
+	var chosen *language // at most one choice, of a language Sorted! speaks
+	for _, name := range named {
+		l, ok := findLanguage(name)
+		if !ok || chosen != nil && chosen.code != l.code {
+			fs.Usage()
+			return 2
 		}
+		if !l.spoken {
+			fmt.Fprintf(stderr, "sorted: Sorted! does not speak %s yet\n", name)
+			return 2
+		}
+		chosen = &l
 	}
-	switch {
-	case *english:
-		*lang = "en"
-	case *german:
-		*lang = "de"
-	}
-	if _, ok := langs[*lang]; fs.NArg() != positional || *lang != "" && !ok || chosen > 1 {
+	if fs.NArg() != positional {
 		fs.Usage()
 		return 2
 	}
 	if *fromC != "" {
-		l, ok := langs[*lang]
-		if !ok {
-			l = pickLang()
+		l := pickLang()
+		if chosen != nil {
+			l = chosen.lang
 		}
 		return translate(*fromC, l, outputs{*cFile, *dumpFile}, stdout, stderr)
 	}
@@ -125,8 +129,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	// Like the original: the C translation first, then the dump, then run.
 	code := writeFiles(p, outputs{*cFile, *dumpFile}, stderr)
-	if *lang != "" {
-		text, err := render.Render(p, langs[*lang])
+	if chosen != nil {
+		text, err := render.Render(p, chosen.lang)
 		if err != nil {
 			fmt.Fprintf(stderr, "sorted: %v\n", err)
 			return 1
