@@ -54,8 +54,14 @@ func Fold(n *Node) (int32, bool) {
 	case NdMul:
 		return a * b, true
 	case NdDiv, NdMod:
-		if b == 0 || a == math.MinInt32 && b == -1 {
+		if b == 0 || a == math.MinInt32 && b == -1 && !n.Ty.IsUnsignedInt() {
 			return 0, false
+		}
+		if n.Ty.IsUnsignedInt() {
+			if n.Kind == NdDiv {
+				return int32(uint32(a) / uint32(b)), true
+			}
+			return int32(uint32(a) % uint32(b)), true
 		}
 		if n.Kind == NdDiv {
 			return a / b, true
@@ -71,16 +77,21 @@ func Fold(n *Node) (int32, bool) {
 		return b2i(a == b), true
 	case NdNe:
 		return b2i(a != b), true
-	case NdLt:
-		return b2i(a < b), true
-	case NdLe:
-		return b2i(a <= b), true
+	case NdLt, NdLe:
+		if n.Lhs.Ty.IsUnsignedInt() || n.Rhs.Ty.IsUnsignedInt() {
+			a, b := uint32(a), uint32(b)
+			return b2i(a < b || a == b && n.Kind == NdLe), true
+		}
+		return b2i(a < b || a == b && n.Kind == NdLe), true
 	}
 	if b < 0 || b > 31 {
 		return 0, false
 	}
 	if n.Kind == NdShl {
 		return int32(uint32(a) << b), true
+	}
+	if n.Ty.IsUnsignedInt() {
+		return int32(uint32(a) >> b), true
 	}
 	return a >> b, true
 }

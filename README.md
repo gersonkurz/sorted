@@ -203,8 +203,9 @@ every verse printed exactly as the C program prints it.
 
 **What works today.** A growing subset of C: functions with `int`, `char`
 and pointer parameters returning `int`, `char`, a pointer or `void`
-(prototypes and recursion included), `int` and `char` variables, structs,
-pointers to them and one-dimensional arrays of those (globals with constant
+(prototypes and recursion included), `int` and `char` variables (also
+`unsigned`), structs, pointers to them and arrays of those, also of arrays
+(`int m[3][4]`; globals with constant
 or address initializers, locals in nested blocks, nested `{...}` lists and
 string literals), integer constants (decimal, hex, octal), character constants (`'a'`,
 `'\n'`, `'\x41'`) and string literals, `a[i]`, `&x`, `*p`, `s.m`, `p->m` and

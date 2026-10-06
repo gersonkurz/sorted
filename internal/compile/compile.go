@@ -58,7 +58,13 @@
 //     in the C subset (see runtime.go). Numbers beyond what a declaration
 //     spells (999999999) are 1000000 * q + r.
 //   - A store into a char wraps the value to -128..127, as C does, by
-//     arithmetic: ((v + 128) % 256 + 256) % 256 - 128.
+//     arithmetic: ((v + 128) % 256 + 256) % 256 - 128; an unsigned char
+//     wraps to 0..255.
+//   - unsigned int is the same 32 bits, so + - * and the bit operations
+//     are unchanged. A comparison flips both sign bits (adds -2^31) and
+//     compares signed; division, remainder and right shifts by a variable
+//     count call udiv, umod and ushr (runtime.go); a right shift by a
+//     constant keeps the low bits of the arithmetic shift.
 //   - putchar(e) assigns e to an output cell and runs the program's only
 //     output, which writes that cell as a character.
 //   - return in main jumps past the last statement.
@@ -207,7 +213,7 @@ type returnTo struct {
 	label int // -1 until needed (main only)
 	rv    val
 	hasRV bool
-	char  bool // the value wraps to char
+	ty    *cc.Type // the result type, which a char result wraps to
 }
 
 // function is a function main reaches. Its code exists once. A call stores
@@ -271,10 +277,7 @@ func compileProgram(prog *cc.Program) (c *compiler, p *syntax.Program, err error
 				c.assign(val{vVar, base.i + i}, c.address(c.variable(g.InitRef[i]), int(v)))
 				continue
 			}
-			if g.Char {
-				v = int32(int8(v))
-			}
-			if v != 0 {
+			if v != 0 { // chars came wrapped from the parser
 				c.assign(val{vVar, base.i + i}, c.number(v, g.Pos))
 			}
 		}
@@ -410,6 +413,33 @@ func (c *compiler) mod(a, b val) val {
 	return c.expr(vDiff, a, c.expr(vProd, c.expr(vRatio, a, b, 0), b, 0), 0)
 }
 
+// wrapTo converts v as a store into a t does: a char wraps to -128..127,
+// an unsigned char to 0..255; anything else keeps its 32 bits.
+func (c *compiler) wrapTo(t *cc.Type, v val, pos cc.Pos) val {
+	switch {
+	case t == nil || t.Kind != cc.TyChar:
+		return v
+	case !t.Unsigned:
+		return c.wrapChar(v, pos)
+	}
+	if k, ok := c.constValue(v); ok {
+		return c.number(int32(uint8(k)), pos)
+	}
+	p := c.number(256, pos)
+	return c.mod(c.expr(vSum, c.mod(v, p), p, 0), p)
+}
+
+// less is a < b for the comparison n, unsigned when an operand is unsigned
+// int: then both have their sign bit flipped (-2^31 added), which orders
+// them as unsigned.
+func (c *compiler) less(n *cc.Node, a, b val) val {
+	if n.Lhs.Ty.IsUnsignedInt() || n.Rhs.Ty.IsUnsignedInt() {
+		flip := c.number(math.MinInt32, n.Pos)
+		a, b = c.expr(vSum, a, flip, 0), c.expr(vSum, b, flip, 0)
+	}
+	return c.lt(a, b)
+}
+
 // wrapChar converts v to char: -128..127, as a store into a char does.
 func (c *compiler) wrapChar(v val, pos cc.Pos) val {
 	if k, ok := c.constValue(v); ok {
@@ -500,10 +530,8 @@ func (c *compiler) addressOf(n *cc.Node) val {
 		// through a pointer to one of them would be undone (see save).
 		fail(n.Pos, "taking the address of '%s' in the recursive function '%s' is not supported yet (make it a global)", v.Name, c.cur.decl.Name)
 	}
-	if x.Kind == cc.NdIndex {
-		if k, ok := c.constOffset(x, x.Var.Len); ok { // &a[len] is the end
-			return c.address(c.variable(x.Var), k*x.Var.Ty.Base.Size())
-		}
+	if cell, ok := c.directAt(x, true); ok { // &a[len] is the end
+		return c.address(cell, 0)
 	}
 	return c.location(x) // &*p is p
 }
@@ -517,6 +545,9 @@ func (c *compiler) deref(n *cc.Node) val {
 	}
 	if n.Lhs.Kind == cc.NdAddr && n.Lhs.Lhs.Kind != cc.NdDeref {
 		return c.value(n.Lhs.Lhs) // *&x, and *a for an array a
+	}
+	if cell, ok := c.direct(n); ok { // a[k] on a member or a row
+		return cell
 	}
 	p := c.temporary()
 	c.assign(p, c.expr(vSum, c.value(n.Lhs), c.number(1, n.Pos), 0))
@@ -610,10 +641,10 @@ func (c *compiler) value(n *cc.Node) val {
 		c.place(skip)
 		return t
 	}
-	if n.WrapChar {
+	if n.Wrap != nil {
 		w := *n
-		w.WrapChar = false
-		return c.wrapChar(c.value(&w), n.Pos)
+		w.Wrap = nil
+		return c.wrapTo(n.Wrap, c.value(&w), n.Pos)
 	}
 	a, b := c.operands(n.Lhs, n.Rhs)
 	if n.Kind == cc.NdAdd || n.Kind == cc.NdSub {
@@ -645,9 +676,9 @@ func (c *compiler) value(n *cc.Node) val {
 	case cc.NdNe:
 		return c.expr(vDiff, c.number(1, n.Pos), c.eq(a, b), 0)
 	case cc.NdLt:
-		return c.lt(a, b)
+		return c.less(n, a, b)
 	case cc.NdLe:
-		return c.expr(vDiff, c.number(1, n.Pos), c.lt(b, a), 0)
+		return c.expr(vDiff, c.number(1, n.Pos), c.less(n, b, a), 0)
 	}
 	fail(n.Pos, "cannot lower this expression")
 	return val{}
@@ -707,10 +738,11 @@ func (c *compiler) cond(n *cc.Node, sense bool) val {
 	case n.Kind == cc.NdEq && sense, n.Kind == cc.NdNe && !sense:
 		return c.eq(c.operands(n.Lhs, n.Rhs))
 	case n.Kind == cc.NdLt && sense:
-		return c.lt(c.operands(n.Lhs, n.Rhs))
+		a, b := c.operands(n.Lhs, n.Rhs)
+		return c.less(n, a, b)
 	case n.Kind == cc.NdLe && !sense:
 		a, b := c.operands(n.Lhs, n.Rhs)
-		return c.lt(b, a)
+		return c.less(n, b, a)
 	case sense:
 		return c.not(c.not(c.value(n), n.Pos), n.Pos)
 	}
@@ -783,12 +815,9 @@ func (c *compiler) assignment(n *cc.Node, want bool) val {
 		c.copyStruct(n)
 		return val{}
 	}
-	char := lhs.Ty.Kind == cc.TyChar
 	if target, ok := c.direct(lhs); ok {
 		v := c.value(n.Rhs)
-		if char {
-			v = c.wrapChar(v, n.Pos)
-		}
+		v = c.wrapTo(lhs.Ty, v, n.Pos)
 		c.assign(target, v)
 		return target
 	}
@@ -808,9 +837,7 @@ func (c *compiler) assignment(n *cc.Node, want bool) val {
 	}
 	v := c.value(n.Rhs)
 	delete(c.reads, lhs)
-	if char {
-		v = c.wrapChar(v, n.Pos)
-	}
+	v = c.wrapTo(lhs.Ty, v, n.Pos)
 	c.assign(val{vInd, w.i}, v)
 	if !want {
 		return val{}
@@ -820,12 +847,23 @@ func (c *compiler) assignment(n *cc.Node, want bool) val {
 
 // direct returns the cell an lvalue is, when it is known while compiling: a
 // variable, an element with a constant index, *&x.
-func (c *compiler) direct(x *cc.Node) (val, bool) {
+func (c *compiler) direct(x *cc.Node) (val, bool) { return c.directAt(x, false) }
+
+// directAt is direct; with end set, the outermost index may also be one
+// past the last element, which an address may name (&a[len]) but an access
+// may not.
+func (c *compiler) directAt(x *cc.Node, end bool) (val, bool) {
+	last := func(n int) int {
+		if end {
+			return n
+		}
+		return n - 1
+	}
 	switch x.Kind {
 	case cc.NdVar:
 		return c.variable(x.Var), true
 	case cc.NdIndex:
-		if k, ok := c.constIndex(x); ok {
+		if k, ok := c.constOffset(x, last(x.Var.Len)); ok {
 			return val{vVar, c.variable(x.Var).i + k*x.Var.Ty.Base.Size()}, true
 		}
 	case cc.NdMember:
@@ -835,6 +873,18 @@ func (c *compiler) direct(x *cc.Node) (val, bool) {
 	case cc.NdDeref:
 		if x.Lhs.Kind == cc.NdAddr {
 			return c.direct(x.Lhs.Lhs)
+		}
+		// a[k] on an array that is not a variable (a member, a row of an
+		// array of arrays) is *(&a + k): with a constant k, a cell
+		if add := x.Lhs; add.Kind == cc.NdAdd && add.Lhs.Kind == cc.NdAddr {
+			k, ok := cc.Fold(add.Rhs)
+			base, okB := c.direct(add.Lhs.Lhs)
+			if ok && okB {
+				if arr := add.Lhs.Lhs.Ty; arr != nil && arr.Kind == cc.TyArray && (k < 0 || int(k) > last(arr.Len)) {
+					fail(add.Rhs.Pos, "index %d is out of range (%d elements)", k, arr.Len)
+				}
+				return val{vVar, base.i + int(k)*x.Ty.Size()}, true
+			}
 		}
 	}
 	return val{}, false
@@ -1218,9 +1268,7 @@ func (c *compiler) call(n *cc.Node) val {
 	}
 	for i, p := range n.Fn.Params {
 		v := args[i]
-		if p.Char {
-			v = c.wrapChar(v, n.Pos)
-		}
+		v = c.wrapTo(p.Ty, v, n.Pos)
 		c.assign(c.variable(p), v)
 	}
 	ret := f.dispatch // the only call site returns straight here
@@ -1289,7 +1337,7 @@ func (c *compiler) restore(cells []int) {
 // return for falling off the end.
 func (c *compiler) functionBody(f *function) {
 	c.cur = f
-	c.ret = &returnTo{label: f.dispatch, rv: f.rv, hasRV: !f.decl.Void, char: f.decl.Char}
+	c.ret = &returnTo{label: f.dispatch, rv: f.rv, hasRV: !f.decl.Void, ty: f.decl.Ret}
 	c.place(f.entry)
 	c.stmt(f.decl.Body)
 	if b := f.decl.Body.Body; len(b) == 0 || b[len(b)-1].Kind != cc.NdReturn {
@@ -1317,9 +1365,7 @@ func (c *compiler) returning(n *cc.Node) {
 	r := c.ret
 	if r.hasRV && n.Lhs != nil {
 		v := c.value(n.Lhs)
-		if r.char {
-			v = c.wrapChar(v, n.Pos)
-		}
+		v = c.wrapTo(r.ty, v, n.Pos)
 		c.assign(r.rv, v)
 	} else {
 		c.effects(n.Lhs)

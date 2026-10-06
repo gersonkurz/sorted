@@ -69,12 +69,12 @@ func (ps *parser) typeOf(n *Node) *Type {
 		return n.Lhs.Ty.Base
 	case NdNeg, NdBitNot:
 		ps.integer(n.Lhs, "the operand of unary '"+map[NodeKind]string{NdNeg: "-", NdBitNot: "~"}[n.Kind]+"'")
-		return tyInt
+		return promoted(n.Lhs.Ty)
 	case NdAdd:
 		a, b := n.Lhs.Ty, n.Rhs.Ty
 		switch {
 		case a.IsInteger() && b.IsInteger():
-			return tyInt
+			return arith(a, b)
 		case a.Kind == TyPtr && b.IsInteger():
 			return a
 		case a.IsInteger() && b.Kind == TyPtr:
@@ -84,7 +84,7 @@ func (ps *parser) typeOf(n *Node) *Type {
 		a, b := n.Lhs.Ty, n.Rhs.Ty
 		switch {
 		case a.IsInteger() && b.IsInteger():
-			return tyInt
+			return arith(a, b)
 		case a.Kind == TyPtr && b.IsInteger():
 			return a
 		case a.Kind == TyPtr && b.Kind == TyPtr && sameType(a, b):
@@ -92,7 +92,10 @@ func (ps *parser) typeOf(n *Node) *Type {
 		}
 	case NdMul, NdDiv, NdMod, NdBitAnd, NdBitOr, NdBitXor, NdShl, NdShr:
 		if n.Lhs.Ty.IsInteger() && n.Rhs.Ty.IsInteger() {
-			return tyInt
+			if n.Kind == NdShl || n.Kind == NdShr {
+				return promoted(n.Lhs.Ty) // a shift has the left operand's type
+			}
+			return arith(n.Lhs.Ty, n.Rhs.Ty)
 		}
 	case NdEq, NdNe, NdLt, NdLe:
 		a, b := n.Lhs.Ty, n.Rhs.Ty
@@ -114,7 +117,7 @@ func (ps *parser) typeOf(n *Node) *Type {
 		a, b := n.Then.Ty, n.Els.Ty
 		switch {
 		case a.IsInteger() && b.IsInteger():
-			return tyInt
+			return arith(a, b)
 		case a.Kind == TyPtr && b.Kind == TyPtr && sameType(a, b),
 			a.Kind == TyPtr && isNull(n.Els):
 			return a

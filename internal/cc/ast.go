@@ -21,9 +21,10 @@
 // #include <stdio.h>, so that a program for Sorted! is also a C program that
 // declares putchar.
 //
-// The subset: int and char variables, structs (members of any of these
-// types, tags in scopes, a struct pointing to its own kind), pointers to
-// any of them (to any depth), and one-dimensional arrays of those, global
+// The subset: int and char variables, signed and unsigned, structs
+// (members of any of these types, tags in scopes, a struct pointing to its
+// own kind), pointers to any of them (to any depth), and arrays of those,
+// also of arrays (int m[3][4]; a parameter int m[][4]), global
 // (with constant expressions and addresses of globals as initializers) and
 // local (initializers are assignments, with nested {...} lists, brace
 // elision, and string literals for char arrays), integer
@@ -127,7 +128,7 @@ type Node struct {
 
 	Var    *Obj    // NdVar, NdIndex (the array; Lhs is the index)
 	Member *Member // NdMember (Lhs is the struct)
-	Val int32 // NdNum
+	Val    int32   // NdNum
 
 	Ty *Type // the expression's type, set by the parser's type pass
 
@@ -135,10 +136,11 @@ type Node struct {
 	// unary + (C's +a is a value, not an lvalue).
 	Rvalue bool
 
-	// WrapChar marks the value of a postfix ++ or -- on a char: the old value
-	// is rebuilt as new - 1 (or + 1), which must wrap to char again, since the
-	// new value wrapped (127++ stores -128, and -128 - 1 must give 127).
-	WrapChar bool
+	// Wrap marks the value of a postfix ++ or -- on a char with the char's
+	// type: the old value is rebuilt as new - 1 (or + 1), which must wrap
+	// again, since the new value wrapped (127++ stores -128, and -128 - 1 must
+	// give 127; for an unsigned char 255++ stores 0).
+	Wrap *Type
 }
 
 // Function is a function other than main.

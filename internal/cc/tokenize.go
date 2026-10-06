@@ -23,9 +23,12 @@ const (
 type Token struct {
 	Kind TokenKind
 	Text string
-	Val  int32  // TkNum
-	Str  []byte // TkStr: the characters, escapes resolved, without the NUL
-	Pos  Pos
+	Val  int32 // TkNum (an unsigned value as its bit pattern)
+	// Unsigned marks an unsigned int literal: suffix u, or a hexadecimal or
+	// octal literal too big for int.
+	Unsigned bool
+	Str      []byte // TkStr: the characters, escapes resolved, without the NUL
+	Pos      Pos
 
 	bol   bool     // first token on its line (a '#' there starts a directive)
 	space bool     // whitespace or a comment comes before it
@@ -108,11 +111,11 @@ func Tokenize(src string) ([]Token, error) {
 			for n < len(src) && isIdent2(src[n]) {
 				n++
 			}
-			v, err := parseNumber(src[:n])
+			v, unsigned, err := parseNumber(src[:n])
 			if err != nil {
 				return nil, errorAt(pos, "%v", err)
 			}
-			add(Token{Kind: TkNum, Text: src[:n], Val: v, Pos: pos})
+			add(Token{Kind: TkNum, Text: src[:n], Val: v, Unsigned: unsigned, Pos: pos})
 			advance(n)
 		case isIdent1(c):
 			n := 1
@@ -271,9 +274,16 @@ func readEscapedChar(src string, p int, pos Pos) (int, int, error) {
 	return int(at(p)), p + 1, nil
 }
 
-// parseNumber reads a decimal, hexadecimal (0x) or octal (leading 0) int
-// literal. Suffixes and values beyond int are not part of the subset.
-func parseNumber(s string) (int32, error) {
+// parseNumber reads a decimal, hexadecimal (0x) or octal (leading 0)
+// literal of type int or unsigned int, as C17 types it: a suffix u makes it
+// unsigned, and a hexadecimal or octal literal too big for int is unsigned
+// too. Anything bigger, or a decimal literal beyond int (a long), is not
+// part of the subset.
+func parseNumber(s string) (int32, bool, error) {
+	unsigned := false
+	if strings.HasSuffix(s, "u") || strings.HasSuffix(s, "U") {
+		unsigned, s = true, s[:len(s)-1]
+	}
 	base, digits := 10, s
 	switch {
 	case len(s) > 2 && (s[:2] == "0x" || s[:2] == "0X"):
@@ -281,14 +291,14 @@ func parseNumber(s string) (int32, error) {
 	case len(s) > 1 && s[0] == '0':
 		base, digits = 8, s[1:]
 	}
-	v, err := strconv.ParseInt(digits, base, 64)
+	v, err := strconv.ParseUint(digits, base, 64)
 	switch {
-	case err != nil && err.(*strconv.NumError).Err == strconv.ErrRange || err == nil && v > 2147483647:
-		return 0, fmt.Errorf("integer literal out of range: %s", s)
-	case err != nil:
-		return 0, fmt.Errorf("invalid integer literal: %s", s)
+	case err != nil && err.(*strconv.NumError).Err != strconv.ErrRange:
+		return 0, false, fmt.Errorf("invalid integer literal: %s", s)
+	case err != nil || v > 4294967295 || v > 2147483647 && base == 10 && !unsigned:
+		return 0, false, fmt.Errorf("integer literal out of range: %s", s)
 	}
-	return int32(v), nil
+	return int32(uint32(v)), unsigned || v > 2147483647, nil
 }
 
 func isDigit(c byte) bool  { return '0' <= c && c <= '9' }

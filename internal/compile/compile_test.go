@@ -685,6 +685,73 @@ int main() {
 	return 0;
 }`,
 
+	"arrays of arrays and unsigned": `#include <stdio.h>
+int pn; int pp;
+int grid[3][4] = {{1, 2, 3, 4}, {5, 6, 7, 8}, 9, 10};
+char names[3][6] = {"one", "two", "three"};
+int cube[2][2][2] = {1, 2, 3, 4, 5, 6, 7, 8};
+unsigned int big = 4000000000u;
+unsigned mask = 0xFFFFFFFF;
+unsigned char bytes[4] = {255, 256, 300, -1};
+int *lastRow = grid[2];
+int sum(int m[][4], int rows) {
+	int s = 0;
+	for (int i = 0; i < rows; i++)
+		for (int j = 0; j < 4; j++) s += m[i][j];
+	return s;
+}
+struct triple { int a[3]; int b; } tri;
+int first(int m[][4]) { return **m * 10 + *m[1]; }
+void say(char *s) { while (*s) putchar(*s++); }
+void printU(unsigned int u) { if (u >= 10) printU(u / 10); putchar('0' + u % 10); }
+void line(unsigned int u) { printU(u); putchar('\n'); }
+int main() {
+	` + printNum("sum(grid, 3) * 1000 + grid[1][2] * 100 + grid[2][1]") + `
+	int *r = grid[2];
+	r[3] = 42;
+	` + printNum("grid[2][3] * 10 + lastRow[0]") + `
+	for (int i = 0; i < 3; i++) { say(names[i]); putchar(' '); }
+	names[1][0] = 'T';
+	say(names[1]); putchar('\n');
+	int i = 2, j = 3;
+	grid[i][j] += 1;
+	grid[i - 1][j - 1] *= 2;
+	` + printNum("grid[2][3] * 100 + grid[1][2]") + printNum("cube[1][0][1] * 10 + cube[0][1][1] + sum(grid + 1, 1) * 1000") + `
+	line(big); line(mask); line(big / 3); line(big % 7);
+	line(mask >> 1); line(mask >> 4); line(big >> 31); line(mask / big); line(4000000000u % 3000000000u);
+	unsigned v = 0x80000000;
+	for (int k = 0; k < 32; k += 5) line(v >> k);
+	unsigned a = 3000000000u, b = 1;
+	int neg = -1;
+	if (a > b) putchar('Y'); else putchar('N');
+	if (neg < b) putchar('Y'); else putchar('N');
+	if (neg < 1) putchar('Y'); else putchar('N');
+	putchar('\n');
+	int x = -8;
+	unsigned y = 2;
+	line(x / y);
+	` + printNum("x >> 1") + `
+	` + printNum("bytes[0] * 1000000 + bytes[1] * 10000 + bytes[2] * 10 + bytes[3] % 10") + `
+	unsigned char uc = 250;
+	uc += 10;
+	unsigned char z = 255;
+	int old = z++;
+	` + printNum("old * 1000 + z * 100 + uc") + `
+	unsigned char m = 200;
+	unsigned five = 5;
+	` + printNum("m") + `
+	line(five >> 1); line(mask >> 1);
+	int *p0 = *grid;
+	int *rowEnd = &grid[0][4];
+	int *triEnd = &tri.a[3];
+	if (p0 == grid[0] && rowEnd == &grid[1][0] && triEnd == &tri.b && **grid == 1) putchar('E');
+	` + printNum("first(grid) * 10 + first(grid + 1)") + `
+	unsigned w = 7;
+	w -= 10;
+	line(w); line(w * 2); line(-w); line(~w);
+	return 0;
+}`,
+
 	"strings": `#include <stdio.h>
 char greeting[] = "Hello, " "World!\n";
 int main() {
@@ -1067,6 +1134,8 @@ func TestErrors(t *testing.T) {
 		{`struct p { int x; }; int f(struct p *q, int n) { int *r = &q->x; if (n) f(q, n - 1); return *r; } int main() { struct p s; f(&s, 1); }`, ""},
 		{`struct p { int x; }; int f(int n) { struct p s; int *q = &(*&s).x; if (n) f(n - 1); return *q; } int main() { f(1); }`, "1:58: taking the address of 's' in the recursive function 'f' is not supported yet (make it a global)"},
 		{`struct p { int x; }; int main() { struct p a, b; a = (b, a); }`, "1:56: this struct value is not supported yet (only variables, elements, members and *p)"},
+		{`int g[2][3]; int main() { g[1][3] = 0; }`, "1:32: index 3 is out of range (3 elements)"},
+		{`int g[2][3]; int main() { g[2][0] = 0; }`, "1:29: index 2 is out of range for 'g' (2 elements)"},
 		{`int main() { int a[2]; a[2] = 1; }`, "1:26: index 2 is out of range for 'a' (2 elements)"},
 		{`int f(int n) { int x = n; int *p = &x; if (n) f(n - 1); return *p; } int main() { f(2); }`, "1:36: taking the address of 'x' in the recursive function 'f' is not supported yet (make it a global)"},
 		{`int f(int n) { int a[2]; int *p = a; if (n) return f(n - 1); return *p; } int main() { f(2); }`, "1:35: taking the address of 'a' in the recursive function 'f' is not supported yet (make it a global)"},

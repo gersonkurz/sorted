@@ -210,9 +210,9 @@ func TestErrors(t *testing.T) {
 		{"int main() { putchar('\\x100'); }", "1:22: hex escape sequence out of range"},
 		{"int main() { putchar('\\777'); }", "1:22: octal escape sequence out of range"},
 		{"int main() { putchar('\xc3\xa4'); }", "1:22: not supported in Sorted! (yet): non-ASCII characters"},
-		{"int main() { long c; }", "1:14: not supported in Sorted! (yet): the type or specifier 'long' (int, char and struct are the only types)"},
+		{"int main() { long c; }", "1:14: not supported in Sorted! (yet): the type or specifier 'long' (int, char, unsigned and struct are the only types)"},
 		{"void *p; int main() {}", "1:6: not supported in Sorted! (yet): void pointers"},
-		{"int a[2][3]; int main() {}", "1:9: not supported in Sorted! (yet): arrays of arrays"},
+		{"int a[2][]; int main() {}", "1:10: only the first length of an array may be left out"},
 		{"int a[n]; int main() {}", "1:7: undefined variable 'n'"},
 		{"int n; int a[n]; int main() {}", "1:14: not supported in Sorted! (yet): array lengths other than integer constants"},
 		{"int a[0]; int main() {}", "1:7: the length of an array must be positive"},
@@ -236,7 +236,7 @@ func TestErrors(t *testing.T) {
 		{"int main() { int a; a = &a; }", "1:23: the assignment needs 'int', not 'int *'"},
 		{"int f(int) { } int main() {}", "1:5: parameter 1 of 'f' has no name"},
 		{"int f(void x) { } int main() {}", "1:7: a parameter cannot be void"},
-		{"int f(int a[][2]) { } int main() {}", "1:14: not supported in Sorted! (yet): arrays of arrays"},
+		{"int f(int a[2][]) { } int main() {}", "1:16: only the first length of an array may be left out"},
 		{"int f(int (*p)) { } int main() {}", "1:11: not supported in Sorted! (yet): declarators in parentheses (pointers to arrays, function pointers)"},
 		{"int main() { int x; *x = 1; }", "1:21: indirection needs a pointer, not 'int'"},
 		{"int main() { int *p; int *q; p + q; }", "1:32: invalid operands to '+' ('int *' and 'int *')"},
@@ -299,6 +299,16 @@ func TestErrors(t *testing.T) {
 		{"int main() { struct 3 a; }", "1:21: expected a struct tag or '{'"},
 		{"struct p { int x;", "1:18: expected '}'"},
 		{"struct p { int x; }; int main() { struct p a; a.3; }", "1:49: expected a member name"},
+		{"int x = 3000000000; int main() {}", "1:9: integer literal out of range: 3000000000"},
+		{"int x = 0x100000000; int main() {}", "1:9: integer literal out of range: 0x100000000"},
+		{"int x = 4294967296u; int main() {}", "1:9: integer literal out of range: 4294967296"},
+		{"unsigned signed x; int main() {}", "1:10: 'signed' after 'unsigned'"},
+		{"x; int main() {}", "1:1: expected 'int'"},
+		{"signed unsigned x; int main() {}", "1:8: 'unsigned' after 'signed'"},
+		{"unsigned long x; int main() {}", "1:10: not supported in Sorted! (yet): the type or specifier 'long' (int, char, unsigned and struct are the only types)"},
+		{"int main() { int *p; unsigned *q = p; }", "1:34: the assignment needs 'unsigned int *', not 'int *'"},
+		{"int f(int m[][4]); int g[2][3]; int main() { f(g); }", "1:48: argument 1 of 'f' needs 'int (*)[4]', not 'int (*)[3]'"},
+		{"int main() { int m[2][2]; m[0] = 0; }", "1:28: an array cannot be assigned to, only its elements"},
 		{"int (*p)[3]; int main() {}", "1:5: not supported in Sorted! (yet): declarators in parentheses (pointers to arrays, function pointers)"},
 		{"int f(int a); char f(int a) { } int main() {}", "1:20: conflicting declarations of 'f'"},
 		{"int f(int a); int f(char a) { } int main() {}", "1:19: conflicting declarations of 'f'"},
@@ -355,8 +365,8 @@ func TestErrors(t *testing.T) {
 		{"int main() { int putchar = 0; putchar(65); }", "1:31: 'putchar' is a variable, not a function"},
 		{"int putchar; int main() { putchar(65); }", "1:27: 'putchar' is a variable, not a function"},
 		{"int main() { int inline = 1; }", "1:18: expected a variable name"},
-		{"int main() { inline int a; }", "1:14: not supported in Sorted! (yet): the type or specifier 'inline' (int, char and struct are the only types)"},
-		{"int main() { _Bool b; }", "1:14: not supported in Sorted! (yet): the type or specifier '_Bool' (int, char and struct are the only types)"},
+		{"int main() { inline int a; }", "1:14: not supported in Sorted! (yet): the type or specifier 'inline' (int, char, unsigned and struct are the only types)"},
+		{"int main() { _Bool b; }", "1:14: not supported in Sorted! (yet): the type or specifier '_Bool' (int, char, unsigned and struct are the only types)"},
 		{"int main() { int a; a = restrict; }", "1:25: not supported in Sorted! (yet): 'restrict'"},
 		{"int main() { _Static_assert(1, 2); }", "1:14: not supported in Sorted! (yet): '_Static_assert'"},
 		{"int main();", "1:11: expected the body of main"},
@@ -433,6 +443,8 @@ func TestFold(t *testing.T) {
 		"3 == 3": 1, "3 != 3": 0, "2 < 3": 1, "3 <= 2": 0, "3 > 2": 1, "2 >= 3": 0,
 		"!0": 1, "!7": 0, "2 && 3": 1, "2 && 0": 0, "0 || 0": 0, "0 || 5": 1,
 		"0 && 1 / 0": 0, "1 || 1 / 0": 1, "(-2147483647 - 1) / 1": -2147483648,
+		"0xFFFFFFFF / 2": 2147483647, "0xFFFFFFFF % 10": 5, "0x80000000 >> 31": 1, "-1 < 1u": 0, "1u <= 0xFFFFFFFF": 1,
+		"(0u - 1) / 2": 2147483647, "-1 >> 31": -1,
 	} {
 		p, err := Parse("int g = " + expr + "; int main() {}")
 		if err != nil {
@@ -593,6 +605,42 @@ int main() { }`)
 	}
 	if list.Len != 3 || list.Ty.Size() != 6 || fmt.Sprint(list.Init) != "[1 2 3 4 5]" {
 		t.Errorf("list: len %d, size %d, init %v", list.Len, list.Ty.Size(), list.Init)
+	}
+}
+
+func TestUnsignedAndArraysOfArrays(t *testing.T) {
+	p, err := Parse(`unsigned a = 0xFFFFFFFF; unsigned int b = 4000000000u; unsigned char c = 300;
+signed char d = -1; signed e = 017u; int m[3][4]; char n[][3] = {"ab", "c"};
+int f(int x[][4], unsigned char *y) { return 0; }
+int main() { }`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := p.Globals
+	for i, want := range []string{"unsigned int", "unsigned int", "unsigned char", "char", "int", "int[3][4]", "char[2][3]"} {
+		if got := g[i].Ty.String(); got != want {
+			t.Errorf("global %s: %s, want %s", g[i].Name, got, want)
+		}
+	}
+	if g[0].Init[0] != -1 || g[1].Init[0] != int32(-294967296) || g[2].Init[0] != 44 || g[4].Init[0] != 15 || g[6].Len != 2 || fmt.Sprint(g[6].Init) != "[97 98 0 99 0]" {
+		t.Errorf("init: %v %v %v %v len %d %v", g[0].Init, g[1].Init, g[2].Init, g[4].Init, g[6].Len, g[6].Init)
+	}
+	f := p.Funcs["f"]
+	if f.Params[0].Ty.String() != "int (*)[4]" || f.Params[1].Ty.String() != "unsigned char *" {
+		t.Errorf("params %s, %s", f.Params[0].Ty, f.Params[1].Ty)
+	}
+	// The usual arithmetic conversions.
+	q, err := Parse(`unsigned u; int i; unsigned char uc; int r[2][2];
+int main() { u + i; i - uc; -uc; ~u; uc << 1; u >> i; i ? u : i; r[1]; r[1][1]; u < i; }`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, s := range q.Main.Body {
+		got = append(got, s.Lhs.Ty.String())
+	}
+	if want := "unsigned int, int, int, unsigned int, int, unsigned int, unsigned int, int *, int, int"; strings.Join(got, ", ") != want {
+		t.Errorf("types: %s\nwant   %s", strings.Join(got, ", "), want)
 	}
 }
 

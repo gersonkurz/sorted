@@ -126,19 +126,38 @@ func (ps *parser) program() *Program {
 	return ps.prog
 }
 
-// declspec = "int" | "char" | "struct" struct-decl
+// declspec = ("unsigned" | "signed")? ("int" | "char")
+//
+//	| "unsigned" | "signed"      (int)
+//	| "struct" struct-decl
 func (ps *parser) declspec() *Type {
 	t := ps.tok()
 	if ps.consume("struct") {
 		return ps.structDecl(t)
 	}
-	if t.Kind == TkKeyword && t.Text != "int" && t.Text != "char" {
-		ps.unsupported(t.Pos, "the type or specifier '"+t.Text+"' (int, char and struct are the only types)")
+	sign := ""
+	if ps.equal("unsigned") || ps.equal("signed") {
+		sign = ps.next().Text
+		if t := ps.tok(); t.Text == "unsigned" || t.Text == "signed" {
+			ps.fail(t.Pos, "'%s' after '%s'", t.Text, sign)
+		}
 	}
+	if t := ps.tok(); t.Kind == TkKeyword && t.Text != "int" && t.Text != "char" && (sign == "" || isTypeKeyword(t.Text)) {
+		ps.unsupported(t.Pos, "the type or specifier '"+t.Text+"' (int, char, unsigned and struct are the only types)")
+	}
+	unsigned := sign == "unsigned"
 	if ps.consume("char") {
+		if unsigned {
+			return tyUChar
+		}
 		return tyChar
 	}
-	ps.skip("int")
+	if !ps.consume("int") && sign == "" {
+		ps.skip("int")
+	}
+	if unsigned {
+		return tyUInt
+	}
 	return tyInt
 }
 
@@ -250,10 +269,12 @@ type decl struct {
 	lpos  Pos // where the length is, for errors
 }
 
-// declarator = "*"* ident ("[" num? "]")?
+// declarator = "*"* ident ("[" num? "]" ("[" num "]")*)?
 //
-// base is the declspec's type. Arrays of arrays, and declarators in
-// parentheses (pointers to arrays, function pointers), are not in the subset.
+// base is the declspec's type. int m[3][4] is an array of three arrays of
+// four ints; only the first length may be left to the initializer.
+// Declarators in parentheses (pointers to arrays, function pointers) are
+// not in the subset.
 func (ps *parser) declarator(base *Type) decl {
 	ty := base
 	for ps.equal("*") {
@@ -271,23 +292,38 @@ func (ps *parser) declarator(base *Type) decl {
 	if !ps.equal("[") {
 		return d
 	}
-	d.array, d.lpos = true, ps.next().Pos
-	if !ps.equal("]") {
-		pos := ps.tok().Pos
-		n := ps.constant("array lengths other than integer constants")
-		if n <= 0 {
-			ps.fail(pos, "the length of an array must be positive")
-		}
-		d.len = int(n)
-	}
-	ps.skip("]")
-	if ps.equal("[") {
-		ps.unsupported(ps.tok().Pos, "arrays of arrays")
-	}
+	d.array, d.lpos = true, ps.tok().Pos
+	dims := ps.dims(true)
+	d.len = dims[0]
 	if ty != nil {
-		d.ty = arrayOf(ty, d.len)
+		for i := len(dims) - 1; i >= 0; i-- {
+			ty = arrayOf(ty, dims[i])
+		}
+		d.ty = ty
 	}
 	return d
+}
+
+// dims reads the lengths of "[" num? "]" ("[" num "]")*; the first may be
+// left out (0) when first allows it.
+func (ps *parser) dims(first bool) []int {
+	var dims []int
+	for ps.consume("[") {
+		n := 0
+		if !ps.equal("]") || !first || len(dims) > 0 {
+			pos := ps.tok().Pos
+			if ps.equal("]") {
+				ps.fail(pos, "only the first length of an array may be left out")
+			}
+			n = int(ps.constant("array lengths other than integer constants"))
+			if n <= 0 {
+				ps.fail(pos, "the length of an array must be positive")
+			}
+		}
+		ps.skip("]")
+		dims = append(dims, n)
+	}
+	return dims
 }
 
 // function = "(" "void"? ")" "{" compound-stmt, for main.
@@ -350,13 +386,10 @@ func (ps *parser) otherFunction(name Token, ret *Type) {
 		if ty.Kind == TyStruct && !ps.equal("[") {
 			ps.unsupported(ps.tok().Pos, "struct parameters (pass a pointer)")
 		}
-		if ps.consume("[") { // int a[] and int a[10] are int *a
-			if !ps.equal("]") {
-				ps.constant("array lengths other than integer constants")
-			}
-			ps.skip("]")
-			if ps.equal("[") {
-				ps.unsupported(ps.tok().Pos, "arrays of arrays")
+		if ps.equal("[") { // int a[] and int a[10] are int *a; int m[][4] is int (*m)[4]
+			dims := ps.dims(true)
+			for i := len(dims) - 1; i > 0; i-- {
+				ty = arrayOf(ty, dims[i])
 			}
 			ty = pointerTo(ty)
 		}
@@ -492,7 +525,10 @@ func (ps *parser) constValue(t *Type, n *Node, pos Pos) ginit {
 		if !ok {
 			ps.unsupported(pos, "global initializers other than constants and addresses")
 		}
-		if t.Kind == TyChar {
+		switch {
+		case t.Kind == TyChar && t.Unsigned:
+			v = int32(uint8(v))
+		case t.Kind == TyChar:
 			v = int32(int8(v))
 		}
 		if t.IsInteger() || v == 0 { // a number, or the null pointer
@@ -618,7 +654,11 @@ func (ps *parser) initValue(ty *Type, off int, lv func() *Node, items *[]initIte
 			ps.fail(t.Pos, "the string is longer than the array")
 		}
 		for i, c := range str {
-			*items = append(*items, initItem{off + i, ty.Base, elemLV(lv, i, t.Pos), &Node{Kind: NdNum, Pos: t.Pos, Val: int32(int8(c))}, t.Pos})
+			v := int32(int8(c))
+			if ty.Base.Unsigned {
+				v = int32(c)
+			}
+			*items = append(*items, initItem{off + i, ty.Base, ps.elemLV(lv, i, t.Pos), &Node{Kind: NdNum, Pos: t.Pos, Val: v}, t.Pos})
 		}
 	case ty.Kind == TyArray || ty.Kind == TyStruct:
 		if !ps.equal("{") {
@@ -694,9 +734,9 @@ func (ps *parser) initList(ty *Type, off int, lv func() *Node, items *[]initItem
 		pos := ps.tok().Pos
 		if ty.Kind == TyStruct {
 			m := ty.Members[n]
-			ps.initValue(m.Ty, off+m.Offset, memberLV(lv, m, pos), items, true)
+			ps.initValue(m.Ty, off+m.Offset, ps.memberLV(lv, m, pos), items, true)
 		} else {
-			ps.initValue(ty.Base, off+n*ty.Base.Size(), elemLV(lv, n, pos), items, true)
+			ps.initValue(ty.Base, off+n*ty.Base.Size(), ps.elemLV(lv, n, pos), items, true)
 		}
 		n++
 	}
@@ -708,12 +748,13 @@ func (ps *parser) initList(ty *Type, off int, lv func() *Node, items *[]initItem
 
 // elemLV and memberLV build the lvalue of an array element or a struct
 // member from the lvalue of the whole (nil for a global, which needs none).
-func elemLV(lv func() *Node, i int, pos Pos) func() *Node {
+func (ps *parser) elemLV(lv func() *Node, i int, pos Pos) func() *Node {
 	if lv == nil {
 		return nil
 	}
 	return func() *Node {
 		base, k := lv(), &Node{Kind: NdNum, Pos: pos, Val: int32(i)}
+		ps.typed(base)
 		if base.Kind == NdVar && base.Var.Ty.Kind == TyArray {
 			return &Node{Kind: NdIndex, Pos: pos, Var: base.Var, Lhs: k}
 		}
@@ -721,7 +762,7 @@ func elemLV(lv func() *Node, i int, pos Pos) func() *Node {
 	}
 }
 
-func memberLV(lv func() *Node, m *Member, pos Pos) func() *Node {
+func (ps *parser) memberLV(lv func() *Node, m *Member, pos Pos) func() *Node {
 	if lv == nil {
 		return nil
 	}
@@ -730,15 +771,15 @@ func memberLV(lv func() *Node, m *Member, pos Pos) func() *Node {
 
 // leaves calls visit for every scalar of a ty at cell off, in order, with
 // its lvalue.
-func leaves(ty *Type, off int, lv func() *Node, pos Pos, visit func(off int, ty *Type, lv func() *Node)) {
+func (ps *parser) leaves(ty *Type, off int, lv func() *Node, pos Pos, visit func(off int, ty *Type, lv func() *Node)) {
 	switch ty.Kind {
 	case TyArray:
 		for i := range ty.Len {
-			leaves(ty.Base, off+i*ty.Base.Size(), elemLV(lv, i, pos), pos, visit)
+			ps.leaves(ty.Base, off+i*ty.Base.Size(), ps.elemLV(lv, i, pos), pos, visit)
 		}
 	case TyStruct:
 		for _, m := range ty.Members {
-			leaves(m.Ty, off+m.Offset, memberLV(lv, m, pos), pos, visit)
+			ps.leaves(m.Ty, off+m.Offset, ps.memberLV(lv, m, pos), pos, visit)
 		}
 	default:
 		visit(off, ty, lv)
@@ -799,7 +840,7 @@ func (ps *parser) declaration() *Node {
 			}
 			given[it.off] = it.val
 		}
-		leaves(v.Ty, 0, whole, eq.Pos, func(off int, _ *Type, lv func() *Node) {
+		ps.leaves(v.Ty, 0, whole, eq.Pos, func(off int, _ *Type, lv func() *Node) {
 			if copied[off] {
 				return
 			}
@@ -1074,13 +1115,23 @@ func decayed(n *Node) bool {
 	return n.Kind == NdAddr && arrayType(n.Lhs) != nil
 }
 
-// arrayType returns the array type of an array variable or member, or nil.
+// arrayType returns the array type of an lvalue that is an array (a
+// variable, a member, an element of an array of arrays, *p for a pointer
+// to an array), or nil.
 func arrayType(n *Node) *Type {
-	switch {
-	case n.Kind == NdVar && n.Var.Ty.Kind == TyArray:
-		return n.Var.Ty
-	case n.Kind == NdMember && n.Member.Ty.Kind == TyArray:
-		return n.Member.Ty
+	var t *Type
+	switch n.Kind {
+	case NdVar:
+		t = n.Var.Ty
+	case NdMember:
+		t = n.Member.Ty
+	case NdIndex:
+		t = n.Var.Ty.Base
+	case NdDeref:
+		t = n.Ty
+	}
+	if t != nil && t.Kind == TyArray {
+		return t
 	}
 	return nil
 }
@@ -1261,7 +1312,7 @@ func (ps *parser) unary() *Node {
 	case ps.consume("*"):
 		n := &Node{Kind: NdDeref, Pos: t.Pos, Lhs: ps.unary()}
 		ps.typed(n)
-		return n
+		return decay(n) // *m for an array of arrays is its first row
 	}
 	return ps.postfix()
 }
@@ -1313,7 +1364,11 @@ func (ps *parser) postfix() *Node {
 			undo = NdAdd
 		}
 		one := &Node{Kind: NdNum, Pos: t.Pos, Val: 1}
-		n = &Node{Kind: undo, Pos: t.Pos, Lhs: incDec(n, t), Rhs: one, WrapChar: ps.typed(n).Kind == TyChar}
+		var wrap *Type
+		if ps.typed(n).Kind == TyChar {
+			wrap = n.Ty
+		}
+		n = &Node{Kind: undo, Pos: t.Pos, Lhs: incDec(n, t), Rhs: one, Wrap: wrap}
 	}
 	return decay(n)
 }
@@ -1377,7 +1432,11 @@ func (ps *parser) primary() *Node {
 		return &Node{Kind: NdVar, Pos: t.Pos, Var: v}
 	case t.Kind == TkNum:
 		ps.next()
-		return &Node{Kind: NdNum, Pos: t.Pos, Val: t.Val}
+		n := &Node{Kind: NdNum, Pos: t.Pos, Val: t.Val}
+		if t.Unsigned {
+			n.Ty = tyUInt
+		}
+		return n
 	case t.Kind == TkStr:
 		return ps.stringLiteral()
 	case t.Kind == TkKeyword:
