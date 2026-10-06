@@ -12,23 +12,28 @@
 // Differences from chibicc: errors are returned instead of ending the
 // process; constructs outside the subset are rejected with a message saying
 // so; % is added, as are comments, hexadecimal and octal literals and block
-// scopes; putchar is the only library function. With int and char as the
-// only types, there is no type pass yet.
+// scopes; putchar is the only library function. The type pass (typed, after
+// chibicc's add_type) runs as expressions are parsed and checks what C's
+// constraints require, stricter than a compiler that only warns: pointers
+// and integers do not mix, except for the null pointer constant 0.
 //
 // A small preprocessor (Preprocess) runs #define and #undef and accepts
 // #include <stdio.h>, so that a program for Sorted! is also a C program that
 // declares putchar.
 //
-// The subset: int and char variables and one-dimensional arrays of them,
-// global (with constant expressions as initializers) and local (initializers are
+// The subset: int and char variables, pointers to them (to any depth), and
+// one-dimensional arrays of those, global (with constant expressions and
+// addresses of globals as initializers) and local (initializers are
 // assignments, with {...} lists and string literals for arrays), integer
-// and character constants, a[i], + - * / % and unary -, =, the compound
+// and character constants, string literals (char arrays of their own), a[i],
+// unary & and *, pointer arithmetic, + - * / % and unary -, =, the compound
 // assignments += -= *= /= %= &= |= ^= <<= >>=, ++ and -- (prefix and
 // postfix), == != < <= > >=, && || !, & | ^ ~ << >>, if/else, while, for, break, continue, return, blocks, and
-// putchar(expr), and functions with int and char parameters returning int,
-// char or void (prototypes included), called by name. As in chibicc, x op= e is x = x op e, ++x is x = x + 1 and
-// x++ is (x = x + 1) - 1; in the subset x is always a plain variable, so
-// evaluating it twice is harmless.
+// putchar(expr), and functions with int, char and pointer parameters (an
+// array parameter is a pointer) returning int, char, a pointer or void
+// (prototypes included), called by name. As in chibicc, x op= e is
+// x = x op e, ++x is x = x + 1 and x++ is (x = x + 1) - 1; the compiler
+// evaluates the location of x once.
 package cc
 
 import "fmt"
@@ -64,7 +69,9 @@ const (
 	NdLogAnd                   // &&
 	NdLogOr                    // ||
 	NdNot                      // !
-	NdIndex                    // a[i]
+	NdIndex                    // a[i] for an array variable a
+	NdAddr                     // unary &, and an array used as a value (its first element's address)
+	NdDeref                    // unary *, and p[i] for anything but an array variable (*(p + i))
 	NdBlock                    // { ... }
 	NdFuncall                  // putchar(...)
 	NdExprStmt                 // expression statement
@@ -72,14 +79,20 @@ const (
 	NdNum                      // integer
 )
 
-// Obj is a variable: an int or char, or a one-dimensional array of them.
+// Obj is a variable: an int, a char, a pointer, or a one-dimensional array
+// of them.
 type Obj struct {
 	Name     string
 	IsGlobal bool
-	Char     bool    // char (stores wrap to -128..127) rather than int
+	Ty       *Type
+	Char     bool    // a char, or an array of chars (stores wrap to -128..127)
 	Len      int     // number of elements of an array; 0 for a scalar
 	Init     []int32 // initial values of a global (shorter than Len: the rest is 0)
-	Pos      Pos     // where it is declared
+	// InitRef, when not nil, holds for each initial value the variable whose
+	// address it is (Init is then the offset into it), or nil for a number:
+	// char *s = "hi", int *p = &a[2].
+	InitRef []*Obj
+	Pos     Pos // where it is declared
 }
 
 // Node is an AST node.
@@ -101,6 +114,8 @@ type Node struct {
 	Var *Obj  // NdVar, NdIndex (the array; Lhs is the index)
 	Val int32 // NdNum
 
+	Ty *Type // the expression's type, set by the parser's type pass
+
 	// Rvalue marks a variable that is not assignable: the operand of a
 	// unary + (C's +a is a value, not an lvalue).
 	Rvalue bool
@@ -115,8 +130,9 @@ type Node struct {
 type Function struct {
 	Name    string
 	Params  []*Obj
-	Void    bool // returns nothing
-	Char    bool // returns char (the result wraps to -128..127)
+	Ret     *Type // the result type, nil for void
+	Void    bool  // returns nothing
+	Char    bool  // returns char (the result wraps to -128..127)
 	Body    *Node
 	Defined bool // false for a prototype not (yet) followed by a definition
 	Pos     Pos

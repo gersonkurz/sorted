@@ -424,6 +424,72 @@ int main() {
 	return 0;
 }`,
 
+	"pointers": `#include <stdio.h>
+int pn; int pp;
+int g[5] = {5, 4, 3, 2, 1};
+int *gp = &g[1];
+int *gend = g + 5;
+int *gmid = 2 + g;
+int *gback = g + 4 - 1;
+char *greeting = "Hi, pointers!";
+char *names[] = {"zero", "one", "two"};
+int counter;
+int *where = &counter;
+char buf[32];
+void say(char *s) { while (*s) putchar(*s++); }
+void line(char *s) { say(s); putchar('\n'); }
+int length(char *s) { char *p = s; while (*p) p++; return p - s; }
+void copy(char *to, char *from) { while ((*to++ = *from++) != 0) ; }
+void reverse(char *s) { char *e = s + length(s) - 1; while (s < e) { char t = *s; *s++ = *e; *e-- = t; } }
+void swap(int *a, int *b) { int t = *a; *a = *b; *b = t; }
+int sum(int a[], int n) { int s = 0; for (int i = 0; i < n; i++) s += a[i]; return s; }
+int *largest(int *a, int n) { int *best = a; for (int i = 1; i < n; i++) if (a[i] > *best) best = a + i; return best; }
+void bump(int **pp) { (**pp)++; *pp = *pp + 1; }
+void fill(int *a, int n) { if (n == 0) return; *a = n * n; fill(a + 1, n - 1); }
+int rlen(char *s) { if (!*s) return 0; return 1 + rlen(s + 1); }
+int main() {
+	line(greeting);
+	line(names[2]);
+	putchar(names[1][1]); putchar('\n');
+	` + printNum("length(greeting) * 100 + rlen(names[0])") + `
+	copy(buf, "copied"); line(buf);
+	reverse(buf); line(buf);
+	int x = 3, y = 4;
+	swap(&x, &y);
+	` + printNum("x * 10 + y") + printNum("sum(g, 5)") + printNum("*largest(g, 5) * 10 + (largest(g, 5) - g)") + `
+	*largest(g, 5) = 0;
+	` + printNum("sum(g, 5)") + `
+	int *p = g;
+	p += 2; *p = 9; p[1] = 8; *(p - 1) += 100;
+	` + printNum("g[1] * 100 + g[2] * 10 + g[3]") + printNum("*gp") + `
+	bump(&p);
+	` + printNum("*p * 100 + g[2]") + `
+	*where = 42;
+	` + printNum("counter") + `
+	char c = 'A'; char *cp = &c; *cp += 200;
+	` + printNum("c") + printNum("\"abc\"[1]") + `
+	char z = 127; char *zp = &z; int old = (*zp)++;
+	` + printNum("old * 1000 + z") + `
+	int *ap = &*gp; int *a2 = &g[2]; int j = 3; int *aj = &g[j];
+	int two[2] = {1, 2}; int *twoEnd = &two[2];
+	if (twoEnd == two + 2 && twoEnd - two == 2 && &g[5] == gend) line("one past the end ok");
+	*&g[j] = 5; *&g[0] += 1; *&*ap = 6; *&j = j + 1;
+	` + printNum("(aj - a2) * 1000 + (a2 - ap) * 100 + (g[3] - g[1]) * 10 + j") + `
+	int arr[3] = {1, 2, 3}; int *q = arr; int first = *q++;
+	` + printNum("first * 10 + *q") + `
+	if (p != 0 && p > g && p - g == 3 && gend - g == 5 && gmid - g == 2 && gback - gmid == 1) line("compare ok");
+	int *null = 0; if (!null) line("null ok");
+	char *s = buf; while (*s) s++;
+	` + printNum("s - buf") + `
+	char **np = names; np++; line(*np); line(np[1]);
+	fill(g, 5);
+	for (int *i = g; i < gend; i++) { ` + printNum("*i") + ` }
+	int k = 1;
+	g[k++] = 7; *(g + k++) += 1; (*q)++; q[-1]--;
+	` + printNum("g[1] * 10000 + g[2] * 100 + k * 10 + arr[1] - arr[0]") + `
+	return 0;
+}`,
+
 	"strings": `#include <stdio.h>
 char greeting[] = "Hello, " "World!\n";
 int main() {
@@ -801,6 +867,11 @@ func TestReturn(t *testing.T) {
 func TestErrors(t *testing.T) {
 	tests := []struct{ src, want string }{
 		{`int main() { int a = 1 << 32; }`, "1:27: shift count 32 is out of range (0 to 31)"},
+		{`int main() { int a[2]; int *p = &a[3]; }`, "1:36: index 3 is out of range for 'a' (2 elements)"},
+		{`int main() { int a[2]; a[2] = 1; }`, "1:26: index 2 is out of range for 'a' (2 elements)"},
+		{`int f(int n) { int x = n; int *p = &x; if (n) f(n - 1); return *p; } int main() { f(2); }`, "1:36: taking the address of 'x' in the recursive function 'f' is not supported yet (make it a global)"},
+		{`int f(int n) { int a[2]; int *p = a; if (n) return f(n - 1); return *p; } int main() { f(2); }`, "1:35: taking the address of 'a' in the recursive function 'f' is not supported yet (make it a global)"},
+		{`int g; int f(int n) { int a[2]; int *p = &g; a[n] = *p; *&a[n] += 1; if (n) return f(n - 1); return *a; } int main() { f(1); }`, ""},
 		{`int main() { int a, b = a >> -1; }`, "1:30: shift count -1 is out of range (0 to 31)"},
 		{`int f(int x) { return x << 40; } int main() { }`, "1:28: shift count 40 is out of range (0 to 31)"},
 		{`int main() { int a = -999999999; putchar(a); }`, ""},

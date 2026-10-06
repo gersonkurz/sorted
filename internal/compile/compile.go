@@ -32,6 +32,12 @@
 //     first sum") is undefined behaviour in the original, so it is avoided.
 //     Cell numbers depend on how many numbers are declared, and the
 //     addresses are declared numbers themselves; see program.
+//   - Every value is one cell, so a pointer is a cell number and pointer
+//     arithmetic is plain arithmetic: &x is an address constant, *p = v
+//     writes through p itself (a write pointer), and *p reads through p + 1.
+//     A function on a cycle of calls cannot take the address of its own
+//     locals, which a recursive call would save and restore under the
+//     pointer's feet.
 //   - Functions exist once. A call stores the arguments in the parameter
 //     cells and its number in a return-address cell and jumps; the return
 //     jumps through a chain of conditional jumps back to the call site.
@@ -250,6 +256,10 @@ func compileProgram(prog *cc.Program) (c *compiler, p *syntax.Program, err error
 	for _, g := range prog.Globals {
 		base := c.variable(g)
 		for i, v := range g.Init {
+			if g.InitRef != nil && g.InitRef[i] != nil { // an address
+				c.assign(val{vVar, base.i + i}, c.address(c.variable(g.InitRef[i]), int(v)))
+				continue
+			}
 			if g.Char {
 				v = int32(int8(v))
 			}
@@ -417,8 +427,50 @@ func (c *compiler) element(n *cc.Node) val {
 	return val{vInd, p.i}
 }
 
+// addressOf lowers &x: the cell number of a variable or an element (an
+// address constant), or of what a pointer points to. An array used as a
+// value is the address of its first element.
+func (c *compiler) addressOf(n *cc.Node) val {
+	x := n.Lhs
+	if x.Kind == cc.NdDeref { // &*p is p
+		return c.value(x.Lhs)
+	}
+	if !x.Var.IsGlobal && c.cur != nil && c.cur.reach[c.cur] {
+		// A recursive call saves and restores the caller's locals, so a write
+		// through a pointer to one of them would be undone (see save).
+		fail(n.Pos, "taking the address of '%s' in the recursive function '%s' is not supported yet (make it a global)", x.Var.Name, c.cur.decl.Name)
+	}
+	base := c.variable(x.Var)
+	if x.Kind == cc.NdVar {
+		return c.address(base, 0)
+	}
+	if k, ok := c.constOffset(x, x.Var.Len); ok { // &a[len] is the end
+		return c.address(base, k)
+	}
+	return c.expr(vSum, c.address(base, 0), c.value(x.Lhs), 0)
+}
+
+// deref lowers *p for reading: the cell itself when p is the address of a
+// variable or an element, otherwise the cell a read pointer indexes (p + 1,
+// the indirect read's off-by-one).
+func (c *compiler) deref(n *cc.Node) val {
+	if v, ok := c.reads[n]; ok {
+		return v
+	}
+	if n.Lhs.Kind == cc.NdAddr && n.Lhs.Lhs.Kind != cc.NdDeref {
+		return c.value(n.Lhs.Lhs) // *&x, and *a for an array a
+	}
+	p := c.temporary()
+	c.assign(p, c.expr(vSum, c.value(n.Lhs), c.number(1, n.Pos), 0))
+	return val{vInd, p.i}
+}
+
 // constIndex reports a constant index of a[i], checking its bounds.
-func (c *compiler) constIndex(n *cc.Node) (int, bool) {
+func (c *compiler) constIndex(n *cc.Node) (int, bool) { return c.constOffset(n, n.Var.Len-1) }
+
+// constOffset reports a constant index of a[i] up to last. An element must
+// exist; an address (&a[i]) may also be one past the end, as in C.
+func (c *compiler) constOffset(n *cc.Node, last int) (int, bool) {
 	if n.Lhs.Kind != cc.NdNum && !(n.Lhs.Kind == cc.NdNeg && n.Lhs.Lhs.Kind == cc.NdNum) {
 		return 0, false
 	}
@@ -426,7 +478,7 @@ func (c *compiler) constIndex(n *cc.Node) (int, bool) {
 	if n.Lhs.Kind == cc.NdNeg {
 		k = -int(n.Lhs.Lhs.Val)
 	}
-	if k < 0 || k >= n.Var.Len {
+	if k < 0 || k > last {
 		fail(n.Lhs.Pos, "index %d is out of range for '%s' (%d elements)", k, n.Var.Name, n.Var.Len)
 	}
 	return k, true
@@ -451,6 +503,10 @@ func (c *compiler) value(n *cc.Node) val {
 		return c.variable(n.Var)
 	case cc.NdIndex:
 		return c.element(n)
+	case cc.NdAddr:
+		return c.addressOf(n)
+	case cc.NdDeref:
+		return c.deref(n)
 	case cc.NdNeg:
 		if n.Lhs.Kind == cc.NdNum {
 			return c.number(-n.Lhs.Val, n.Pos)
@@ -630,23 +686,23 @@ func (c *compiler) assign(target, source val) {
 }
 
 // assignment lowers "x = e" and, when want is set, returns x's new value.
-// For an array element with a computed index, the index is evaluated once:
-// the write pointer is set first, and the value side (x op= e and x++ read
-// the same element) reads through a read pointer derived from it.
+// For an element with a computed index, or *p, the location is evaluated
+// once: the write pointer is set first, and the value side (x op= e and x++
+// read the same cell) reads through a read pointer derived from it. A store
+// into a char wraps.
 func (c *compiler) assignment(n *cc.Node, want bool) val {
 	lhs := n.Lhs
-	if lhs.Kind == cc.NdVar || func() bool { _, ok := c.constIndex(lhs); return ok }() {
-		target := c.value(lhs)
+	char := lhs.Ty.Kind == cc.TyChar
+	if target, ok := c.direct(lhs); ok {
 		v := c.value(n.Rhs)
-		if lhs.Var.Char {
+		if char {
 			v = c.wrapChar(v, n.Pos)
 		}
 		c.assign(target, v)
 		return target
 	}
-	base := c.variable(lhs.Var)
 	w := c.temporary()
-	c.assign(w, c.expr(vSum, c.value(lhs.Lhs), c.address(base, 0), 0))
+	c.assign(w, c.location(lhs))
 	var read val
 	readPointer := func() val {
 		if read.kind != vInd {
@@ -661,7 +717,7 @@ func (c *compiler) assignment(n *cc.Node, want bool) val {
 	}
 	v := c.value(n.Rhs)
 	delete(c.reads, lhs)
-	if lhs.Var.Char {
+	if char {
 		v = c.wrapChar(v, n.Pos)
 	}
 	c.assign(val{vInd, w.i}, v)
@@ -669,6 +725,36 @@ func (c *compiler) assignment(n *cc.Node, want bool) val {
 		return val{}
 	}
 	return readPointer()
+}
+
+// direct returns the cell an lvalue is, when it is known while compiling: a
+// variable, an element with a constant index, *&x.
+func (c *compiler) direct(x *cc.Node) (val, bool) {
+	switch x.Kind {
+	case cc.NdVar:
+		return c.variable(x.Var), true
+	case cc.NdIndex:
+		if k, ok := c.constIndex(x); ok {
+			return val{vVar, c.variable(x.Var).i + k}, true
+		}
+	case cc.NdDeref:
+		if x.Lhs.Kind == cc.NdAddr {
+			return c.direct(x.Lhs.Lhs)
+		}
+	}
+	return val{}, false
+}
+
+// location returns the cell number of an lvalue that direct cannot resolve,
+// which is what a write pointer holds: a[i] with a computed index, *p.
+func (c *compiler) location(x *cc.Node) val {
+	switch {
+	case x.Kind == cc.NdIndex:
+		return c.expr(vSum, c.value(x.Lhs), c.address(c.variable(x.Var), 0), 0)
+	case x.Lhs.Kind == cc.NdAddr: // *&a[i]
+		return c.location(x.Lhs.Lhs)
+	}
+	return c.value(x.Lhs)
 }
 
 // uses reports whether node x occurs in n (the same node, as the parser

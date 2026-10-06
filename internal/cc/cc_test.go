@@ -33,6 +33,10 @@ func sexpr(n *Node) string {
 		return "(! " + sexpr(n.Lhs) + ")"
 	case NdBitNot:
 		return "(~ " + sexpr(n.Lhs) + ")"
+	case NdAddr:
+		return "(& " + sexpr(n.Lhs) + ")"
+	case NdDeref:
+		return "(* " + sexpr(n.Lhs) + ")"
 	case NdFor:
 		return "(for " + sexpr(n.Init) + " " + sexpr(n.Cond) + " " + sexpr(n.Inc) + " " + sexpr(n.Then) + ")"
 	case NdBreak:
@@ -177,9 +181,9 @@ func TestErrors(t *testing.T) {
 		{"int main() { int a; a = a ? 1 : 2; }", "1:27: not supported in Sorted! (yet): ?:"},
 		{"int main() { break; }", "1:14: 'break' outside a loop"},
 		{"int main() { if (1) continue; }", "1:21: 'continue' outside a loop"},
-		{"int main() { int a; a++++; }", "1:24: the left side of '++' must be a variable"},
-		{"int main() { int a; ++(+a); }", "1:21: the left side of '++' must be a variable"},
-		{"int main() { 3 += 1; }", "1:16: the left side of '+=' must be a variable"},
+		{"int main() { int a; a++++; }", "1:24: the left side of '++' cannot be assigned to"},
+		{"int main() { int a; ++(+a); }", "1:21: the left side of '++' cannot be assigned to"},
+		{"int main() { 3 += 1; }", "1:16: the left side of '+=' cannot be assigned to"},
 		{"int main() { putchar('ab'); }", "1:22: not supported in Sorted! (yet): multi-character constants"},
 		{"int main() { putchar(''); }", "1:22: empty char literal"},
 		{"int main() { putchar('a); }", "1:22: unclosed char literal"},
@@ -188,7 +192,7 @@ func TestErrors(t *testing.T) {
 		{"int main() { putchar('\\777'); }", "1:22: octal escape sequence out of range"},
 		{"int main() { putchar('\xc3\xa4'); }", "1:22: not supported in Sorted! (yet): non-ASCII characters"},
 		{"int main() { long c; }", "1:14: not supported in Sorted! (yet): the type or specifier 'long' (int and char are the only types)"},
-		{"int *p; int main() {}", "1:5: not supported in Sorted! (yet): pointers"},
+		{"void *p; int main() {}", "1:6: not supported in Sorted! (yet): void pointers"},
 		{"int a[2][3]; int main() {}", "1:9: not supported in Sorted! (yet): arrays of arrays"},
 		{"int a[n]; int main() {}", "1:7: undefined variable 'n'"},
 		{"int n; int a[n]; int main() {}", "1:14: not supported in Sorted! (yet): array lengths other than integer constants"},
@@ -199,23 +203,54 @@ func TestErrors(t *testing.T) {
 		{"int a[2] = {}; int main() {}", "1:12: empty initializer"},
 		{"char s[2] = \"abc\"; int main() {}", "1:13: the string is longer than the array"},
 		{"int s[] = \"abc\"; int main() {}", "1:11: a string literal can only initialize a char array"},
-		{"int main() { int a[3]; putchar(a); }", "1:32: not supported in Sorted! (yet): using an array without an index (no pointers)"},
-		{"int main() { int x; x[0] = 1; }", "1:22: subscripted value is not an array"},
-		{"int main() { int a[1]; a++; }", "1:24: not supported in Sorted! (yet): using an array without an index (no pointers)"},
-		{"int main() { int a[1]; a--; }", "1:24: not supported in Sorted! (yet): using an array without an index (no pointers)"},
-		{"int main() { int a[1]; ++a; }", "1:26: not supported in Sorted! (yet): using an array without an index (no pointers)"},
-		{"int main() { int a[1]; int b[1]; a = b; }", "1:34: not supported in Sorted! (yet): using an array without an index (no pointers)"},
-		{"int main() { int a[3]; 3[a] = 1; }", "1:25: subscripted value is not an array"},
+		{"int main() { int a[3]; putchar(a); }", "1:32: putchar's argument must be an integer, not 'int *'"},
+		{"int main() { int x; x[0] = 1; }", "1:22: subscripted value is not an array or a pointer"},
+		{"int main() { int a[1]; a++; }", "1:24: an array cannot be assigned to, only its elements"},
+		{"int main() { int a[1]; a--; }", "1:24: an array cannot be assigned to, only its elements"},
+		{"int main() { int a[1]; ++a; }", "1:26: an array cannot be assigned to, only its elements"},
+		{"int main() { int a[1]; int b[1]; a = b; }", "1:34: an array cannot be assigned to, only its elements"},
+		{"int main() { int a[3]; 3[a] = 1; }", "1:25: subscripted value is not an array or a pointer"},
 		{"char main() {}", "1:6: main must return int"},
 		{"int main() { putchar(\"abc); }", "1:22: unclosed string literal"},
 		{"int f(int a, int a) { } int main() {}", "1:18: redefinition of parameter 'a'"},
 		{"int f(int x) { int x = 65; return x; } int main() {}", "1:20: redefinition of 'x'"},
-		{"int main() { int a; a = &a; }", "1:25: not supported in Sorted! (yet): unary '&'"},
+		{"int main() { int a; a = &a; }", "1:23: the assignment needs 'int', not 'int *'"},
 		{"int main() { int a; a = 1 ? 2 : 3; }", "1:27: not supported in Sorted! (yet): ?:"},
 		{"int f(int) { } int main() {}", "1:5: parameter 1 of 'f' has no name"},
 		{"int f(void x) { } int main() {}", "1:7: a parameter cannot be void"},
-		{"int f(int a[]) { } int main() {}", "1:12: not supported in Sorted! (yet): array parameters (no pointers)"},
-		{"int f(int *p) { } int main() {}", "1:11: not supported in Sorted! (yet): pointers"},
+		{"int f(int a[][2]) { } int main() {}", "1:14: not supported in Sorted! (yet): arrays of arrays"},
+		{"int f(int (*p)) { } int main() {}", "1:11: not supported in Sorted! (yet): declarators in parentheses (pointers to arrays, function pointers)"},
+		{"int main() { int x; *x = 1; }", "1:21: indirection needs a pointer, not 'int'"},
+		{"int main() { int *p; int *q; p + q; }", "1:32: invalid operands to '+' ('int *' and 'int *')"},
+		{"int main() { int *p; 1 - p; }", "1:24: invalid operands to '-' ('int' and 'int *')"},
+		{"int main() { int *p; char *q; p - q; }", "1:33: invalid operands to '-' ('int *' and 'char *')"},
+		{"int main() { int *p; p * 2; }", "1:24: invalid operands to '*' ('int *' and 'int')"},
+		{"int main() { int *p; p < 1; }", "1:24: invalid operands to '<' ('int *' and 'int')"},
+		{"int main() { int *p; p == 1; }", "1:24: invalid operands to '==' ('int *' and 'int')"},
+		{"int main() { int *p; -p; }", "1:23: the operand of unary '-' must be an integer, not 'int *'"},
+		{"int main() { int x; int *p = &x; int *q = +p; }", "1:44: the operand of unary '+' must be an integer, not 'int *'"},
+		{"int main() { int a[2]; +a; }", "1:25: the operand of unary '+' must be an integer, not 'int *'"},
+		{"int main() { int *p; ~p; }", "1:23: the operand of unary '~' must be an integer, not 'int *'"},
+		{"int main() { int *p; int a[2]; a[p]; }", "1:34: an array index must be an integer, not 'int *'"},
+		{"int main() { int *p; char *q; p = q; }", "1:33: the assignment needs 'int *', not 'char *'"},
+		{"int main() { int *p = 5; }", "1:21: the assignment needs 'int *', not 'int'"},
+		{"int f(int *p) { return 0; } int main() { int x; f(x); }", "1:51: argument 1 of 'f' needs 'int *', not 'int'"},
+		{"int *f(void) { int x; return x; } int main() { }", "1:30: the return value needs 'int *', not 'int'"},
+		{"int main() { int *p; return p; }", "1:29: the return value needs 'int', not 'int *'"},
+		{"int main() { &1; }", "1:14: cannot take the address of a value, only of a variable or an element"},
+		{"int main() { int a; &+a; }", "1:21: cannot take the address of a value, only of a variable or an element"},
+		{"int main() { int a[2]; &a; }", "1:24: not supported in Sorted! (yet): pointers to arrays (&array; the array itself is the address of its first element)"},
+		{"int main() { int a; a[0]; }", "1:22: subscripted value is not an array or a pointer"},
+		{"int g; int *p = &g + &g; int main() {}", "1:20: invalid operands to '+' ('int *' and 'int *')"},
+		{"int main() { int x; } int *p = 3; ", "1:32: the initializer needs 'int *', not 'int'"},
+		{"int g[2]; int x = g; int main() {}", "1:19: the initializer needs 'int', not 'int *'"},
+		{"int f(int *p); int f(char *p) { return 0; } int main() {}", "1:20: conflicting declarations of 'f'"},
+		{"int f(int *p); int *f(int *p) { return 0; } int main() {}", "1:21: conflicting declarations of 'f'"},
+		{"int g[2]; int x; int *p = &g[x]; int main() {}", "1:27: not supported in Sorted! (yet): global initializers other than constants and addresses"},
+		{"int g[2]; int x; int *p = g + x; int main() {}", "1:27: not supported in Sorted! (yet): global initializers other than constants and addresses"},
+		{"int g[2]; int x; int *p = x + g; int main() {}", "1:27: not supported in Sorted! (yet): global initializers other than constants and addresses"},
+		{"int *g; int *p = g; int main() {}", "1:18: not supported in Sorted! (yet): global initializers other than constants and addresses"},
+		{"int (*p)[3]; int main() {}", "1:5: not supported in Sorted! (yet): declarators in parentheses (pointers to arrays, function pointers)"},
 		{"int f(int a); char f(int a) { } int main() {}", "1:20: conflicting declarations of 'f'"},
 		{"int f(int a); int f(char a) { } int main() {}", "1:19: conflicting declarations of 'f'"},
 		{"int f(int a); int f(int a, int b); int main() {}", "1:19: conflicting declarations of 'f'"},
@@ -231,7 +266,7 @@ func TestErrors(t *testing.T) {
 		{"int main() { main(); }", "1:14: not supported in Sorted! (yet): calling main (recursion)"},
 		{"int main(int argc) {}", "1:10: not supported in Sorted! (yet): parameters of main"},
 		{"int main() { printf(1); }", "1:14: not supported in Sorted! (yet): calling 'printf' (putchar is the only library function, and other functions must be declared first)"},
-		{"int main() { putchar(\"a\"); }", "1:22: not supported in Sorted! (yet): string literals outside char array initializers"},
+		{"int main() { putchar(\"a\"); }", "1:22: putchar's argument must be an integer, not 'char *'"},
 		{"#include <stdlib.h>\nint main() {}", "1:1: not supported in Sorted! (yet): #include other than <stdio.h>"},
 		{"#if 1\nint main() {}", "1:1: not supported in Sorted! (yet): #if (the preprocessor knows #define, #undef and #include <stdio.h>)"},
 		{"#include \"x.h\"\nint main() {}", "1:1: not supported in Sorted! (yet): #include other than <stdio.h>"},
@@ -254,7 +289,7 @@ func TestErrors(t *testing.T) {
 		{"int main() { putchar(1, 2); }", "1:26: putchar takes 1 argument(s), not 2"},
 		{"int main() { x = 1; }", "1:14: undefined variable 'x'"},
 		{"int main() { int a; int a; }", "1:25: redefinition of 'a'"},
-		{"int main() { 1 = 2; }", "1:16: the left side of '=' must be a variable"},
+		{"int main() { 1 = 2; }", "1:16: the left side of '=' cannot be assigned to"},
 		{"int main() { for (int i = 0; ; ) ; i = 1; }", "1:36: undefined variable 'i'"},
 		{"int a; int a; int main() {}", "1:12: redefinition of 'a'"},
 		{"int a;", "1:7: no main function"},
@@ -264,8 +299,8 @@ func TestErrors(t *testing.T) {
 		{"int main() { /* open", "1:14: unclosed block comment"},
 		{"int main() { $ }", "1:14: invalid token"},
 		{"int main() {", "1:13: expected '}'"},
-		{"int main() { int a; +a = 1; }", "1:24: the left side of '=' must be a variable"},
-		{"int main() { int a; (+a) = 1; }", "1:26: the left side of '=' must be a variable"},
+		{"int main() { int a; +a = 1; }", "1:24: the left side of '=' cannot be assigned to"},
+		{"int main() { int a; (+a) = 1; }", "1:26: the left side of '=' cannot be assigned to"},
 		{"int main; int main() {}", "1:15: redefinition of 'main' as a function"},
 		{"int main() {} int main;", "1:19: redefinition of 'main' as a variable"},
 		{"int main() { int putchar = 0; putchar(65); }", "1:31: 'putchar' is a variable, not a function"},
@@ -278,10 +313,10 @@ func TestErrors(t *testing.T) {
 		{"int main() { int a; a = 1, 2; }", "1:26: not supported in Sorted! (yet): the comma operator"},
 		{"int main();", "1:11: expected the body of main"},
 		{"int main() {} int main() {}", "1:19: redefinition of main"},
-		{"int g = 1 / 0; int main() {}", "1:9: not supported in Sorted! (yet): global initializers other than integer constants"},
-		{"int g = 1 int main() {}", "1:11: not supported in Sorted! (yet): global initializers other than integer constants"},
+		{"int g = 1 / 0; int main() {}", "1:9: not supported in Sorted! (yet): global initializers other than constants and addresses"},
+		{"int g = 1 int main() {}", "1:11: not supported in Sorted! (yet): global initializers other than constants and addresses"},
 		{"int g int main() {}", "1:7: expected ','"},
-		{"int h; int g = h; int main() {}", "1:16: not supported in Sorted! (yet): global initializers other than integer constants"},
+		{"int h; int g = h; int main() {}", "1:16: not supported in Sorted! (yet): global initializers other than constants and addresses"},
 		{"int 5; int main() {}", "1:5: expected a variable name"},
 		{"int main() { putchar(); }", "1:22: putchar takes 1 argument(s), not 0"},
 		{"int main() { int a; a = ); }", "1:25: expected an expression"},
@@ -367,9 +402,64 @@ func TestFold(t *testing.T) {
 		}
 	}
 	for _, expr := range []string{"1 / 0", "1 % 0", "(-2147483647 - 1) / -1", "(-2147483647 - 1) % -1", "1 << 32", "1 >> -1", "1 && 1 / 0", "0 || 1 / 0", "!(1 / 0)", "~(1 / 0)", "-(1 / 0)"} {
-		if _, err := Parse("int g = " + expr + "; int main() {}"); err == nil || !strings.Contains(err.Error(), "global initializers other than integer constants") {
+		if _, err := Parse("int g = " + expr + "; int main() {}"); err == nil || !strings.Contains(err.Error(), "global initializers other than constants and addresses") {
 			t.Errorf("%s: %v", expr, err)
 		}
+	}
+}
+
+func TestPointers(t *testing.T) {
+	tests := []struct{ src, want string }{
+		{"int main() { int x; int *p = &x; *p = 3; }", "{ {} { (= p (& x))} (= (* p) 3)}"},
+		{"int main() { int a[3]; int *p = a; p[1] = *a; }", "{ {} { (= p (& a))} (= (* (+ p 1)) (* (& a)))}"},
+		{"int main() { int **pp; int *p; pp = &p; **pp = 1; }", "{ {} {} (= pp (& p)) (= (* (* pp)) 1)}"},
+		{"int main() { char *s = \"hi\"; s++; }", "{ { (= s (& @.str0))} (- (= s (+ s 1)) 1)}"},
+		{"int main() { int a[2]; int *p = &a[1]; p = p - 1; }", "{ {} { (= p (& a[1]))} (= p (- p 1))}"},
+		{"int *f(int *a, char b[]) { return a; } int main() { int x; f(&x, \"z\"); }", "{ {} (f (& x) (& @.str0))}"},
+	}
+	for _, tt := range tests {
+		p, err := Parse(tt.src)
+		if err != nil {
+			t.Errorf("%s: %v", tt.src, err)
+			continue
+		}
+		if got := sexpr(p.Main); got != tt.want {
+			t.Errorf("%s:\n got %s\nwant %s", tt.src, got, tt.want)
+		}
+	}
+	// The types, as the type pass gives them.
+	p, err := Parse(`char *names[] = {"a", "bc"}; int g[4]; int *gp = &g[2], *ge = g + 4; char *s = "a";
+int *f(char **x) { return 0; } int main() { }`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// String literals come first, created while their user is parsed, and
+	// equal ones are shared: s points at the same "a" as names[0].
+	for i, want := range []string{"char[2]", "char[3]", "char *[2]", "int[4]", "int *", "int *", "char *"} {
+		if got := p.Globals[i].Ty.String(); got != want {
+			t.Errorf("global %d (%s): %s, want %s", i, p.Globals[i].Name, got, want)
+		}
+	}
+	f := p.Funcs["f"]
+	if f.Ret.String() != "int *" || f.Params[0].Ty.String() != "char **" {
+		t.Errorf("f: %s (%s)", f.Ret, f.Params[0].Ty)
+	}
+	// Global addresses in every form addrConst knows.
+	q, err := Parse(`int g[6]; int *a = 2 + g, *b = g + 4 - 1, *c = &g[3] - 2, *d = 0, *e = g; int main() { }`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []int32{2, 3, 1, 0, 0} {
+		v := q.Globals[i+1]
+		if v.Init[0] != want || (i == 3) != (v.InitRef == nil) || i != 3 && v.InitRef[0] != q.Globals[0] {
+			t.Errorf("%s: %v %v, want offset %d", v.Name, v.Init, v.InitRef, want)
+		}
+	}
+	// Global addresses: the variable and the offset.
+	names, g, gp, ge, str := p.Globals[2], p.Globals[3], p.Globals[4], p.Globals[5], p.Globals[6]
+	if names.InitRef[0] != p.Globals[0] || names.InitRef[1] != p.Globals[1] || gp.InitRef[0] != g || gp.Init[0] != 2 ||
+		ge.InitRef[0] != g || ge.Init[0] != 4 || str.InitRef[0] != p.Globals[0] {
+		t.Errorf("init refs: %+v %+v %+v %+v", names, gp, ge, str)
 	}
 }
 
