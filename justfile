@@ -24,6 +24,9 @@ version := if os() == "windows" { `git describe --tags --always --dirty 2>nul ||
 # network share owned by another user, as with the Windows VM).
 ldflags := "-ldflags=-X=main.version=" + version
 
+# The examples directory, as the shell of this OS spells paths
+ex := if os() == "windows" { "examples\\" } else { "examples/" }
+
 # Targets for `just package`, as GOOS/GOARCH pairs
 platforms := "darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 linux/386 windows/amd64 windows/386 windows/arm64"
 
@@ -68,6 +71,11 @@ lint: fmt-check vet staticcheck
 # Lint and test: run before committing
 check: lint test
 
+# Regenerate the Sorted! versions (English and German) of the C examples
+examples:
+    go run ./cmd/sorted --from-c {{ex}}99-bottles.c > {{ex}}99-bottles.s
+    go run ./cmd/sorted --from-c {{ex}}99-bottles.c --lang de > {{ex}}99-bottles.de.s
+
 # Run tests with coverage; writes out/coverage.out and out/coverage.html
 coverage: _out-dir
     go test -count 1 -coverprofile=out/coverage.out ./...
@@ -104,8 +112,8 @@ test-one $pattern:
 test-race:
     go test -count 1 -race ./...
 
-# One archive per platform with the binary, README, LICENSE and the sample
-# programs, plus SHA256SUMS.
+# One archive per platform with the binary, README, LICENSE, the legacy
+# sample programs and the examples, plus SHA256SUMS.
 #
 # Cross-compile all platforms into out/dist
 [unix]
@@ -124,7 +132,7 @@ package: clean-dist
         mkdir -p "${stage}/examples"
         CGO_ENABLED=0 GOOS=$goos GOARCH=$goarch go build -buildvcs=false -trimpath {{ldflags}} -o "${stage}/sorted${exe}" ./cmd/sorted
         cp README.md LICENSE "${stage}/"
-        cp legacy/sorted.win32/*.s "${stage}/examples/"
+        cp legacy/sorted.win32/*.s examples/*.c examples/*.s "${stage}/examples/"
         if [ "$goos" = "windows" ]; then
             (cd out/stage && zip -qr "../dist/${name}.zip" "${name}")
         else

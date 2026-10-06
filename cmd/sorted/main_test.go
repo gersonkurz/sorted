@@ -183,6 +183,44 @@ func TestGolden(t *testing.T) {
 	}
 }
 
+// The examples: the committed Sorted! versions are what --from-c writes
+// today (run "just examples" after changing the compiler), English and
+// German print the same, and that is what the C program prints compiled
+// natively (where there is a C compiler).
+func TestExamples(t *testing.T) {
+	sources, err := filepath.Glob(filepath.Join("..", "..", "examples", "*.c"))
+	if err != nil || len(sources) == 0 {
+		t.Fatalf("no examples: %v", err)
+	}
+	for _, src := range sources {
+		base := strings.TrimSuffix(src, ".c")
+		t.Run(filepath.Base(base), func(t *testing.T) {
+			var printed []string
+			for _, v := range []struct{ file, lang string }{{base + ".s", "en"}, {base + ".de.s", "de"}} {
+				committed, err := os.ReadFile(v.file)
+				if err != nil {
+					t.Fatal(err)
+				}
+				r := runCLI("--from-c", src, "--lang", v.lang)
+				if r.code != 0 || r.stdout != strings.ReplaceAll(string(committed), "\r\n", "\n") {
+					t.Fatalf("%s is not what --from-c writes now (run: just examples): %+v", v.file, r.stderr)
+				}
+				run := runCLI(v.file)
+				if run.code != 0 {
+					t.Fatalf("running %s: %+v", v.file, run)
+				}
+				printed = append(printed, run.stdout)
+			}
+			if printed[0] != printed[1] {
+				t.Errorf("English and German print differently")
+			}
+			if native := runC(t, src); printed[0] != native {
+				t.Errorf("Sorted! printed %q..., C printed %q...", printed[0][:min(80, len(printed[0]))], native[:min(80, len(native))])
+			}
+		})
+	}
+}
+
 // --lang prints the program instead of running it; the printed program runs
 // like the original.
 func TestLang(t *testing.T) {

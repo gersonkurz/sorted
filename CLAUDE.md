@@ -27,13 +27,14 @@ just verify                # fmt-check + go vet + test: the review loop's Verify
 just lint                  # fmt-check + go vet + staticcheck
 just check                 # lint + test; run before committing
 just coverage              # out/coverage.out + out/coverage.html
+just examples              # regenerate examples/*.s (English, German) from examples/*.c
 just fmt
 just test-race             # unix only (the race detector needs cgo)
 just package               # unix only: cross-compile all platforms → out/dist/*.tar.gz / *.zip + SHA256SUMS
 just clean
 ```
 
-Release archives contain the binary, `README.md`, `LICENSE`, and the sample `.s` programs under `examples/`.
+Release archives contain the binary, `README.md`, `LICENSE`, and under `examples/` the legacy sample `.s` programs plus the repo's `examples/` (C programs and the Sorted! versions `--from-c` writes for them, `<name>.s` English and `<name>.de.s` German). `cmd/sorted` `TestExamples` fails when a committed `.s` is not what the compiler writes now (run `just examples`), and checks that it prints what the C program prints natively.
 
 ## How the legacy implementation works
 

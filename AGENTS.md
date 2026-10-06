@@ -6,6 +6,7 @@ Sorted! is a Go reimplementation of the original esoteric language, faithful to 
 
 - `legacy/sorted.linux/` and `legacy/sorted.win32/`: original C++ implementations, platform build files, and sample `.s` programs.
 - `manual/Sorted! - p-nand-q.com.html`: archived overview and examples.
+- `examples/`: C programs and their Sorted! versions (`just examples` regenerates them), e.g. 99 Bottles of Beer.
 - `CLAUDE.md`: porting requirements, architecture notes, and known legacy quirks.
 - `justfile`: Go development and release workflows, expecting the executable package at `cmd/sorted/`.
 - `out/`: ignored build, coverage, and release artifacts.

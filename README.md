@@ -195,6 +195,12 @@ sorted --from-c fizzbuzz.c --lang de > fizzbuzz-de.s
 sorted fizzbuzz.s
 ```
 
+The first song has to be the obvious one. [`examples/99-bottles.c`](examples/99-bottles.c)
+is the standard C version of 99 Bottles of Beer, and next to it sit what the
+compiler makes of it, [in English](examples/99-bottles.s) and
+[in German](examples/99-bottles.de.s): about 630 lines each, all singable,
+every verse printed exactly as the C program prints it.
+
 **What works today.** A growing subset of C: functions with `int`, `char`
 and pointer parameters returning `int`, `char`, a pointer or `void`
 (prototypes and recursion included), `int` and `char` variables, pointers to
