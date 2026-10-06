@@ -2,7 +2,7 @@
 
 Sorted! is the programming language that won the esoteric language contest of
 the year 2000. Its design criteria, quoting the
-[original page](manual/Sorted!%20-%20p-nand-q.com.html):
+[original page](https://p-nand-q.com/programming/languages/sorted/index.html):
 
 - You should be able to sing a good programming language.
 - Thou shalt not have the same cardinal more than once.
