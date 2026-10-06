@@ -32,6 +32,11 @@
 //     first sum") is undefined behaviour in the original, so it is avoided.
 //     Cell numbers depend on how many numbers are declared, and the
 //     addresses are declared numbers themselves; see program.
+//   - Functions exist once. A call stores the arguments in the parameter
+//     cells and its number in a return-address cell and jumps; the return
+//     jumps through a chain of conditional jumps back to the call site.
+//     Functions on a cycle of calls save their frame on a stack in the free
+//     memory around each call that can come back to them (see function).
 //   - Sorted! has no bit operations (logical operations cannot be
 //     referenced), so & | ^ ~ << >> are arithmetic: constants fold, ~x is
 //     -1 - x, shifts by a constant are products or floored ratios, x &
@@ -42,7 +47,7 @@
 //     arithmetic: ((v + 128) % 256 + 256) % 256 - 128.
 //   - putchar(e) assigns e to an output cell and runs the program's only
 //     output, which writes that cell as a character.
-//   - return jumps past the last statement.
+//   - return in main jumps past the last statement.
 //
 // Assignments inside expressions are hoisted into statements before the
 // statement that contains them. putchar is a statement: its result cannot be
@@ -171,6 +176,13 @@ type compiler struct {
 	funcs map[*cc.Function]*function // the functions main reaches
 	order []*function                // the same, in the order their code is laid out
 	rt    map[string]*cc.Function    // the runtime library, parsed on first use (see runtime)
+
+	// recursion (see recursiveCall)
+	cur       *function // the function being lowered, nil in main
+	mark      int       // first cell allocated for the expression being lowered
+	sp, rp    val       // stack pointer, and a read pointer for pops
+	stack     bool      // a function recurses, so there is a stack
+	stackAddr int       // index in addrs of the stack's first cell
 }
 
 // returnTo says what a return does: store the value in rv (when the
@@ -187,6 +199,10 @@ type returnTo struct {
 // jumps to entry; a return jumps to the dispatch, a chain of jumps that
 // goes back to the call site whose number ra holds. A function called from
 // one place only needs neither ra nor the chain: it returns straight there.
+//
+// A function on a cycle of calls (recursion, direct or through others) can
+// be entered again while it runs, so before each call that may come back to
+// it, it pushes its frame onto a stack and pops it afterwards.
 type function struct {
 	decl     *cc.Function
 	entry    int   // label of the first statement
@@ -194,6 +210,10 @@ type function struct {
 	ra, rv   val   // return-address cell (several call sites) and result cell
 	nsites   int   // call sites in reachable code
 	sites    []int // return label of each call site, by number
+
+	callees []*function        // functions it calls
+	reach   map[*function]bool // functions its calls lead to, directly or not
+	frame   []int              // on a cycle: ra, parameters and locals, which a call saves
 }
 
 // Compile lowers a parsed C program into Sorted! tables.
@@ -245,6 +265,9 @@ func compileProgram(prog *cc.Program) (c *compiler, p *syntax.Program, err error
 		c.bitwise(f.Body)
 	}
 	c.functions(prog)
+	if c.stack {
+		c.assign(c.sp, val{vAddr, c.stackAddr})
+	}
 
 	// main first; a final return just ends the program, unless functions
 	// follow, which main must jump over.
@@ -596,7 +619,11 @@ func (c *compiler) jumpTo(label, cond int) {
 }
 
 // jumpIfFalse jumps to label when n is false.
-func (c *compiler) jumpIfFalse(n *cc.Node, label int) { c.jumpIf(n, label, false) }
+// jumpIfFalse lowers the test of an if or a loop, a full expression.
+func (c *compiler) jumpIfFalse(n *cc.Node, label int) {
+	c.mark = c.nvars
+	c.jumpIf(n, label, false)
+}
 
 func (c *compiler) assign(target, source val) {
 	c.emit(sAssign, c.assigns.add(entry{source, target, 0}))
@@ -707,8 +734,10 @@ func (c *compiler) stmt(n *cc.Node) {
 			c.stmt(s)
 		}
 	case cc.NdExprStmt:
+		c.mark = c.nvars
 		c.effects(n.Lhs)
 	case cc.NdReturn:
+		c.mark = c.nvars
 		c.returning(n)
 	case cc.NdIf:
 		end := c.newLabel()
@@ -744,6 +773,7 @@ func (c *compiler) stmt(n *cc.Node) {
 		if l.cont >= 0 {
 			c.place(l.cont)
 		}
+		c.mark = c.nvars
 		c.effects(n.Inc)
 		c.jumpTo(top, -1)
 		if l.brk >= 0 {
@@ -765,33 +795,43 @@ func (c *compiler) stmt(n *cc.Node) {
 // --- functions ---
 
 // functions finds the functions main reaches, in the order of first call,
-// counts their call sites, rejects recursion, and gives each its labels and
-// cells.
+// counts their call sites, finds the ones on cycles of calls, and gives each
+// its labels and cells.
 func (c *compiler) functions(prog *cc.Program) {
-	onStack := map[*cc.Function]bool{}
-	var visit func(body *cc.Node)
-	visit = func(body *cc.Node) {
+	var visit func(from *function, body *cc.Node)
+	visit = func(from *function, body *cc.Node) {
 		walk(body, func(call *cc.Node) {
 			fn := call.Fn
 			if !fn.Defined {
 				fail(call.Pos, "'%s' is declared but never defined", fn.Name)
-			}
-			if onStack[fn] {
-				fail(call.Pos, "recursion is not supported yet ('%s' calls itself, directly or indirectly)", fn.Name)
 			}
 			f, seen := c.funcs[fn]
 			if !seen {
 				f = &function{decl: fn}
 				c.funcs[fn] = f
 				c.order = append(c.order, f)
-				onStack[fn] = true
-				visit(fn.Body)
-				onStack[fn] = false
+				visit(f, fn.Body)
+			}
+			if from != nil && !slices.Contains(from.callees, f) {
+				from.callees = append(from.callees, f)
 			}
 			f.nsites++
 		})
 	}
-	visit(prog.Main)
+	visit(nil, prog.Main)
+	for _, f := range c.order {
+		f.reach = map[*function]bool{}
+		var follow func(g *function)
+		follow = func(g *function) {
+			for _, h := range g.callees {
+				if !f.reach[h] {
+					f.reach[h] = true
+					follow(h)
+				}
+			}
+		}
+		follow(f)
+	}
 	for _, f := range c.order {
 		f.entry, f.dispatch = c.newLabel(), c.newLabel()
 		if f.nsites > 1 {
@@ -800,6 +840,51 @@ func (c *compiler) functions(prog *cc.Program) {
 		if !f.decl.Void {
 			f.rv = c.temporary()
 		}
+		if !f.reach[f] {
+			continue
+		}
+		if !c.stack {
+			c.stack = true
+			c.sp, c.rp = c.temporary(), c.temporary()
+			c.stackAddr = len(c.addrs)
+			c.addrs = append(c.addrs, 0) // the first free cell, fixed in program
+		}
+		if f.nsites > 1 {
+			f.frame = append(f.frame, f.ra.i)
+		}
+		seen := map[*cc.Obj]bool{}
+		add := func(o *cc.Obj) {
+			if !o.IsGlobal && !seen[o] {
+				seen[o] = true
+				v := c.variable(o)
+				for i := range max(1, o.Len) {
+					f.frame = append(f.frame, v.i+i)
+				}
+			}
+		}
+		for _, p := range f.decl.Params {
+			add(p)
+		}
+		objects(f.decl.Body, add)
+	}
+}
+
+// objects calls add for every variable n uses.
+func objects(n *cc.Node, add func(*cc.Obj)) {
+	if n == nil {
+		return
+	}
+	if n.Var != nil {
+		add(n.Var)
+	}
+	for _, m := range []*cc.Node{n.Lhs, n.Rhs, n.Cond, n.Then, n.Els, n.Init, n.Inc} {
+		objects(m, add)
+	}
+	for _, m := range n.Body {
+		objects(m, add)
+	}
+	for _, m := range n.Args {
+		objects(m, add)
 	}
 }
 
@@ -828,12 +913,17 @@ func walk(n *cc.Node, visit func(*cc.Node)) {
 // each is settled when a later one calls a function (see operands).
 func (c *compiler) call(n *cc.Node) val {
 	f := c.funcs[n.Fn]
+	recursive := c.cur != nil && f.reach[c.cur]
 	args := make([]val, len(n.Args))
 	for i, a := range n.Args {
 		args[i] = c.value(a)
-		if slices.ContainsFunc(n.Args[i+1:], hasCall) {
+		if recursive || slices.ContainsFunc(n.Args[i+1:], hasCall) {
 			args[i] = c.settle(args[i])
 		}
+	}
+	var saved []int
+	if recursive {
+		saved = c.save()
 	}
 	for i, p := range n.Fn.Params {
 		v := args[i]
@@ -850,17 +940,64 @@ func (c *compiler) call(n *cc.Node) val {
 	f.sites = append(f.sites, ret)
 	c.jumpTo(f.entry, -1)
 	c.place(ret)
-	if n.Fn.Void {
-		return val{}
+	var t val
+	if !n.Fn.Void {
+		t = c.temporary()
+		c.assign(t, f.rv)
 	}
-	t := c.temporary()
-	c.assign(t, f.rv)
+	if recursive {
+		c.restore(saved)
+	}
 	return t
+}
+
+// save pushes what the function being lowered still needs after a call
+// that may come back to it, and returns those cells for restore: its frame
+// and the temporaries of the expression so far (an operand settled before
+// the call, a write pointer, the arguments). The stack grows from the first
+// free cell after the variables; sp holds the cell number of its top,
+// which is what "the cell indexed by" writes to.
+func (c *compiler) save() []int {
+	cells := append(slices.Clone(c.cur.frame), c.temps()...)
+	if len(cells) == 0 {
+		return nil // declares no 1, which costs a cell
+	}
+	one := c.number(1, cc.Pos{Line: 1, Col: 1})
+	for _, i := range cells {
+		c.assign(val{vInd, c.sp.i}, val{vVar, i})
+		c.assign(c.sp, c.expr(vSum, c.sp, one, 0))
+	}
+	return cells
+}
+
+// temps lists the cells allocated for the expression being lowered so far,
+// except a function's frame (allocated up front, see functions).
+func (c *compiler) temps() []int {
+	var t []int
+	for i := c.mark; i < c.nvars; i++ {
+		t = append(t, i)
+	}
+	return t
+}
+
+// restore pops the cells save pushed, in reverse. A read through a pointer
+// reads the cell before the one it holds, so rp = sp reads the top.
+func (c *compiler) restore(cells []int) {
+	if len(cells) == 0 {
+		return
+	}
+	one := c.number(1, cc.Pos{Line: 1, Col: 1})
+	for _, i := range slices.Backward(cells) {
+		c.assign(c.rp, c.sp)
+		c.assign(c.sp, c.expr(vDiff, c.sp, one, 0))
+		c.assign(val{vVar, i}, val{vInd, c.rp.i})
+	}
 }
 
 // functionBody lays out a function's code: its entry label, its body, and a
 // return for falling off the end.
 func (c *compiler) functionBody(f *function) {
+	c.cur = f
 	c.ret = &returnTo{label: f.dispatch, rv: f.rv, hasRV: !f.decl.Void, char: f.decl.Char}
 	c.place(f.entry)
 	c.stmt(f.decl.Body)
@@ -938,6 +1075,9 @@ func (c *compiler) breakLabel(l *loop) int {
 // numbers fill the pool up to P again, which keeps every cell where the
 // addresses say it is.
 func (c *compiler) program() *syntax.Program {
+	if c.stack {
+		c.addrs[c.stackAddr] = c.nvars
+	}
 	size := len(c.pool) + len(c.addrs)
 	pool := append([]int32(nil), c.pool...)
 	slots := map[int32]int{}

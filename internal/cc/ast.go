@@ -111,8 +111,7 @@ type Node struct {
 	WrapChar bool
 }
 
-// Function is a function other than main. Its parameters and locals are
-// plain cells: without recursion, each call has the function to itself.
+// Function is a function other than main.
 type Function struct {
 	Name    string
 	Params  []*Obj

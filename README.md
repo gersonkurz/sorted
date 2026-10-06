@@ -192,8 +192,8 @@ sorted fizzbuzz.s
 ```
 
 **What works today.** A growing subset of C: functions with `int` and `char`
-parameters returning `int`, `char` or `void` (prototypes included, recursion
-not yet), `int` and `char` variables and one-dimensional arrays of them
+parameters returning `int`, `char` or `void` (prototypes and recursion
+included), `int` and `char` variables and one-dimensional arrays of them
 (globals with constant initializers, locals in nested blocks, `{...}` lists
 and string literals for arrays), integer constants (decimal, hex, octal) and
 character constants (`'a'`, `'\n'`, `'\x41'`), `a[i]`, `+ - * / %`,
@@ -216,7 +216,11 @@ compiler keeps one pointer for reading and one for writing. Sorted! has no
 call stack, so each function exists once: a call stores its arguments in the
 parameter cells and its own number in a return-address cell, and a return
 jumps through a chain of "go to the call site if the return address is ..."
-back to where it came from. Sorted! has no bit operations either (its logical
+back to where it came from. A function that can call itself, directly or
+through others, saves its parameters and locals on a stack before such a
+call and restores them afterwards; the stack is the free memory after the
+variables, so a recursion that goes too deep runs out of cells. Sorted! has
+no bit operations either (its logical
 operations can be declared but never used), so the bitwise operators are
 arithmetic: `~x` is `-1 - x`, shifting by a constant multiplies or divides,
 `x & 255` is a remainder, and the rest call small helper functions, written
@@ -233,7 +237,7 @@ written back: a declaration may add up its parts to a number from 1000000000
 on ("ninehundredmillion onehundredmillion"), and the current renderer cannot
 spell such values.
 
-**What is coming** (issues #16 and #17): recursion and `#define`, then
+**What is coming** (issues #16 and #17): `#define`, then
 the round trip back to C. Some limits are part of the deal. There
 are no library calls, `putchar` being the only one. There is no `malloc`, just
 one big block of memory. And there is no input, because Sorted! cannot read.

@@ -310,6 +310,70 @@ int main() {
 	putchar('\n');
 }`,
 
+	"recursion": `#include <stdio.h>
+int m[30];
+int calls;
+int fact(int n) { if (n <= 1) return 1; return n * fact(n - 1); }
+int fib(int n) { calls++; if (n < 2) return n; return fib(n - 1) + fib(n - 2); }
+int fibm(int n) {
+	if (n < 2) return n;
+	if (m[n]) return m[n];
+	m[n] = fibm(n - 1) + fibm(n - 2);
+	return m[n];
+}
+void print(int n) { if (n < 0) { putchar('-'); n = -n; } if (n >= 10) print(n / 10); putchar('0' + n % 10); }
+void line(int n) { print(n); putchar('\n'); }
+int isOdd(int n);
+int isEven(int n) { if (n == 0) return 1; return isOdd(n - 1); }
+int isOdd(int n) { if (n == 0) return 0; return isEven(n - 1); }
+int ack(int m, int n) {
+	if (m == 0) return n + 1;
+	if (n == 0) return ack(m - 1, 1);
+	return ack(m - 1, ack(m, n - 1));
+}
+int hanoi(int n, int from, int to, int via) {
+	if (n == 0) return 0;
+	int moves = hanoi(n - 1, from, via, to);
+	moves++;
+	return moves + hanoi(n - 1, via, to, from);
+}
+int bitsSet(int x) { if (x == 0) return 0; return (x & 1) + bitsSet(x >> 1); }
+int swap(int a, int b, int k) { if (k == 0) return a * 10 + b; return swap(b, a, k - 1); }
+char up(char c, int k) { if (k == 0) return c; return up(c + 1, k - 1); }
+int depthSum(int n) {
+	int local[3];
+	local[0] = n; local[1] = n * 2; local[2] = n * 3;
+	int below = 0;
+	if (n > 0) below = depthSum(n - 1);
+	return local[0] + local[1] + local[2] + below;
+}
+int perm[4]; int used[4]; int count;
+void permute(int k) {
+	if (k == 4) {
+		count++;
+		if (count % 7 == 1) { for (int i = 0; i < 4; i++) putchar('a' + perm[i]); putchar(' '); }
+		return;
+	}
+	for (int i = 0; i < 4; i++)
+		if (!used[i]) { used[i] = 1; perm[k] = i; permute(k + 1); used[i] = 0; }
+}
+int main() {
+	line(fact(10)); line(fact(1));
+	line(fib(15)); line(calls);
+	line(fibm(29));
+	line(-12345);
+	for (int i = 0; i < 6; i++) line(isEven(i) * 10 + isOdd(i));
+	line(ack(2, 3)); line(ack(3, 2));
+	line(hanoi(7, 1, 3, 2));
+	line(swap(1, 2, 1) * 100 + swap(1, 2, 4));
+	line(bitsSet(255) * 100 + bitsSet(1023));
+	putchar(up('a', 25)); putchar(up(120, 10)); putchar('\n');
+	line(depthSum(10));
+	line(fact(fact(3)) + fib(fact(3)));
+	if (fib(10) > fact(4) && isEven(fib(6))) line(1); else line(0);
+	permute(0); putchar('\n'); line(count);
+}`,
+
 	"strings": `#include <stdio.h>
 char greeting[] = "Hello, " "World!\n";
 int main() {
@@ -594,6 +658,55 @@ func TestBitwiseArithmetic(t *testing.T) {
 	}
 }
 
+// The stack grows into the free memory after the variables; recursing past
+// its end reads or writes a cell Sorted! does not have, a run-time error.
+func TestStackOverflow(t *testing.T) {
+	p, err := compileC(t, `int f(int n) { if (n == 0) return 0; return f(n - 1) + 1; }
+int main() { putchar(f(100000)); putchar(f(3)); }`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	err = interp.Run(p, strings.NewReader(""), &out, 10000000)
+	if err == nil || !strings.Contains(err.Error(), "out of range") {
+		t.Errorf("got %v, want a cell out of range", err)
+	}
+}
+
+// A recursive call saves the caller's frame (return address, parameters,
+// locals) and the temporaries of its own expression, not those of earlier
+// statements: each statement starts a new expression.
+func TestRecursiveSave(t *testing.T) {
+	for src, want := range map[string]int{
+		// statement: frame ra, n, r; the argument n - 1
+		`int g[4]; int f(int n) { int r = 0; g[n % 4] = n; if (g[n % 4] > 0) r = f(n - 1); return r + 1; }`: 4,
+		// return: frame ra, n; the argument
+		`int g[4]; int f(int n) { if (n <= 0) return 0; g[n % 4] = n; return f(n - 1) + 1; }`: 3,
+		// test: frame ra, n; the argument
+		`int g[4]; int f(int n) { if (n <= 0) return 0; g[n % 4] = n; if (f(n - 1) > 5) return 1; return 2; }`: 3,
+		// for's increment: frame ra, n, k; the argument and k, settled before the call
+		`int g[4]; int f(int n) { if (n <= 0) return 1; for (int k = 0; g[k % 4] < 0 || k < 1; k = k + f(n - 1)) ; return 0; }`: 5,
+	} {
+		prog, err := cc.Parse(src + ` int main() { putchar(f(3)); }`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c, _, err := compileProgram(prog)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pushes := 0
+		for _, e := range c.assigns.entries {
+			if e.b == (val{vInd, c.sp.i}) {
+				pushes++
+			}
+		}
+		if pushes != want {
+			t.Errorf("%s: %d cells saved, want %d", src, pushes, want)
+		}
+	}
+}
+
 // Negative constants are 0 - n; they need zero and the magnitude.
 func TestNegativeConstant(t *testing.T) {
 	p, err := compileC(t, `int g = -7; int main() { putchar(-3 + 0 * g); }`)
@@ -634,8 +747,6 @@ func TestErrors(t *testing.T) {
 		{`int f(int x) { return x << 40; } int main() { }`, "1:28: shift count 40 is out of range (0 to 31)"},
 		{`int main() { int a = -999999999; putchar(a); }`, ""},
 		{`int main() { int a = putchar(65); }`, "1:22: using the result of putchar is not supported yet"},
-		{`int f(int n) { return f(n); } int main() { f(1); }`, "1:23: recursion is not supported yet ('f' calls itself, directly or indirectly)"},
-		{`int g(int n); int f(int n) { return g(n); } int g(int n) { return f(n); } int main() { f(1); }`, "1:67: recursion is not supported yet ('f' calls itself, directly or indirectly)"},
 		{`int f(int n); int main() { f(1); }`, "1:28: 'f' is declared but never defined"},
 		{`void f(void) { } int main() { int a = f(); }`, "1:39: 'f' returns nothing (void)"},
 		{`int f(int n) { return f(n); } int main() { }`, ""},
@@ -744,6 +855,12 @@ func TestMemoryLimit(t *testing.T) {
 	last := fmt.Sprintf("int a[%d]; int main() { a[%d] = 65; putchar(a[%d]); }", memory-2, memory-3, memory-3)
 	if got := runSorted(t, toSorted(t, last, render.English)); got != "A" {
 		t.Errorf("last cell: %q, want \"A\"", got)
+	}
+	// A call that needs no stack costs no stack constants: the array, the
+	// result and its copy, and 0 fill the memory exactly.
+	call := fmt.Sprintf("int a[%d]; int f() { return 0; } int main() { a[0] = f(); }", memory-3)
+	if _, err := compileC(t, call); err != nil {
+		t.Errorf("call at the limit: %v", err)
 	}
 	tooBig := fmt.Sprintf("int a[%d]; int main() { putchar(65); }", memory-1)
 	_, err := compileC(t, tooBig)
