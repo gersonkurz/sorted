@@ -194,6 +194,87 @@ int main() {
 
 	"nothing": `int main() { }`,
 
+	"for loops": `#include <stdio.h>
+int pn; int pp;
+int main() {
+	int sum = 0;
+	for (int i = 1; i <= 10; i++) sum += i;
+	` + printNum("sum") + `
+	for (int i = 0; i < 3; ++i)
+		for (int j = 0; j < 3; j++) { putchar('a' + i); putchar('0' + j); putchar(' '); }
+	putchar('\n');
+	int k;
+	for (k = 10; k > 0; k -= 3) putchar('0' + k % 10);
+	putchar('\n');
+	for (;;) { k++; if (k > 5) break; }
+	` + printNum("k") + `
+}`,
+
+	"break and continue": `#include <stdio.h>
+int main() {
+	for (int i = 0; i < 20; i++) {
+		if (i % 2) continue;
+		if (i > 12) break;
+		putchar('0' + i % 10);
+	}
+	putchar('\n');
+	int n = 0;
+	while (1) {
+		n++;
+		if (n == 3) continue;
+		if (n == 7) break;
+		int m = 0;
+		while (m < n) { m++; if (m == 2) continue; putchar('*'); }
+		putchar('\n');
+	}
+}`,
+
+	"logic": `#include <stdio.h>
+int pn; int pp;
+int calls;
+int main() {
+	int a = 3, b = 0, d = 0;
+	` + printNum("a && b") + printNum("a || b") + printNum("!a") + printNum("!b") + printNum("!!a") +
+		printNum("a > 2 && a < 4") + printNum("b || a == 3 && !b") + `
+	if (d != 0 && 10 / d > 1) putchar('x'); else putchar('y');
+	if (d == 0 || 10 / d > 1) putchar('y'); else putchar('x');
+	int guarded = d != 0 && 10 / d > 1;
+	` + printNum("guarded") + `
+	int side = 0;
+	b && (side = 1);
+	a || (side = 2);
+	a && (side = 3);
+	` + printNum("side") + `
+	if (!(a == 3) || !(b != 0)) putchar('k');
+	if (!(a < 4 && b < 1)) putchar('x'); else putchar('k');
+	putchar('\n');
+}`,
+
+	"increments": `#include <stdio.h>
+int pn; int pp;
+int main() {
+	int a = 5;
+	int b = a++;
+	int c = ++a;
+	int d = a--;
+	int e = --a;
+	` + printNum("a * 1000 + b * 100 + c * 10 + d") + printNum("e") + `
+	a += 10; a -= 3; a *= 2; a /= 3; a %= 5;
+	` + printNum("a") + `
+	int x = 0;
+	while (x++ < 3) putchar('0' + x);
+	putchar('\n');
+}`,
+
+	"characters": `#include <stdio.h>
+int pn; int pp;
+int main() {
+	putchar('H'); putchar('e'); putchar('l'); putchar('l'); putchar('o'); putchar(',');
+	putchar(' '); putchar('W'); putchar('\x6f'); putchar('\162'); putchar('l'); putchar('d');
+	putchar('!'); putchar('\t'); putchar('\''); putchar('\\'); putchar('\n');
+	` + printNum("'\\xff'") + printNum("'\\0'") + printNum("'A' - 'a'") + `
+}`,
+
 	"conditions": `#include <stdio.h>
 int main() {
 	int a = 3, b = 4, i = 0;

@@ -14,10 +14,14 @@
 //     truncating division.
 //   - == and < become conditions, whose value is 1 or 0; != is 1 - (a==b) and
 //     a <= b is 1 - (b<a).
-//   - if and while become labels and conditional jumps. A jump is taken when
-//     its condition is true, so each test jumps on the negated condition, and
-//     negating a condition is a condition again ("the first condition is
-//     equal to zero").
+//   - if, while and for become labels and conditional jumps; break and
+//     continue jump to the end of the loop or to its next round. A jump is
+//     taken when its condition is true, so each test jumps on the negated
+//     condition, and negating a condition is a condition again ("the first
+//     condition is equal to zero").
+//   - && and || short-circuit: in a test they become a chain of jumps, and as
+//     a value they set a temporary cell to 0 or 1 by jumping, because a
+//     product of conditions would evaluate both sides. !x is x == 0.
 //   - putchar(e) assigns e to an output cell and runs the program's only
 //     output, which writes that cell as a character.
 //   - return jumps past the last statement.
@@ -107,6 +111,12 @@ type jump struct {
 	cond  int // -1: unconditional
 }
 
+// loop holds the labels of the innermost loop: where break and continue go.
+// They are made when first needed (-1 until then).
+type loop struct {
+	brk, cont int
+}
+
 // compiler holds the tables being built.
 type compiler struct {
 	pool      []int32       // declared numbers
@@ -121,6 +131,7 @@ type compiler struct {
 	jumpIdx map[jump]int
 	labels  int
 	stmts   []stmt
+	loops   []*loop
 }
 
 // Compile lowers a parsed C program into Sorted! tables.
@@ -226,6 +237,17 @@ func (c *compiler) value(n *cc.Node) val {
 		return c.assignment(n)
 	case cc.NdFuncall:
 		fail(n.Pos, "using the result of putchar is not supported yet")
+	case cc.NdNot:
+		return c.not(c.value(n.Lhs), n.Pos)
+	case cc.NdLogAnd, cc.NdLogOr:
+		// t = 0; if (n) t = 1;  so that the right side runs only when needed
+		t := c.temporary()
+		c.assign(t, c.number(0, n.Pos))
+		skip := c.newLabel()
+		c.jumpIf(n, skip, false)
+		c.assign(t, c.number(1, n.Pos))
+		c.place(skip)
+		return t
 	}
 	a, b := c.value(n.Lhs), c.value(n.Rhs)
 	switch n.Kind {
@@ -252,17 +274,53 @@ func (c *compiler) value(n *cc.Node) val {
 	return val{}
 }
 
-// falseCond returns a condition that is true exactly when n is false
-// (zero), using the cheapest form for comparisons.
-func (c *compiler) falseCond(n *cc.Node) val {
-	switch n.Kind {
-	case cc.NdNe:
+// temporary returns a fresh cell for an intermediate value.
+func (c *compiler) temporary() val {
+	c.nvars++
+	return val{vVar, c.nvars - 1}
+}
+
+// cond returns a condition that is true exactly when n is true (sense) or
+// exactly when it is false (!sense), using the cheapest form for
+// comparisons.
+func (c *compiler) cond(n *cc.Node, sense bool) val {
+	switch {
+	case n.Kind == cc.NdEq && sense, n.Kind == cc.NdNe && !sense:
 		return c.eq(c.value(n.Lhs), c.value(n.Rhs))
-	case cc.NdLe:
+	case n.Kind == cc.NdLt && sense:
+		return c.lt(c.value(n.Lhs), c.value(n.Rhs))
+	case n.Kind == cc.NdLe && !sense:
 		a, b := c.value(n.Lhs), c.value(n.Rhs)
 		return c.lt(b, a)
+	case sense:
+		return c.not(c.not(c.value(n), n.Pos), n.Pos)
 	}
 	return c.not(c.value(n), n.Pos)
+}
+
+// jumpIf jumps to label when n is true (sense) or false (!sense). && and ||
+// become chains of jumps, so their right side is only evaluated when it
+// matters, and ! flips the sense.
+func (c *compiler) jumpIf(n *cc.Node, label int, sense bool) {
+	switch n.Kind {
+	case cc.NdNot:
+		c.jumpIf(n.Lhs, label, !sense)
+	case cc.NdLogAnd, cc.NdLogOr:
+		// "a && b is false" and "a || b is true" each hold as soon as the left
+		// side says so; the other two need both sides.
+		decidesAlone := n.Kind == cc.NdLogAnd != sense
+		if decidesAlone {
+			c.jumpIf(n.Lhs, label, sense)
+			c.jumpIf(n.Rhs, label, sense)
+			return
+		}
+		skip := c.newLabel()
+		c.jumpIf(n.Lhs, skip, !sense)
+		c.jumpIf(n.Rhs, label, sense)
+		c.place(skip)
+	default:
+		c.jumpTo(label, c.cond(n, sense).i)
+	}
 }
 
 // --- statements ---
@@ -285,9 +343,7 @@ func (c *compiler) jumpTo(label, cond int) {
 }
 
 // jumpIfFalse jumps to label when n is false.
-func (c *compiler) jumpIfFalse(n *cc.Node, label int) {
-	c.jumpTo(label, c.falseCond(n).i)
-}
+func (c *compiler) jumpIfFalse(n *cc.Node, label int) { c.jumpIf(n, label, false) }
 
 func (c *compiler) assign(target, source val) {
 	c.emit(sAssign, c.assigns.add(entry{source, target, 0}))
@@ -317,8 +373,18 @@ func (c *compiler) effects(n *cc.Node) {
 		c.emit(sWrite, 0)
 	case cc.NdAssign:
 		c.assignment(n)
-	default:
-		c.value(n) // only the hoisted assignments matter
+	case cc.NdLogAnd, cc.NdLogOr:
+		// the right side runs only when the left does not decide
+		skip := c.newLabel()
+		c.jumpIf(n.Lhs, skip, n.Kind == cc.NdLogOr)
+		c.effects(n.Rhs)
+		c.place(skip)
+	case cc.NdNum, cc.NdVar:
+	case cc.NdNeg, cc.NdNot:
+		c.effects(n.Lhs)
+	default: // arithmetic and comparisons: only their operands' effects
+		c.effects(n.Lhs)
+		c.effects(n.Rhs)
 	}
 }
 
@@ -351,15 +417,56 @@ func (c *compiler) stmt(n *cc.Node, exit *int) {
 		}
 		c.place(end)
 	case cc.NdWhile:
-		top, end := c.newLabel(), c.newLabel()
+		top := c.newLabel()
+		l := &loop{brk: -1, cont: top}
 		c.place(top)
-		c.jumpIfFalse(n.Cond, end)
-		c.stmt(n.Then, exit)
+		c.jumpIfFalse(n.Cond, c.breakLabel(l))
+		c.body(l, n.Then, exit)
 		c.jumpTo(top, -1)
-		c.place(end)
+		c.place(l.brk)
+	case cc.NdFor:
+		c.stmt(n.Init, exit)
+		top := c.newLabel()
+		l := &loop{brk: -1, cont: -1}
+		c.place(top)
+		if n.Cond != nil {
+			c.jumpIfFalse(n.Cond, c.breakLabel(l))
+		}
+		c.body(l, n.Then, exit)
+		if l.cont >= 0 {
+			c.place(l.cont)
+		}
+		c.effects(n.Inc)
+		c.jumpTo(top, -1)
+		if l.brk >= 0 {
+			c.place(l.brk)
+		}
+	case cc.NdBreak:
+		c.jumpTo(c.breakLabel(c.loops[len(c.loops)-1]), -1)
+	case cc.NdContinue:
+		l := c.loops[len(c.loops)-1]
+		if l.cont < 0 {
+			l.cont = c.newLabel()
+		}
+		c.jumpTo(l.cont, -1)
 	default:
 		fail(n.Pos, "cannot lower this statement")
 	}
+}
+
+// body lowers a loop body with l as the innermost loop.
+func (c *compiler) body(l *loop, n *cc.Node, exit *int) {
+	c.loops = append(c.loops, l)
+	c.stmt(n, exit)
+	c.loops = c.loops[:len(c.loops)-1]
+}
+
+// breakLabel returns the label after loop l, making it if needed.
+func (c *compiler) breakLabel(l *loop) int {
+	if l.brk < 0 {
+		l.brk = c.newLabel()
+	}
+	return l.brk
 }
 
 // --- tables ---

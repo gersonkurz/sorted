@@ -191,12 +191,14 @@ sorted --from-c fizzbuzz.c --lang de > fizzbuzz-de.s
 sorted fizzbuzz.s
 ```
 
-**What works today.** A small subset of C: a single `main`, `int` variables
+**What works today.** A growing subset of C: a single `main`, `int` variables
 (globals with constant initializers, and locals in nested blocks), integer
-constants up to 999999999, `+ - * / %`, comparisons, assignment, `if`/`else`,
-`while`, `return`, and `putchar`. `#include <stdio.h>` is allowed, so the same
-file compiles with a C compiler too; anything else gets a precise "not
-supported in Sorted! (yet)" with its line and column. The front end is a Go
+constants up to 999999999 and character constants (`'a'`, `'\n'`, `'\x41'`),
+`+ - * / %`, comparisons, `&&`, `||` and `!` (short-circuiting, as in C),
+assignment including `+=` and friends, `++` and `--`, `if`/`else`, `while`,
+`for`, `break`, `continue`, `return`, and `putchar`. `#include <stdio.h>` is
+allowed, so the same file compiles with a C compiler too; anything else gets a
+precise "not supported in Sorted! (yet)" with its line and column. The front end is a Go
 port of [chibicc](https://github.com/rui314/chibicc), Rui Ueyama's small C
 compiler (MIT license).
 
@@ -216,8 +218,8 @@ written back: a declaration may add up its parts to a number from 1000000000
 on ("ninehundredmillion onehundredmillion"), and the current renderer cannot
 spell such values.
 
-**What is coming** (issues #14 to #17): arrays and strings, `for`, `&&` and
-`||`, then functions, then recursion. Some limits are part of the deal. There
+**What is coming** (issues #14 to #17): arrays and strings, then functions,
+then recursion. Some limits are part of the deal. There
 are no library calls, `putchar` being the only one. There is no `malloc`, just
 one big block of memory. And there is no input, because Sorted! cannot read.
 Round trip a program through C → Sorted! → C, and you get C obfuscation for

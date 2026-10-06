@@ -19,9 +19,13 @@
 // #include <stdio.h> is the one preprocessor line it accepts (and ignores), so
 // that a program for Sorted! is also a C program that declares putchar.
 //
-// Subset 1: int globals (with constant initializers) and locals, integer
-// constants, + - * / % and unary -, =, == != < <= > >=, if/else, while,
-// return, blocks, and putchar(expr).
+// The subset: int globals (with constant initializers) and locals, integer
+// and character constants, + - * / % and unary -, =, the compound
+// assignments += -= *= /= %=, ++ and -- (prefix and postfix), == != < <= >
+// >=, && || !, if/else, while, for, break, continue, return, blocks, and
+// putchar(expr). As in chibicc, x op= e is x = x op e, ++x is x = x + 1 and
+// x++ is (x = x + 1) - 1; in the subset x is always a plain variable, so
+// evaluating it twice is harmless.
 package cc
 
 import "fmt"
@@ -45,6 +49,12 @@ const (
 	NdReturn                   // "return"
 	NdIf                       // "if"
 	NdWhile                    // "while"
+	NdFor                      // "for"
+	NdBreak                    // "break"
+	NdContinue                 // "continue"
+	NdLogAnd                   // &&
+	NdLogOr                    // ||
+	NdNot                      // !
 	NdBlock                    // { ... }
 	NdFuncall                  // putchar(...)
 	NdExprStmt                 // expression statement
@@ -67,7 +77,8 @@ type Node struct {
 
 	Lhs, Rhs *Node // operands, assignment target and value
 
-	Cond, Then, Els *Node // if, while
+	Cond, Then, Els *Node // if, while, for
+	Init, Inc       *Node // for
 
 	Body []*Node // block
 

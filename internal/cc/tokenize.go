@@ -122,8 +122,15 @@ func Tokenize(src string) ([]Token, error) {
 			}
 			add(Token{kind, src[:n], 0, pos})
 			advance(n)
-		case c == '\'' || c == '"':
-			return nil, errorAt(pos, "not supported in Sorted! (yet): character and string literals")
+		case c == '"':
+			return nil, errorAt(pos, "not supported in Sorted! (yet): string literals")
+		case c == '\'':
+			v, n, err := readCharLiteral(src, pos)
+			if err != nil {
+				return nil, err
+			}
+			add(Token{TkNum, src[:n], v, pos})
+			advance(n)
 		default:
 			n := 0
 			for _, p := range puncts {
@@ -143,6 +150,91 @@ func Tokenize(src string) ([]Token, error) {
 		}
 	}
 	return append(toks, Token{TkEOF, "", 0, Pos{line, col}}), nil
+}
+
+// readCharLiteral reads a character constant such as 'a' or '\n' and returns
+// its value and length. Its type is int, its value that of the char, which is
+// signed: '\xff' is -1. Multi-character constants and non-ASCII characters
+// are not part of the subset.
+func readCharLiteral(src string, pos Pos) (int32, int, error) {
+	p := 1
+	if p >= len(src) || src[p] == '\n' {
+		return 0, 0, errorAt(pos, "unclosed char literal")
+	}
+	var c int
+	if src[p] == '\\' {
+		var err error
+		c, p, err = readEscapedChar(src, p+1, pos)
+		if err != nil {
+			return 0, 0, err
+		}
+	} else {
+		if src[p] >= 0x80 {
+			return 0, 0, errorAt(pos, "not supported in Sorted! (yet): non-ASCII characters")
+		}
+		if src[p] == '\'' {
+			return 0, 0, errorAt(pos, "empty char literal")
+		}
+		c, p = int(src[p]), p+1
+	}
+	if p >= len(src) || src[p] != '\'' {
+		if p < len(src) && src[p] != '\n' && strings.IndexByte(src[p:], '\'') > 0 {
+			return 0, 0, errorAt(pos, "not supported in Sorted! (yet): multi-character constants")
+		}
+		return 0, 0, errorAt(pos, "unclosed char literal")
+	}
+	return int32(int8(c)), p + 1, nil
+}
+
+// readEscapedChar reads the escape sequence after a backslash at src[p], as
+// chibicc's read_escaped_char does: up to three octal digits, \x and hex
+// digits, or a letter.
+func readEscapedChar(src string, p int, pos Pos) (int, int, error) {
+	at := func(i int) byte {
+		if i < len(src) {
+			return src[i]
+		}
+		return 0
+	}
+	isOct := func(b byte) bool { return '0' <= b && b <= '7' }
+	switch {
+	case isOct(at(p)):
+		c := 0
+		for n := 0; n < 3 && isOct(at(p)); n++ {
+			c = c<<3 + int(at(p)-'0')
+			p++
+		}
+		if c > 0xff {
+			return 0, 0, errorAt(pos, "octal escape sequence out of range")
+		}
+		return c, p, nil
+	case at(p) == 'x':
+		p++
+		start := p
+		c := 0
+		for strings.IndexByte("0123456789abcdefABCDEF", at(p)) >= 0 && at(p) != 0 {
+			d, _ := strconv.ParseInt(string(at(p)), 16, 32)
+			c = c<<4 + int(d)
+			if c > 0xff {
+				return 0, 0, errorAt(pos, "hex escape sequence out of range")
+			}
+			p++
+		}
+		if p == start {
+			return 0, 0, errorAt(pos, "invalid hex escape sequence")
+		}
+		return c, p, nil
+	}
+	escapes := map[byte]int{'a': 7, 'b': 8, 't': 9, 'n': 10, 'v': 11, 'f': 12, 'r': 13, 'e': 27}
+	if c, ok := escapes[at(p)]; ok {
+		return c, p + 1, nil
+	}
+	if at(p) == 0 || at(p) == '\n' {
+		return 0, 0, errorAt(pos, "unclosed char literal")
+	}
+	// \' \" \? \\ and, like chibicc and clang (with a warning), any other
+	// character stand for themselves.
+	return int(at(p)), p + 1, nil
 }
 
 // parseNumber reads a decimal, hexadecimal (0x) or octal (leading 0) int

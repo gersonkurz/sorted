@@ -12,7 +12,7 @@ func sexpr(n *Node) string {
 	if n == nil {
 		return "nil"
 	}
-	ops := map[NodeKind]string{NdAdd: "+", NdSub: "-", NdMul: "*", NdDiv: "/", NdMod: "%", NdEq: "==", NdNe: "!=", NdLt: "<", NdLe: "<=", NdAssign: "="}
+	ops := map[NodeKind]string{NdAdd: "+", NdSub: "-", NdMul: "*", NdDiv: "/", NdMod: "%", NdEq: "==", NdNe: "!=", NdLt: "<", NdLe: "<=", NdAssign: "=", NdLogAnd: "&&", NdLogOr: "||"}
 	switch n.Kind {
 	case NdNum:
 		return fmt.Sprint(n.Val)
@@ -23,6 +23,14 @@ func sexpr(n *Node) string {
 		return n.Var.Name
 	case NdNeg:
 		return "(neg " + sexpr(n.Lhs) + ")"
+	case NdNot:
+		return "(! " + sexpr(n.Lhs) + ")"
+	case NdFor:
+		return "(for " + sexpr(n.Init) + " " + sexpr(n.Cond) + " " + sexpr(n.Inc) + " " + sexpr(n.Then) + ")"
+	case NdBreak:
+		return "break"
+	case NdContinue:
+		return "continue"
 	case NdReturn:
 		return "(return " + sexpr(n.Lhs) + ")"
 	case NdIf:
@@ -81,6 +89,13 @@ func TestParse(t *testing.T) {
 		{"int g; int main() { int g = 1; putchar(g); }", "{ { (= g 1)} (putchar g)}"},
 		{"int main() { int a; a = +(7 / (2 - 1)); }", "{ {} (= a (/ 7 (- 2 1)))}"},
 		{"int main() { int a; (a) = 1; }", "{ {} (= a 1)}"},
+		{"int main() { int i; for (i = 0; i < 3; i = i + 1) putchar(i); }", "{ {} (for (= i 0) (< i 3) (= i (+ i 1)) (putchar i))}"},
+		{"int main() { for (int i = 0; ; ) { break; continue; } for (;;) ; }", "{ (for { (= i 0)} nil nil { break continue}) (for {} nil nil {})}"},
+		{"int main() { int a; a += 2; a -= 3; a *= 4; a /= 5; a %= 6; }", "{ {} (= a (+ a 2)) (= a (- a 3)) (= a (* a 4)) (= a (/ a 5)) (= a (% a 6))}"},
+		{"int main() { int a; a = ++a + a-- - --a + a++; }", "{ {} (= a (+ (- (+ (= a (+ a 1)) (+ (= a (- a 1)) 1)) (= a (- a 1))) (- (= a (+ a 1)) 1)))}"},
+		{"int main() { int a; a = !a || a && !(a == 1); }", "{ {} (= a (|| (! a) (&& a (! (== a 1)))))}"},
+		{"int main() { putchar('A'); putchar('\\n'); putchar('\\x41'); putchar('\\101'); putchar('\\0'); putchar('\\''); putchar('\\q'); putchar('\\xff'); }",
+			"{ (putchar 65) (putchar 10) (putchar 65) (putchar 65) (putchar 0) (putchar 39) (putchar 113) (putchar -1)}"},
 		{"int main() { int bool = 1, true = 2; putchar(bool + true); }", "{ { (= bool 1) (= true 2)} (putchar (+ bool true))}"},
 	}
 	for _, tt := range tests {
@@ -125,18 +140,30 @@ func TestGlobals(t *testing.T) {
 
 func TestErrors(t *testing.T) {
 	tests := []struct{ src, want string }{
-		{"int main() { for (;;) ; }", "1:14: not supported in Sorted! (yet): 'for'"},
-		{"int main() { int a; a += 1; }", "1:23: not supported in Sorted! (yet): +="},
-		{"int main() { int a; a = 1 && 2; }", "1:27: not supported in Sorted! (yet): &&"},
-		{"int main() { int a; a++; }", "1:22: not supported in Sorted! (yet): ++"},
-		{"int main() { int a = !1; }", "1:22: not supported in Sorted! (yet): unary '!'"},
+		{"int main() { do ; while (0); }", "1:14: not supported in Sorted! (yet): 'do'"},
+		{"int main() { int a; a = a ? 1 : 2; }", "1:27: not supported in Sorted! (yet): ?:"},
+		{"int main() { int a; a &= 1; }", "1:23: not supported in Sorted! (yet): &="},
+		{"int main() { int a; a = 1 & 2; }", "1:27: not supported in Sorted! (yet): &"},
+		{"int main() { int a = ~1; }", "1:22: not supported in Sorted! (yet): unary '~'"},
+		{"int main() { break; }", "1:14: 'break' outside a loop"},
+		{"int main() { if (1) continue; }", "1:21: 'continue' outside a loop"},
+		{"int main() { int a; a++++; }", "1:24: the left side of '++' must be a variable"},
+		{"int main() { int a; ++(+a); }", "1:21: the left side of '++' must be a variable"},
+		{"int main() { 3 += 1; }", "1:16: the left side of '+=' must be a variable"},
+		{"int main() { putchar('ab'); }", "1:22: not supported in Sorted! (yet): multi-character constants"},
+		{"int main() { putchar(''); }", "1:22: empty char literal"},
+		{"int main() { putchar('a); }", "1:22: unclosed char literal"},
+		{"int main() { putchar('\\x'); }", "1:22: invalid hex escape sequence"},
+		{"int main() { putchar('\\x100'); }", "1:22: hex escape sequence out of range"},
+		{"int main() { putchar('\\777'); }", "1:22: octal escape sequence out of range"},
+		{"int main() { putchar('\xc3\xa4'); }", "1:22: not supported in Sorted! (yet): non-ASCII characters"},
 		{"int main() { char c; }", "1:14: not supported in Sorted! (yet): the type or specifier 'char' (int is the only type)"},
 		{"int *p; int main() {}", "1:5: not supported in Sorted! (yet): pointers"},
 		{"int a[3]; int main() {}", "1:6: not supported in Sorted! (yet): arrays"},
 		{"int f() { } int main() {}", "1:5: not supported in Sorted! (yet): functions other than main"},
 		{"int main(int argc) {}", "1:10: not supported in Sorted! (yet): parameters of main"},
 		{"int main() { printf(1); }", "1:14: not supported in Sorted! (yet): calling 'printf' (putchar is the only function)"},
-		{"int main() { putchar('a'); }", "1:22: not supported in Sorted! (yet): character and string literals"},
+		{"int main() { putchar(\"a\"); }", "1:22: not supported in Sorted! (yet): string literals"},
 		{"#include <stdlib.h>\nint main() {}", "1:1: not supported in Sorted! (yet): the preprocessor (except #include <stdio.h>)"},
 		{"#define N 3\nint main() {}", "1:1: not supported in Sorted! (yet): the preprocessor (except #include <stdio.h>)"},
 		{"int main() { int x = 65; #include <stdio.h>\nputchar(x); }", "1:26: stray '#' (a preprocessing line must start with it)"},
@@ -145,6 +172,7 @@ func TestErrors(t *testing.T) {
 		{"int main() { x = 1; }", "1:14: undefined variable 'x'"},
 		{"int main() { int a; int a; }", "1:25: redefinition of 'a'"},
 		{"int main() { 1 = 2; }", "1:16: the left side of '=' must be a variable"},
+		{"int main() { for (int i = 0; ; ) ; i = 1; }", "1:36: undefined variable 'i'"},
 		{"int a; int a; int main() {}", "1:12: redefinition of 'a'"},
 		{"int a;", "1:7: no main function"},
 		{"int main() { return 0 }", "1:23: expected ';'"},

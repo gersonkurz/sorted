@@ -31,6 +31,7 @@ type parser struct {
 	scopes  []map[string]*Obj
 	globals map[string]*Obj
 	prog    *Program
+	loops   int // nesting depth of loops, for break and continue
 }
 
 func (ps *parser) tok() Token  { return ps.toks[ps.i] }
@@ -208,6 +209,8 @@ func (ps *parser) declaration() *Node {
 //
 //	| "if" "(" expr ")" stmt ("else" stmt)?
 //	| "while" "(" expr ")" stmt
+//	| "for" "(" (declaration | expr-stmt) expr? ";" expr? ")" stmt
+//	| "break" ";" | "continue" ";"
 //	| "{" compound-stmt
 //	| expr-stmt
 func (ps *parser) stmt() *Node {
@@ -238,8 +241,39 @@ func (ps *parser) stmt() *Node {
 		ps.skip("(")
 		n.Cond = ps.expr()
 		ps.skip(")")
-		n.Then = ps.stmt()
+		n.Then = ps.loopBody()
 		return n
+	case ps.equal("for"):
+		ps.next()
+		n := &Node{Kind: NdFor, Pos: t.Pos}
+		ps.skip("(")
+		ps.scopes = append(ps.scopes, map[string]*Obj{}) // for (int i = ...)
+		if ps.equal("int") || ps.tok().Kind == TkKeyword && isTypeKeyword(ps.tok().Text) {
+			n.Init = ps.declaration()
+		} else {
+			n.Init = ps.exprStmt()
+		}
+		if !ps.equal(";") {
+			n.Cond = ps.expr()
+		}
+		ps.skip(";")
+		if !ps.equal(")") {
+			n.Inc = ps.expr()
+		}
+		ps.skip(")")
+		n.Then = ps.loopBody()
+		ps.scopes = ps.scopes[:len(ps.scopes)-1]
+		return n
+	case ps.equal("break"), ps.equal("continue"):
+		ps.next()
+		if ps.loops == 0 {
+			ps.fail(t.Pos, "'%s' outside a loop", t.Text)
+		}
+		ps.skip(";")
+		if t.Text == "break" {
+			return &Node{Kind: NdBreak, Pos: t.Pos}
+		}
+		return &Node{Kind: NdContinue, Pos: t.Pos}
 	case ps.equal("{"):
 		ps.next()
 		return ps.compoundStmt()
@@ -247,6 +281,13 @@ func (ps *parser) stmt() *Node {
 		ps.unsupported(t.Pos, "'"+t.Text+"'")
 	}
 	return ps.exprStmt()
+}
+
+// loopBody parses the statement of a loop, where break and continue apply.
+func (ps *parser) loopBody() *Node {
+	ps.loops++
+	defer func() { ps.loops-- }()
+	return ps.stmt()
 }
 
 // compound-stmt = (declaration | stmt)* "}"
@@ -299,29 +340,65 @@ func (ps *parser) expr() *Node {
 	return n
 }
 
-// operators that are C but not (yet) subset 1, rejected where they would
-// continue an expression.
+// operators that are C but not (yet) in the subset, rejected where they
+// would continue an expression.
 var notYet = map[string]string{
-	"&&": "&&", "||": "||", "?": "?:", "&": "&", "|": "|", "^": "^", "<<": "<<", ">>": ">>",
-	"+=": "+=", "-=": "-=", "*=": "*=", "/=": "/=", "%=": "%=", "&=": "&=", "|=": "|=",
-	"^=": "^=", "<<=": "<<=", ">>=": ">>=", "++": "++", "--": "--", "[": "arrays", "->": "->",
-	".": "structs",
+	"?": "?:", "&": "&", "|": "|", "^": "^", "<<": "<<", ">>": ">>", "&=": "&=", "|=": "|=",
+	"^=": "^=", "<<=": "<<=", ">>=": ">>=", "[": "arrays", "->": "->", ".": "structs",
 }
 
-// assign = equality ("=" assign)?
+// compound assignment operators and the operation each applies
+var assignOps = map[string]NodeKind{"+=": NdAdd, "-=": NdSub, "*=": NdMul, "/=": NdDiv, "%=": NdMod}
+
+// assign    = logor (assign-op assign)?
+// assign-op = "=" | "+=" | "-=" | "*=" | "/=" | "%="
+//
+// As in chibicc's to_assign, x op= e is x = x op e.
 func (ps *parser) assign() *Node {
-	n := ps.equality()
-	if t := ps.tok(); t.Kind == TkPunct {
+	n := ps.logor()
+	t := ps.tok()
+	if t.Kind == TkPunct {
 		if what, ok := notYet[t.Text]; ok {
 			ps.unsupported(t.Pos, what)
 		}
 	}
 	if ps.equal("=") {
-		t := ps.next()
-		if n.Kind != NdVar || n.Rvalue {
-			ps.fail(t.Pos, "the left side of '=' must be a variable")
-		}
+		ps.next()
+		ps.lvalue(n, t)
 		return &Node{Kind: NdAssign, Pos: t.Pos, Lhs: n, Rhs: ps.assign()}
+	}
+	if op, ok := assignOps[t.Text]; ok && t.Kind == TkPunct {
+		ps.next()
+		ps.lvalue(n, t)
+		rhs := &Node{Kind: op, Pos: t.Pos, Lhs: n, Rhs: ps.assign()}
+		return &Node{Kind: NdAssign, Pos: t.Pos, Lhs: n, Rhs: rhs}
+	}
+	return n
+}
+
+// lvalue checks that n can be assigned to by the operator at t.
+func (ps *parser) lvalue(n *Node, t Token) {
+	if n.Kind != NdVar || n.Rvalue {
+		ps.fail(t.Pos, "the left side of '%s' must be a variable", t.Text)
+	}
+}
+
+// logor = logand ("||" logand)*
+func (ps *parser) logor() *Node {
+	n := ps.logand()
+	for ps.equal("||") {
+		t := ps.next()
+		n = &Node{Kind: NdLogOr, Pos: t.Pos, Lhs: n, Rhs: ps.logand()}
+	}
+	return n
+}
+
+// logand = equality ("&&" equality)*
+func (ps *parser) logand() *Node {
+	n := ps.equality()
+	for ps.equal("&&") {
+		t := ps.next()
+		n = &Node{Kind: NdLogAnd, Pos: t.Pos, Lhs: n, Rhs: ps.equality()}
 	}
 	return n
 }
@@ -397,10 +474,20 @@ func (ps *parser) mul() *Node {
 	}
 }
 
-// unary = ("+" | "-") unary | primary
+// unary = ("+" | "-" | "!") unary
+//
+//	| ("++" | "--") unary
+//	| postfix
 func (ps *parser) unary() *Node {
 	t := ps.tok()
 	switch {
+	case ps.consume("!"):
+		return &Node{Kind: NdNot, Pos: t.Pos, Lhs: ps.unary()}
+	case ps.consume("++"), ps.consume("--"):
+		// ++x is x = x + 1
+		n := ps.unary()
+		ps.lvalue(n, t)
+		return incDec(n, t)
 	case ps.consume("+"):
 		n := ps.unary()
 		if n.Kind == NdVar {
@@ -411,10 +498,39 @@ func (ps *parser) unary() *Node {
 		return n
 	case ps.consume("-"):
 		return &Node{Kind: NdNeg, Pos: t.Pos, Lhs: ps.unary()}
-	case ps.equal("!"), ps.equal("~"), ps.equal("&"), ps.equal("*"), ps.equal("++"), ps.equal("--"):
+	case ps.equal("~"), ps.equal("&"), ps.equal("*"):
 		ps.unsupported(t.Pos, "unary '"+t.Text+"'")
 	}
-	return ps.primary()
+	return ps.postfix()
+}
+
+// incDec builds x = x + 1 (or x - 1 for "--") for the operator at t.
+func incDec(n *Node, t Token) *Node {
+	kind := NdAdd
+	if t.Text == "--" {
+		kind = NdSub
+	}
+	one := &Node{Kind: NdNum, Pos: t.Pos, Val: 1}
+	return &Node{Kind: NdAssign, Pos: t.Pos, Lhs: n, Rhs: &Node{Kind: kind, Pos: t.Pos, Lhs: n, Rhs: one}}
+}
+
+// postfix = primary ("++" | "--")*
+//
+// As in chibicc's new_inc_dec, x++ is (x = x + 1) - 1: the hoisted
+// assignment runs first, and the value is the new x minus one.
+func (ps *parser) postfix() *Node {
+	n := ps.primary()
+	for ps.equal("++") || ps.equal("--") {
+		t := ps.next()
+		ps.lvalue(n, t)
+		undo := NdSub
+		if t.Text == "--" {
+			undo = NdAdd
+		}
+		one := &Node{Kind: NdNum, Pos: t.Pos, Val: 1}
+		n = &Node{Kind: undo, Pos: t.Pos, Lhs: incDec(n, t), Rhs: one}
+	}
+	return n
 }
 
 // primary = "(" expr ")" | ident func-args? | num
