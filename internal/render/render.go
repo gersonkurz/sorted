@@ -613,7 +613,8 @@ func (r *renderer) assigns() (sentence, error) {
 	}
 	items := make([]string, len(as))
 	for i, a := range as {
-		if a.Ops[1].Type&0xFF != syntax.Number {
+		// Very Sorted! stores into the cell any value indexes (#27)
+		if t := a.Ops[1].Type; t&0xFF != syntax.Number && !(r.p.Very && t&syntax.Indirect != 0) {
 			return sentence{}, fail("assignment %d does not store into a cell", i+1)
 		}
 		from, err := r.ref(r.lang, a.Ops[0], accusative)

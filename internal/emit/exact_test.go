@@ -257,6 +257,16 @@ func TestExactQuirks(t *testing.T) {
 			b.table(syntax.Writes, write(syntax.FormatCharacter, op(N, 1)), write(syntax.FormatCharacter, op(N, 0)))
 			b.table(syntax.Statements, stmt(syntax.Read, 0), stmt(syntax.Write, 0), stmt(syntax.Write, 1), stmt(syntax.Read, 0), stmt(syntax.Write, 0))
 		},
+		"very indexed store": func(b *builder) {
+			// Very Sorted! stores into the cell a sum indexes (#27), Data[2],
+			// and reads Data[1] through it.
+			b.p.Very = true
+			b.p.Data = []int32{1, 'B', 'C', 'Z'}
+			b.table(syntax.Sums, slide(op(N, 0), op(N, 0), 0))
+			b.table(syntax.Assigns, slide(op(N, 3), op(syntax.Sum|syntax.Indirect, 0), 0))
+			b.table(syntax.Writes, write(syntax.FormatCharacter, op(N, 2)), write(syntax.FormatCharacter, op(syntax.Sum|syntax.Indirect, 0)))
+			b.table(syntax.Statements, stmt(syntax.Assign, 0), stmt(syntax.Write, 0), stmt(syntax.Write, 1))
+		},
 		"nand and nor": func(b *builder) {
 			// Very Sorted!'s NAND and the original's NOR (#26); the third
 			// reference reads past the table into a condition's slot, whose

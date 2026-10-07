@@ -162,6 +162,28 @@ func TestVeryNand(t *testing.T) {
 	}
 }
 
+// Very Sorted! stores into the cell any value indexes (#27); the original
+// only into a cell.
+func TestVeryIndexedStore(t *testing.T) {
+	src := strings.Replace(minimal, "This code does not use any sums.", "This code uses the sum of the first number and the first number.", 1)
+	src = strings.Replace(src, "This code does not use any assignments.", "This code assigns the first number to the cell indexed by the first sum, and the cell indexed by the first sum to the first number.", 1)
+	if _, err := parse(src); err == nil || err.Error() != "ERROR, missing or invalid declaration of assignments" {
+		t.Errorf("an indexed store in the original's Sorted!: %v", err)
+	}
+	p, err := parse(strings.Replace(src, "Cool.", "This code is very cool.", 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := p.Entries(Assigns)
+	if len(a) != 2 || a[0].Ops[1] != (Operand{Sum | Indirect, 0}) || a[1].Ops[0] != (Operand{Sum | Indirect, 0}) {
+		t.Errorf("assignments %v", a)
+	}
+	// Still not into a value itself.
+	if _, err := parse(strings.Replace(strings.Replace(src, "to the cell indexed by the first sum", "to the first sum", 1), "Cool.", "This code is very cool.", 1)); err == nil {
+		t.Error("a store into a sum parses")
+	}
+}
+
 // germanVery is a Very Sorted! program in German, written in UTF-8 (#28).
 const germanVery = `Dieses Programm benutzt die Zahlen fünf, zwölf, dreißig, und fünfunddreißig.
 Dieses Programm geht nirgendwo hin.

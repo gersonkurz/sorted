@@ -21,11 +21,17 @@ import (
 // toSorted compiles C source and writes it as Sorted! text in lang.
 func toSorted(t *testing.T, src string, lang render.Lang) string {
 	t.Helper()
+	return toSortedAs(t, src, lang, false)
+}
+
+// toSortedAs is toSorted, as Very Sorted! when very is set.
+func toSortedAs(t *testing.T, src string, lang render.Lang, very bool) string {
+	t.Helper()
 	prog, err := cc.Parse(src)
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := Compile(prog)
+	_, p, err := compileProgram(prog, very)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -976,6 +982,24 @@ int main() {
 // German and back through C. The inputs have no CR and no Ctrl-Z, which the
 // interpreter reads as Win32's text mode does.
 var programsWithInput = map[string]struct{ src, stdin string }{
+	// Reading makes these Very Sorted!, which indexes computed values
+	// directly (#27): stores that change their own index, used as values.
+	"aliased stores": {`#include <stdio.h>
+int a[4];
+int show(int v) { putchar('0' + v); putchar(':'); for (int k = 0; k < 4; k++) putchar('0' + a[k]); putchar(' '); return v; }
+int main() {
+	int b, *p = a;
+	getchar();
+	a[0] = 0; a[1] = 7; show(a[a[0]] = 1);
+	a[0] = 0; show(a[a[0]]++);
+	a[0] = 0; show(++a[a[0]]);
+	a[0] = 0; show(a[a[0]] += 2);
+	a[0] = 0; b = a[a[0]] = 3; show(b);
+	a[0] = 1; a[1] = 0; show(*(p + *(p + a[1])) = 2);
+	a[0] = 0; show(p[p[0]]--);
+	putchar(10);
+}`, "x"},
+
 	"wc": {`#include <stdio.h>
 int pn; int pp;
 int main() {
@@ -1039,6 +1063,108 @@ func TestDifferentialInput(t *testing.T) {
 				t.Fatal(err)
 			}
 			if got := runNativeIn(t, emit.Exact(q), p.stdin); got != want {
+				t.Errorf("C -> Sorted! -> C printed %q, C printed %q", got, want)
+			}
+		})
+	}
+}
+
+// A program that is Very Sorted! anyway (it reads, or has a NAND) indexes
+// computed values directly (#27); one that is not keeps its pointer cells
+// and stays the original's Sorted!.
+func TestVeryIndexing(t *testing.T) {
+	body := `int a[4]; int i = 2; a[i] = 'x'; a[i + 1] = a[i] + 1; int *p = &a[i]; *p += 1; putchar(*p); putchar(a[3]);`
+	indexes := func(p *syntax.Program) bool {
+		for _, e := range p.Code {
+			for _, o := range e.Ops {
+				if o.Type&syntax.Indirect != 0 && o.Type&0xFF != syntax.Number {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	plain, err := compileC(t, "int main() { "+body+" }")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reading, err := compileC(t, "int main() { getchar(); "+body+" }")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plain.Very || indexes(plain) {
+		t.Errorf("a program that need not be very: very %v, indexes %v", plain.Very, indexes(plain))
+	}
+	// An operator whose value is never computed needs no NAND, so it does
+	// not make the program very: a discarded expression, main's result.
+	discarded, err := compileC(t, "int main() { int x = 6; x | 1; x & 3, x ^ x; "+body+" return x | 1; }")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if discarded.Very || indexes(discarded) || discarded.Tables[syntax.Nands].Count != 0 {
+		t.Errorf("discarded operators: very %v, indexes %v, %d nands", discarded.Very, indexes(discarded), discarded.Tables[syntax.Nands].Count)
+	}
+	if !reading.Very || !indexes(reading) {
+		t.Errorf("a program that reads: very %v, indexes %v", reading.Very, indexes(reading))
+	}
+	if na, nb := plain.Tables[syntax.Assigns].Count, reading.Tables[syntax.Assigns].Count; nb >= na {
+		t.Errorf("%d assignments in Very Sorted!, %d without: no pointer cells saved", nb, na)
+	}
+}
+
+// A store whose value side changes what its location depends on keeps the
+// location in a write pointer, evaluated first, in Very Sorted! as in the
+// original's (C leaves the order unspecified; the compiler picks one, and
+// the same one either way).
+func TestVeryIndexingOrder(t *testing.T) {
+	src := `int a[8]; int i = 1; int *p;
+int next() { i++; return 7; }
+int main() {
+	p = a;
+	a[i] = next(); a[i] += next(); *(p + i) = (i = 5); p[i] = (i = 2) + 40; a[i + 1] = i++;
+	for (int k = 0; k < 8; k++) putchar('0' + a[k]);
+	putchar(10);
+}`
+	var outs []string
+	for _, very := range []bool{false, true} {
+		prog, err := cc.Parse(src) // the compiler rewrites the tree
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, p, err := compileProgram(prog, very)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out bytes.Buffer
+		if err := interp.Run(p, strings.NewReader(""), &out, 10000000); err != nil {
+			t.Fatal(err)
+		}
+		outs = append(outs, out.String())
+	}
+	if outs[0] != outs[1] {
+		t.Errorf("the original's Sorted! printed %q, Very Sorted! %q", outs[0], outs[1])
+	}
+}
+
+// Every program also compiles as Very Sorted! (#27), where computed indexes
+// are operands ("the cell indexed by the first sum") instead of pointer
+// cells, and must still print what C prints, also through --to-c.
+func TestDifferentialVery(t *testing.T) {
+	for name, src := range programs {
+		t.Run(name, func(t *testing.T) {
+			want := runNative(t, src)
+			text := toSortedAs(t, src, render.English, true)
+			if !strings.Contains(text, "This code is very cool.") {
+				t.Fatalf("no Very Sorted! marker:\n%s", text)
+			}
+			if got := runSorted(t, text); got != want {
+				t.Errorf("Sorted! printed %q, C printed %q\n%s", got, want, text)
+			}
+			p, err := syntax.Parse([]byte(text))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := runNative(t, emit.Exact(p)); got != want {
 				t.Errorf("C -> Sorted! -> C printed %q, C printed %q", got, want)
 			}
 		})
@@ -1180,7 +1306,7 @@ func TestRecursiveSave(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		c, _, err := compileProgram(prog)
+		c, _, err := compileProgram(prog, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1272,7 +1398,7 @@ func TestErrors(t *testing.T) {
 // keeps the pool at its planned size, so the variable cells stay where the
 // addresses point.
 func TestAddressCollision(t *testing.T) {
-	c := &compiler{pool: []int32{5}, addrs: []int{3}, exprs: map[valKind]*table{}}
+	c := &compiler{pool: []int32{5}, addrs: []int{3}, exprs: map[valKind]*table{}, out: -1, in: -1}
 	for _, k := range exprKinds {
 		c.exprs[k] = &table{}
 	}
@@ -1298,7 +1424,7 @@ int main() { int i = 2; a[i] = %d; putchar('A' + a[2] - %d); putchar(a[i] / %d +
 		if err != nil {
 			t.Fatal(err)
 		}
-		c, _, err := compileProgram(prog)
+		c, _, err := compileProgram(prog, false)
 		if err != nil {
 			t.Fatal(err)
 		}

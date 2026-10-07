@@ -164,6 +164,11 @@ dokumentiertes Ergebnis: einen Absturz für die negative Kardinalzahl, das
 Ende der Eingabe für das Ende der Eingabe. Sorted! hat Eigenschaften, und es
 hat keine Fehler, und undefiniertes Verhalten ist keines von beiden.
 
+Was undefiniert war, mag dennoch definiert werden, von einem Dialekt, der es
+sagt. Very Sorted! definiert "diejenige Zelle die indiziert wird durch die
+erste Summe" so, wie die Lehre von Caput II es für jede Zelle lehrt: Sie
+liest die Zelle vor jener, die sie schreibt.
+
 ---
 
 *Datum ad p-nand-q.com, anno linguae MM, confirmatum anno MMXXVI.*

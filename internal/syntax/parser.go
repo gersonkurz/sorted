@@ -785,7 +785,9 @@ func (ps *parser) assignSpec() bool {
 	if ps.identifier(&cell.Ops[0]) {
 		if ps.kw("to") || ps.kw("an") {
 			if ps.identifier(&cell.Ops[1]) {
-				if cell.Ops[1].Type&0xFF == Number {
+				// Very Sorted! also stores into the cell any value
+				// indexes (#27); the original only into a cell.
+				if t := cell.Ops[1].Type; t&0xFF == Number || ps.very && t&Indirect != 0 {
 					ps.accept(Assigns)
 					return true
 				}

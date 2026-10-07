@@ -141,6 +141,28 @@ func (c *compiler) shiftCount(n *cc.Node) int32 {
 	return k
 }
 
+// nandOp reports whether n is an & | ^ that bitValue builds from NANDs: not
+// a constant, and not x & (2^k - 1).
+func nandOp(n *cc.Node) bool {
+	switch n.Kind {
+	case cc.NdBitAnd, cc.NdBitOr, cc.NdBitXor:
+	default:
+		return false
+	}
+	if _, ok := cc.Fold(n); ok {
+		return false
+	}
+	if n.Kind == cc.NdBitAnd {
+		if _, ok := mask(n.Rhs); ok {
+			return false
+		}
+		if _, ok := mask(n.Lhs); ok {
+			return false
+		}
+	}
+	return true
+}
+
 // cheap returns v if reading it is cheap (a number or a cell), and
 // otherwise v settled into a temporary.
 func (c *compiler) cheap(v val) val {
@@ -160,17 +182,15 @@ func (c *compiler) bitValue(n *cc.Node) val {
 	case cc.NdBitNot: // ~x == -1 - x
 		return c.expr(vDiff, c.number(-1, n.Pos), c.value(n.Lhs), 0)
 	case cc.NdBitAnd, cc.NdBitOr, cc.NdBitXor:
-		if n.Kind == cc.NdBitAnd { // x & (2^k - 1) == (x % 2^k + 2^k) % 2^k
+		if !nandOp(n) { // x & (2^k - 1) == (x % 2^k + 2^k) % 2^k
 			x, m := n.Lhs, n.Rhs
 			k, ok := mask(m)
 			if !ok {
 				x, m = m, x
-				k, ok = mask(m)
+				k, _ = mask(m)
 			}
-			if ok {
-				p := c.number(1<<k, n.Pos)
-				return c.mod(c.expr(vSum, c.mod(c.value(x), p), p, 0), p)
-			}
+			p := c.number(1<<k, n.Pos)
+			return c.mod(c.expr(vSum, c.mod(c.value(x), p), p, 0), p)
 		}
 		// NANDs, which make the program Very Sorted! (#26). Each operand is
 		// read more than once, so an expression is settled first.

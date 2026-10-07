@@ -34,7 +34,10 @@
 //     off-by-one, which also gives itoa.s its NUL), so a read pointer holds
 //     the element's cell number plus one and a write pointer the cell number
 //     itself. Indexing a computed value directly ("the cell indexed by the
-//     first sum") is undefined behaviour in the original, so it is avoided.
+//     first sum") is undefined behaviour in the original, so it is avoided,
+//     except in a program that is Very Sorted! anyway (it reads, or has a
+//     NAND), where it is defined with the same off-by-one and replaces the
+//     pointer cells (see indexed).
 //     Cell numbers depend on how many numbers are declared, and the
 //     addresses are declared numbers themselves; see program.
 //   - Every scalar is one cell, and a struct or an array the cells of its
@@ -119,6 +122,7 @@ const (
 	vNand // a Very Sorted! NAND
 	vInd  // the cell a pointer cell (variable i) indexes
 	vAddr // an address: a declared number, the cell of variable i (see program)
+	vIdx  // Very Sorted!: the cell the value c.idxs[i] indexes (see indexed)
 )
 
 // exprKinds are the kinds that are table entries (c.exprs).
@@ -187,8 +191,10 @@ type compiler struct {
 	poolIndex map[int32]int // value → pool index
 	vars      map[*cc.Obj]int
 	nvars     int
-	out       int // the output cell's variable index, -1 until needed
-	in        int // the input cell's variable index, -1 until a getchar needs it
+	out       int   // the output cell's variable index, -1 until needed
+	in        int   // the input cell's variable index, -1 until a getchar needs it
+	very      bool  // the program is Very Sorted! from the start (see compileProgram)
+	idxs      []val // the values vIdx operands index
 
 	addrs     []int            // address numbers, as variable-cell offsets (see program)
 	fillers   int              // numbers program declared only to keep the pool size
@@ -251,12 +257,30 @@ type function struct {
 
 // Compile lowers a parsed C program into Sorted! tables.
 func Compile(prog *cc.Program) (*syntax.Program, error) {
-	_, p, err := compileProgram(prog)
+	_, p, err := compileProgram(prog, false)
 	return p, err
 }
 
 // compileProgram is Compile, also returning the compiler for inspection.
-func compileProgram(prog *cc.Program) (c *compiler, p *syntax.Program, err error) {
+// A program that reads or has a NAND is Very Sorted!, and one that is very
+// anyway also indexes computed values directly (see indexed); one that is
+// not keeps to what Sorted.exe runs (Gerson, 2026-10-07). Whether it is
+// shows in what the lowering emits, so such a program is compiled a second
+// time, as Very Sorted! from the start. With very set, the program is Very
+// Sorted! even when it need not be (the tests run every program that way
+// too).
+func compileProgram(prog *cc.Program, very bool) (*compiler, *syntax.Program, error) {
+	c, p, err := compileAs(prog, very)
+	if err == nil && !c.very && p.Very {
+		return compileAs(prog, true)
+	}
+	return c, p, err
+}
+
+// compileAs compiles prog, as Very Sorted! from the start when very is set.
+// The first compilation's rewrites of the tree (see bitwise) are done again
+// harmlessly: what they rewrote is no longer an operator they rewrite.
+func compileAs(prog *cc.Program, very bool) (c *compiler, p *syntax.Program, err error) {
 	c = &compiler{
 		poolIndex: map[int32]int{},
 		vars:      map[*cc.Obj]int{},
@@ -269,6 +293,7 @@ func compileProgram(prog *cc.Program) (c *compiler, p *syntax.Program, err error
 		cases:     map[*cc.Node]int{},
 		funcs:     map[*cc.Function]*function{},
 		exit:      -1,
+		very:      very,
 	}
 	for _, k := range exprKinds {
 		c.exprs[k] = &table{}
@@ -465,6 +490,23 @@ func (c *compiler) wrapChar(v val, pos cc.Pos) val {
 	return c.expr(vDiff, m, n128, 0)
 }
 
+// indexed returns the cell v indexes: a read takes cell v - 1, a write cell
+// v (the indirect off-by-one). A Very Sorted! program indexes v itself; the
+// original can only index a cell, so v is stored in a pointer cell first.
+// So is a v that is itself an indexed cell (**pp): an operand indexes once.
+func (c *compiler) indexed(v val) val {
+	if v.kind == vVar {
+		return val{vInd, v.i}
+	}
+	if c.very && v.kind != vInd && v.kind != vIdx {
+		c.idxs = append(c.idxs, v)
+		return val{vIdx, len(c.idxs) - 1}
+	}
+	p := c.temporary()
+	c.assign(p, v)
+	return val{vInd, p.i}
+}
+
 // element returns array element a[i] for reading: a cell for a constant
 // index, otherwise the cell a read pointer indexes.
 func (c *compiler) element(n *cc.Node) val {
@@ -477,9 +519,7 @@ func (c *compiler) element(n *cc.Node) val {
 	if k, ok := c.constIndex(n); ok {
 		return val{vVar, base.i + k}
 	}
-	p := c.temporary()
-	c.assign(p, c.expr(vSum, c.value(n.Lhs), c.address(base, 1), 0))
-	return val{vInd, p.i}
+	return c.indexed(c.expr(vSum, c.value(n.Lhs), c.address(base, 1), 0))
 }
 
 // isPtr reports whether n is a pointer. Nodes the compiler makes itself (the
@@ -511,9 +551,7 @@ func (c *compiler) memberValue(n *cc.Node) val {
 	if cell, ok := c.direct(n); ok {
 		return cell
 	}
-	p := c.temporary()
-	c.assign(p, c.plus(c.location(n), 1, n.Pos))
-	return val{vInd, p.i}
+	return c.indexed(c.plus(c.location(n), 1, n.Pos))
 }
 
 // rootVar returns the variable an lvalue is part of (a.b[2].c is part of
@@ -561,9 +599,7 @@ func (c *compiler) deref(n *cc.Node) val {
 	if cell, ok := c.direct(n); ok { // a[k] on a member or a row
 		return cell
 	}
-	p := c.temporary()
-	c.assign(p, c.expr(vSum, c.value(n.Lhs), c.number(1, n.Pos), 0))
-	return val{vInd, p.i}
+	return c.indexed(c.expr(vSum, c.value(n.Lhs), c.number(1, n.Pos), 0))
 }
 
 // constIndex reports a constant index of a[i], checking its bounds.
@@ -836,14 +872,20 @@ func (c *compiler) assignment(n *cc.Node, want bool) val {
 		c.assign(target, v)
 		return target
 	}
-	w := c.temporary()
-	c.assign(w, c.location(lhs))
+	// The location, in a write pointer unless nothing can change what it
+	// depends on before it is used (Very Sorted! indexes it directly): the
+	// value side, or, when the result is wanted, the store itself
+	// (a[a[0]] = 1 reads back a[0]'s old index).
+	loc := c.location(lhs)
+	if !c.very || want || sideEffects(n.Rhs) {
+		w := c.temporary()
+		c.assign(w, loc)
+		loc = w
+	}
 	var read val
 	readPointer := func() val {
-		if read.kind != vInd {
-			r := c.temporary()
-			c.assign(r, c.expr(vSum, w, c.number(1, n.Pos), 0))
-			read = val{vInd, r.i}
+		if read == (val{}) {
+			read = c.indexed(c.plus(loc, 1, n.Pos))
 		}
 		return read
 	}
@@ -853,11 +895,33 @@ func (c *compiler) assignment(n *cc.Node, want bool) val {
 	v := c.value(n.Rhs)
 	delete(c.reads, lhs)
 	v = c.wrapTo(lhs.Ty, v, n.Pos)
-	c.assign(val{vInd, w.i}, v)
+	c.assign(c.indexed(loc), v)
 	if !want {
 		return val{}
 	}
 	return readPointer()
+}
+
+// sideEffects reports whether evaluating n assigns or calls (and so may
+// change a cell an expression reads).
+func sideEffects(n *cc.Node) bool {
+	if n == nil {
+		return false
+	}
+	if n.Kind == cc.NdAssign || n.Kind == cc.NdFuncall {
+		return true
+	}
+	for _, m := range []*cc.Node{n.Lhs, n.Rhs, n.Cond, n.Then, n.Els} {
+		if sideEffects(m) {
+			return true
+		}
+	}
+	for _, m := range n.Args {
+		if sideEffects(m) {
+			return true
+		}
+	}
+	return false
 }
 
 // direct returns the cell an lvalue is, when it is known while compiling: a
@@ -972,12 +1036,7 @@ func (c *compiler) cellOf(s structAt, i int, read bool) val {
 	if read {
 		i++
 	}
-	if i == 0 {
-		return val{vInd, s.cell}
-	}
-	p := c.temporary()
-	c.assign(p, c.plus(val{vVar, s.cell}, i, s.pos))
-	return val{vInd, p.i}
+	return c.indexed(c.plus(val{vVar, s.cell}, i, s.pos))
 }
 
 // uses reports whether node x occurs in n (the same node, as the parser
@@ -1480,7 +1539,8 @@ func (c *compiler) program() *syntax.Program {
 	}
 
 	p := &syntax.Program{Data: pool, LabelsCount: c.labels}
-	operand := func(v val) syntax.Operand {
+	var operand func(v val) syntax.Operand
+	operand = func(v val) syntax.Operand {
 		switch v.kind {
 		case vConst:
 			return syntax.Operand{Type: syntax.Number, Index: int32(v.i)}
@@ -1490,6 +1550,13 @@ func (c *compiler) program() *syntax.Program {
 			return syntax.Operand{Type: syntax.Number | syntax.Indirect, Index: int32(size + v.i)}
 		case vAddr:
 			return syntax.Operand{Type: syntax.Number, Index: int32(addrSlot[v.i])}
+		case vIdx:
+			o := operand(c.idxs[v.i])
+			if o.Type&syntax.Indirect != 0 {
+				panic("compile: an operand indexed twice")
+			}
+			o.Type |= syntax.Indirect
+			return o
 		}
 		types := map[valKind]syntax.OperandType{vSum: syntax.Sum, vDiff: syntax.Diff, vProd: syntax.Prod, vRatio: syntax.Ratio, vCond: syntax.Condition, vNand: syntax.Nand}
 		return syntax.Operand{Type: types[v.kind], Index: int32(v.i)}
@@ -1518,12 +1585,10 @@ func (c *compiler) program() *syntax.Program {
 	} else {
 		put(syntax.Writes, nil)
 	}
-	if len(c.exprs[vNand].entries) > 0 {
-		p.Very = true // the original cannot refer to a logical operation
-	}
+	// The original cannot refer to a logical operation or an input.
+	p.Very = c.very || len(c.exprs[vNand].entries) > 0 || c.in >= 0
 	if c.in >= 0 {
 		put(syntax.Reads, []syntax.Slide{{Ops: [2]syntax.Operand{operand(val{vVar, c.in})}, Flags: syntax.FormatCharacter}})
-		p.Very = true
 	}
 	var jumps []syntax.Slide
 	for _, j := range c.jumps {

@@ -122,6 +122,10 @@ func (x *exact) expression(k fnKey) string {
 // pointer renders the code that sets p_ to the cell a store goes to
 // (GetDataPointer), or a runtime error.
 func (x *exact) pointer(o syntax.Operand) string {
+	if x.p.Very && o.Type&syntax.Indirect != 0 && o.Type&0xFF != syntax.Number {
+		// Very Sorted! stores into the cell any value indexes (see interp)
+		return fmt.Sprintf("p_ = %s; N(p_); ", x.operand(syntax.Operand{Type: o.Type &^ syntax.Indirect, Index: o.Index}))
+	}
 	if o.Type&0xFF != syntax.Number {
 		return `Z("store into something that is not a cell"); `
 	}

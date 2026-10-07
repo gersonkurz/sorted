@@ -23,6 +23,9 @@
 //   - What the code evidently intends: an indirect sum, difference, product,
 //     ratio, logical operation or condition reads the cell its value indexes
 //     (the original indexes its table directory with the unmasked type).
+//     Very Sorted! (#27) makes this the definition, for writes too: "the
+//     cell indexed by" any value reads Data[v-1] and writes Data[v], as
+//     for a cell; the original's store into it is an *Error.
 //   - Nothing: a number or an indirect operand used as a statement.
 //   - Zero: a label beyond the declared count that is never placed (the
 //     original reads uninitialised memory or past its label array).
@@ -191,6 +194,18 @@ func b2i(b bool) int32 {
 // pointer returns the cell an assignment or read stores into
 // (GetDataPointer): a number directly, an indirect number at Data[Data[i]].
 func (m *machine) pointer(op syntax.Operand) (int32, error) {
+	if m.p.Very && op.Type&syntax.Indirect != 0 && op.Type&0xFF != syntax.Number {
+		// Very Sorted! (#27): the cell any value indexes, the write's
+		// Data[v] (a read takes Data[v-1], as for a cell).
+		i, err := m.value(syntax.Operand{Type: op.Type &^ syntax.Indirect, Index: op.Index})
+		if err != nil {
+			return 0, err
+		}
+		if _, err := m.cell(i); err != nil {
+			return 0, err
+		}
+		return i, nil
+	}
 	if op.Type&0xFF != syntax.Number {
 		return 0, fail("store into something that is not a cell")
 	}

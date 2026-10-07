@@ -287,6 +287,11 @@ Verknüpfung"). The original's "of not X and not Y" stays what it always
 was, a NOR, and now has German too ("von nicht X und nicht Y"). The
 compiler builds `&`, `|` and `^` from two, three and four NANDs.
 
+And Very Sorted! defines what 2000 left undefined: "the cell indexed by the
+first sum" reads and writes the way indexing by a cell always has, the read
+one cell before the write. A compiled program that is very anyway reaches
+its array elements that way, without a pointer cell for every access.
+
 Very Sorted! is also read as UTF-8, so German is finally German: "fünf",
 "zwölf", "dreißig" and "Verhältnisse", in any case and either Unicode form,
 and the 2000 spellings "fuenf" and "Verhaeltnisse" still work. German

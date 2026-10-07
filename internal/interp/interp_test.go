@@ -259,6 +259,30 @@ func TestVeryReadStoresIntoDeclaredCell(t *testing.T) {
 	}
 }
 
+// Very Sorted! stores into the cell a sum indexes, Data[v], and reads
+// Data[v-1] through it, as through a cell (#27). The original's store into
+// it is a run-time error (a parse never yields one).
+func TestVeryIndexedStore(t *testing.T) {
+	sums := []syntax.Slide{{Ops: [2]syntax.Operand{num(0), num(0)}}} // 1 + 1 = 2
+	idx := syntax.Operand{Type: syntax.Sum | syntax.Indirect}
+	assigns := []syntax.Slide{{Ops: [2]syntax.Operand{num(3), idx}}} // 'Z' to Data[2]
+	writes := []syntax.Slide{{Ops: [2]syntax.Operand{num(2)}}, {Ops: [2]syntax.Operand{idx}}}
+	a, w := syntax.Operand{Type: syntax.Assign}, syntax.Operand{Type: syntax.Write}
+	w1 := syntax.Operand{Type: syntax.Write, Index: 1}
+	for _, tt := range []struct {
+		very bool
+		want string
+		err  bool
+	}{{true, "ZB", false}, {false, "", true}} {
+		p := hand([]int32{1, 'B', 'C', 'Z'}, map[syntax.Category][]syntax.Slide{syntax.Sums: sums, syntax.Assigns: assigns, syntax.Writes: writes}, a, w, w1)
+		p.Very = tt.very
+		got, err := runHand(t, p, "")
+		if got != tt.want || (err != nil) != tt.err {
+			t.Errorf("very %v: %q, %v; want %q", tt.very, got, err, tt.want)
+		}
+	}
+}
+
 // Very Sorted! prints German numbers in UTF-8 (#28); the original's spelling
 // stays the original's, and English is English.
 func TestVeryGermanSpelling(t *testing.T) {

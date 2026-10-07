@@ -385,6 +385,31 @@ func TestVeryNand(t *testing.T) {
 	}
 }
 
+// Very Sorted! writes stores into the cell a value indexes (#27).
+func TestVeryIndexedStore(t *testing.T) {
+	src := strings.Replace(skeleton, "STATEMENT", "the first assignment", 1)
+	src = strings.Replace(src, "This code does not use any numbers.", "This code uses the number one.", 1)
+	src = strings.Replace(src, "This code does not use any sums.", "This code uses the sum of the first number and the first number.", 1)
+	src = strings.Replace(src, "This code does not use any assignments.", "This code assigns the first number to the cell indexed by the first sum.", 1)
+	p, err := syntax.Parse([]byte(strings.Replace(src, "Cool.", "This code is very cool.", 1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for lang, want := range map[Lang]string{English: "the first number to the cell indexed by the first sum", German: "die erste Zahl an diejenige Zelle die indiziert wird durch die erste Summe"} {
+		text, err := Render(p, lang)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(strings.Join(strings.Fields(text), " "), want) {
+			t.Errorf("lang %d: no %q in\n%s", lang, want, text)
+		}
+	}
+	p.Very = false
+	if _, err := Render(p, English); err == nil || !strings.Contains(err.Error(), "does not store into a cell") {
+		t.Errorf("an indexed store outside Very Sorted!: %v", err)
+	}
+}
+
 // The dialect is part of a program: the same tables in Very Sorted! are a
 // different program (inputs are read elsewhere).
 func TestEqualDialect(t *testing.T) {

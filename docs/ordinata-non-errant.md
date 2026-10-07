@@ -151,6 +151,11 @@ receives a plain, documented result: a crash for the negative cardinal, the
 end of the input for the end of the input. Sorted! has properties, and it has
 no bugs, and undefined behaviour is neither.
 
+What was undefined may yet be defined, by a dialect that says so. Very
+Sorted! defines "the cell indexed by the first sum" as the doctrine of
+Caput II teaches it for every cell: it reads the cell before the one it
+writes.
+
 ---
 
 *Datum ad p-nand-q.com, anno linguae MM, confirmatum anno MMXXVI.*
