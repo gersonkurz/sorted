@@ -58,6 +58,48 @@ Cool.`
 
 func parse(src string) (*Program, error) { return Parse(Filter([]byte(src))) }
 
+// Very Sorted! (#25): a program that ends very coolly may implement its
+// input. Everything the original accepts or rejects stays exactly as it was.
+func TestVerySorted(t *testing.T) {
+	reading := strings.Replace(minimal, "This code cannot read.", "This code reads the first number as a character.", 1)
+	reading = strings.Replace(reading, "implements the first output.", "implements the first input, and the first output.", 1)
+	for _, end := range []string{"This code is very cool.", "Very cool.", "Dieses Programm ist ganz hervorragend.", "Ganz hervorragend."} {
+		p, err := parse(strings.Replace(reading, "Cool.", end, 1))
+		if err != nil {
+			t.Errorf("%s: %v", end, err)
+			continue
+		}
+		if !p.Very || p.Entries(Statements)[0].Ops[0] != (Operand{Read, 0}) {
+			t.Errorf("%s: very %v, statements %v", end, p.Very, p.Entries(Statements))
+		}
+	}
+	// German reference, in a German program.
+	p, err := parse(strings.Replace(strings.Replace(reading, "the first input", "die erste Eingabe", 1), "Cool.", "Ganz hervorragend.", 1))
+	if err != nil || p.Entries(Statements)[0].Ops[0] != (Operand{Read, 0}) {
+		t.Errorf("die erste Eingabe: %v", err)
+	}
+	// A very program need not read.
+	if p, err := parse(strings.Replace(minimal, "Cool.", "This code is very cool.", 1)); err != nil || !p.Very {
+		t.Errorf("very without input: %v", err)
+	}
+	// The original's programs are not very, and an input reference needs the
+	// very ending: without it the original's error stands.
+	if p, err := parse(minimal); err != nil || p.Very {
+		t.Errorf("minimal: very %v, %v", p != nil && p.Very, err)
+	}
+	if _, err := parse(reading); err == nil || err.Error() != "ERROR, missing or invalid declaration of implementation" {
+		t.Errorf("input reference in the original's Sorted!: %v", err)
+	}
+	// Broken elsewhere, the very program reports the original's error.
+	broken := strings.Replace(strings.Replace(reading, "Cool.", "This code is very cool.", 1), "This code does not use any sums.", "This code is broken.", 1)
+	if _, err := parse(broken); err == nil || err.Error() != "ERROR, missing or invalid sum declaration" {
+		t.Errorf("broken very program: %v", err)
+	}
+	if _, err := parse(strings.Replace(minimal, "Cool.", "This code is very very cool.", 1)); err == nil || err.Error() != "ERROR, missing or invalid coolness" {
+		t.Errorf("a dialect not spoken yet: %v", err)
+	}
+}
+
 func TestMinimal(t *testing.T) {
 	p, err := parse(minimal)
 	if err != nil {

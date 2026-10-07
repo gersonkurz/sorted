@@ -12,7 +12,7 @@
 // Differences from chibicc: errors are returned instead of ending the
 // process; constructs outside the subset are rejected with a message saying
 // so; % is added, as are comments, hexadecimal and octal literals and block
-// scopes; putchar is the only library function. The type pass (typed, after
+// scopes; putchar and getchar are the only library functions. The type pass (typed, after
 // chibicc's add_type) runs as expressions are parsed and checks what C's
 // constraints require, stricter than a compiler that only warns: pointers
 // and integers do not mix, except for the null pointer constant 0.
@@ -35,7 +35,8 @@
 // postfix), == != < <= > >=, && || !, & | ^ ~ << >>, ?:, the comma
 // operator, if/else, while, do/while, for, switch (case, default,
 // fall-through), break, continue, return, blocks, and
-// putchar(expr), and functions with int, char and pointer parameters (an
+// putchar(expr), getchar(), and functions with int, char and pointer
+// parameters (an
 // array parameter is a pointer) returning int, char, a pointer or void
 // (prototypes included), called by name. As in chibicc, x op= e is
 // x = x op e, ++x is x = x + 1 and x++ is (x = x + 1) - 1; the compiler
@@ -85,7 +86,7 @@ const (
 	NdDeref                    // unary *, and p[i] for anything but an array variable (*(p + i))
 	NdMember                   // s.m, and p->m as (*p).m
 	NdBlock                    // { ... }
-	NdFuncall                  // putchar(...)
+	NdFuncall                  // a call: a function, putchar(...) or getchar()
 	NdExprStmt                 // expression statement
 	NdVar                      // variable
 	NdNum                      // integer
@@ -123,7 +124,7 @@ type Node struct {
 	Body []*Node // block
 
 	Func string    // called function
-	Fn   *Function // the function called, nil for putchar
+	Fn   *Function // the function called, nil for putchar and getchar
 	Args []*Node   // call arguments
 
 	Var    *Obj    // NdVar, NdIndex (the array; Lhs is the index)

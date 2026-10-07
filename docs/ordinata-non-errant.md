@@ -102,7 +102,9 @@ no statement can ever perform one. **"This code cannot read."** is therefore
 the only declaration of input that tells the whole truth. Had it been
 possible to read, the character would have been stored into the never-filled
 second operand of the read entry, which is the first cell. The language
-spared its faithful this.
+spared its faithful this. The dialect Very Sorted! names "the first input"
+and stores what it reads where the program says; for the year 2000, reading
+remains what it was: declared, and never done.
 
 ## Caput VII. De operatione logica quae non est
 

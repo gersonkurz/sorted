@@ -156,7 +156,8 @@ the logical operation that was never NAND):
 - "one hundred thousand" is 100. "onehundredthousand" is 100000.
 - A program can have only one output and one input statement.
 - A program cannot read: there is no way to refer to an input. "This code
-  cannot read." is the only sensible input sentence.
+  cannot read." is the only sensible input sentence. (Very Sorted!, below,
+  can.)
 - Logical operations can be declared but never used, for the same reason.
   They would compute `~a & ~b` anyway.
 - "as a english ordinal" and "as a german ordinal" are part of the grammar,
@@ -223,7 +224,7 @@ comparisons, `&&`, `||` and `!` (short-circuiting, as in C), the bitwise `& |
 ^ ~ << >>`, assignment including `+=`, `<<=` and friends, `++` and `--`,
 `?:` and the comma operator, `if`/`else`, `while`, `do`/`while`, `for`,
 `switch` (fall-through included, Duff's device works), `break`, `continue`,
-`return`, and `putchar`.
+`return`, `putchar` and `getchar`.
 The preprocessor knows `#define` (with and without parameters) and `#undef`,
 and array lengths and global initializers can be constant expressions.
 `#include <stdio.h>` is allowed, so the same file compiles with a C compiler
@@ -264,9 +265,19 @@ written back: a declaration may add up its parts to a number from 1000000000
 on ("ninehundredmillion onehundredmillion"), and the current renderer cannot
 spell such values.
 
-Some limits are part of the deal. There are no library calls, `putchar` being
-the only one. There is no `malloc`, just one big block of memory. And there is
-no input, because Sorted! cannot read.
+Some limits are part of the deal. There are no library calls, `putchar` and
+`getchar` being the only ones. There is no `malloc`, just one big block of
+memory.
+
+**Very Sorted!** The Sorted! of 2000 cannot read: a program may declare an
+input, but no statement can name it. Very Sorted!, the first dialect of the
+very Fibonacci sequence, finishes that thought. A program that ends with
+"This code is very cool." ("Dieses Programm ist ganz hervorragend.") may
+implement "the first input" ("die erste Eingabe"), which reads a character
+into the cell the input declares. A C program that calls `getchar()` compiles
+to Very Sorted! by itself, so `wc`, `rot13` and friends now sing. Everything
+the 2000 parser accepts or rejects stays exactly as it was: a program is
+Very Sorted! only if the original's grammar fails and the very one succeeds.
 
 **And back to C.** `sorted --from-c prog.c --to-c obfuscated.c` takes a
 program on the full round trip: C → Sorted! → C. The result prints what

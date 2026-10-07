@@ -94,6 +94,9 @@ func TestReferencesRoundTrip(t *testing.T) {
 // the only statement.
 func parseRef(s string) (syntax.Operand, bool) {
 	src := strings.Replace(skeleton, "STATEMENT", strings.TrimSuffix(s, " x"), 1)
+	if strings.Contains(s, "input") || strings.Contains(s, "Eingabe") { // Very Sorted! only
+		src = strings.Replace(src, "Cool.", "This code is very cool.", 1)
+	}
 	p, err := syntax.Parse(syntax.Filter([]byte(src)))
 	if err != nil {
 		return syntax.Operand{}, false
@@ -284,6 +287,51 @@ func TestOrdinalLimits(t *testing.T) {
 	ord, _ = numbers.GermanOrdinal(101)
 	if !ordinalParses(ord+"n", 101, "Zahl") {
 		t.Errorf("%sn should parse", ord)
+	}
+}
+
+// A Very Sorted! program renders with its marker and its input
+// references, in both languages, and reads back as the same program.
+func TestVery(t *testing.T) {
+	src := strings.Replace(strings.Replace(strings.Replace(skeleton, "STATEMENT", "the first input, and the first output", 1),
+		"This code cannot read.", "This code reads the first number as a character.", 1), "Cool.", "This code is very cool.", 1)
+	p, err := syntax.Parse(syntax.Filter([]byte(src)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for lang, want := range map[Lang][]string{English: {"the first input", "This code is very cool."}, German: {"die erste Eingabe", "Dieses Programm ist ganz hervorragend."}} {
+		text, err := Render(p, lang)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, w := range want {
+			if !strings.Contains(text, w) {
+				t.Errorf("lang %d: no %q in\n%s", lang, w, text)
+			}
+		}
+	}
+	// Not very, the same tables cannot be written: the original has no
+	// input references.
+	p.Very = false
+	if _, err := Render(p, English); err == nil {
+		t.Error("an input reference rendered outside Very Sorted!")
+	}
+}
+
+// The dialect is part of a program: the same tables in Very Sorted! are a
+// different program (inputs are read elsewhere).
+func TestEqualDialect(t *testing.T) {
+	p, err := syntax.Parse(syntax.Filter([]byte(strings.Replace(skeleton, "STATEMENT", "the first number", 1))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := *p
+	q.Very = true
+	if Equal(p, &q) || SameEntries(p, &q) {
+		t.Error("a Very Sorted! program equals its original's twin")
+	}
+	if !Equal(p, p) || !SameEntries(p, p) {
+		t.Error("a program differs from itself")
 	}
 }
 

@@ -66,7 +66,10 @@
 //     count call udiv, umod and ushr (runtime.go); a right shift by a
 //     constant keeps the low bits of the arithmetic shift.
 //   - putchar(e) assigns e to an output cell and runs the program's only
-//     output, which writes that cell as a character.
+//     output, which writes that cell as a character. getchar() runs the
+//     program's only input, which reads into an input cell, and copies it;
+//     a program that reads is Very Sorted! (the original's cannot name an
+//     input in a statement).
 //   - return in main jumps past the last statement.
 //
 // Assignments inside expressions are hoisted into statements before the
@@ -150,6 +153,7 @@ type stmtKind int
 const (
 	sAssign stmtKind = iota
 	sWrite
+	sRead
 	sJump
 	sLabel
 )
@@ -178,6 +182,7 @@ type compiler struct {
 	vars      map[*cc.Obj]int
 	nvars     int
 	out       int // the output cell's variable index, -1 until needed
+	in        int // the input cell's variable index, -1 until a getchar needs it
 
 	addrs     []int            // address numbers, as variable-cell offsets (see program)
 	fillers   int              // numbers program declared only to keep the pool size
@@ -250,6 +255,7 @@ func compileProgram(prog *cc.Program) (c *compiler, p *syntax.Program, err error
 		poolIndex: map[int32]int{},
 		vars:      map[*cc.Obj]int{},
 		out:       -1,
+		in:        -1,
 		exprs:     map[valKind]*table{},
 		jumpIdx:   map[jump]int{},
 		addrIndex: map[int]int{},
@@ -606,6 +612,9 @@ func (c *compiler) value(n *cc.Node) val {
 	case cc.NdAssign:
 		return c.assignment(n, true)
 	case cc.NdFuncall:
+		if n.Func == "getchar" {
+			return c.getchar(n.Pos)
+		}
 		if n.Fn == nil {
 			fail(n.Pos, "using the result of putchar is not supported yet")
 		}
@@ -985,6 +994,20 @@ func uses(n, x *cc.Node) bool {
 	return false
 }
 
+// getchar reads a character (or -1 at the end of the input) through the
+// program's only input, into the input cell, and returns a copy, since the
+// next read overwrites the cell. Reading makes the program Very Sorted!: in
+// the original's Sorted!, no statement can refer to an input.
+func (c *compiler) getchar(pos cc.Pos) val {
+	if c.in < 0 {
+		c.in = c.cells(1, pos)
+	}
+	c.emit(sRead, 0)
+	t := c.temporary()
+	c.assign(t, val{vVar, c.in})
+	return t
+}
+
 // effects lowers an expression for its side effects only.
 func (c *compiler) effects(n *cc.Node) {
 	if n == nil {
@@ -994,6 +1017,10 @@ func (c *compiler) effects(n *cc.Node) {
 	case cc.NdFuncall:
 		if n.Fn != nil {
 			c.call(n)
+			return
+		}
+		if n.Func == "getchar" {
+			c.getchar(n.Pos) // read, and forget
 			return
 		}
 		v := c.value(n.Args[0])
@@ -1485,6 +1512,10 @@ func (c *compiler) program() *syntax.Program {
 	} else {
 		put(syntax.Writes, nil)
 	}
+	if c.in >= 0 {
+		put(syntax.Reads, []syntax.Slide{{Ops: [2]syntax.Operand{operand(val{vVar, c.in})}, Flags: syntax.FormatCharacter}})
+		p.Very = true
+	}
 	var jumps []syntax.Slide
 	for _, j := range c.jumps {
 		s := syntax.Slide{Ops: [2]syntax.Operand{{Type: syntax.Label, Index: int32(j.label)}}, Flags: syntax.UnconditionalJump}
@@ -1497,7 +1528,7 @@ func (c *compiler) program() *syntax.Program {
 	put(syntax.Jumps, jumps)
 	var stmts []syntax.Slide
 	for _, s := range c.stmts {
-		types := map[stmtKind]syntax.OperandType{sAssign: syntax.Assign, sWrite: syntax.Write, sJump: syntax.Jump, sLabel: syntax.Label}
+		types := map[stmtKind]syntax.OperandType{sAssign: syntax.Assign, sWrite: syntax.Write, sRead: syntax.Read, sJump: syntax.Jump, sLabel: syntax.Label}
 		stmts = append(stmts, syntax.Slide{Ops: [2]syntax.Operand{{Type: types[s.kind], Index: int32(s.i)}}})
 	}
 	put(syntax.Statements, stmts)

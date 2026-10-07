@@ -3,7 +3,9 @@
 //
 //   - A read stores into the read entry's second operand, which the parser
 //     never fills, so input always lands in the first cell (or wherever
-//     scratch left by a failed parse alternative points).
+//     scratch left by a failed parse alternative points). Only a Very
+//     Sorted! program (#25) can run a read at all, and it stores into the
+//     cell the input declares.
 //   - Indirect reads use Data[v-1], indirect writes Data[v].
 //   - "Logical operations" compute ~a & ~b.
 //   - A jump continues after its label; a declared label that is never placed
@@ -244,7 +246,14 @@ func (m *machine) run(maxSteps int) error {
 			if err != nil {
 				return err
 			}
-			i, err := m.pointer(r.Ops[1]) // sic: the parser fills Ops[0]
+			// The original stores into the second operand, which the parser
+			// never fills (sic): the first cell. Very Sorted! stores into the
+			// cell the input declares.
+			target := r.Ops[1]
+			if m.p.Very {
+				target = r.Ops[0]
+			}
+			i, err := m.pointer(target)
 			if err != nil {
 				return err
 			}

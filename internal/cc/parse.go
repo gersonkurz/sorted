@@ -1470,18 +1470,21 @@ func (ps *parser) stringLiteral() *Node {
 
 // funcall = ident "(" (assign ("," assign)*)? ")"
 //
-// putchar is the only library function; any other must be declared
-// (defined, or a prototype) before it is called.
+// putchar and getchar are the only library functions; any other must be
+// declared (defined, or a prototype) before it is called. getchar makes the
+// program Very Sorted!, the only dialect that can read.
 func (ps *parser) funcall(name Token) *Node {
 	n := &Node{Kind: NdFuncall, Pos: name.Pos, Func: name.Text}
 	want := 1
-	if name.Text != "putchar" {
+	if name.Text == "getchar" {
+		want = 0
+	} else if name.Text != "putchar" {
 		fn, ok := ps.prog.Funcs[name.Text]
 		if !ok {
 			if name.Text == "main" {
 				ps.unsupported(name.Pos, "calling main (recursion)")
 			}
-			ps.unsupported(name.Pos, "calling '"+name.Text+"' (putchar is the only library function, and other functions must be declared first)")
+			ps.unsupported(name.Pos, "calling '"+name.Text+"' (putchar and getchar are the only library functions, and other functions must be declared first)")
 		}
 		n.Fn, want = fn, len(fn.Params)
 	}

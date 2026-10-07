@@ -158,7 +158,11 @@ func (x *exact) statement(i int) string {
 		return x.pointer(e.Ops[1]) + "_[p_] = " + x.operand(e.Ops[0]) + ";"
 	case syntax.Read:
 		x.input = true
-		return x.pointer(e.Ops[1]) + "fflush(stdout); _[p_] = g_();" // sic: Ops[1]
+		target := e.Ops[1] // sic, as the original (see interp)
+		if x.p.Very {
+			target = e.Ops[0]
+		}
+		return x.pointer(target) + "fflush(stdout); _[p_] = g_();"
 	case syntax.Write:
 		v := x.operand(e.Ops[0])
 		switch e.Flags {

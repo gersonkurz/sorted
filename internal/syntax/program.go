@@ -100,6 +100,9 @@ type Program struct {
 	Code []Slide
 	// Data holds the declared numbers, in order (Data[:nNumbersUsed]).
 	Data []int32
+	// Very marks a program in the Very Sorted! dialect, which ends with
+	// "This code is very cool." (see Parse).
+	Very bool
 }
 
 // Entries returns the entries of category c. An empty table may start past

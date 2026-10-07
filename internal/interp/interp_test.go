@@ -240,6 +240,25 @@ func TestReadStoresIntoSecondOperand(t *testing.T) {
 	}
 }
 
+// In Very Sorted!, a read stores into the cell it declares.
+func TestVeryReadStoresIntoDeclaredCell(t *testing.T) {
+	reads := []syntax.Slide{{Ops: [2]syntax.Operand{num(1)}}} // "reads the second number"
+	writeSecond := []syntax.Slide{{Ops: [2]syntax.Operand{num(1)}}}
+	writeFirst := []syntax.Slide{{Ops: [2]syntax.Operand{num(0)}}}
+	read := syntax.Operand{Type: syntax.Read}
+	write := syntax.Operand{Type: syntax.Write}
+	for _, tt := range []struct {
+		writes []syntax.Slide
+		want   string
+	}{{writeSecond, "Z"}, {writeFirst, "A"}} {
+		p := hand([]int32{'A', 'B'}, map[syntax.Category][]syntax.Slide{syntax.Reads: reads, syntax.Writes: tt.writes}, read, write)
+		p.Very = true
+		if got, err := runHand(t, p, "Z"); err != nil || got != tt.want {
+			t.Errorf("got %q, %v; want %q", got, err, tt.want)
+		}
+	}
+}
+
 // "Logical operations" compute ~a & ~b.
 func TestLogicalOperation(t *testing.T) {
 	nands := []syntax.Slide{{Ops: [2]syntax.Operand{num(0), num(1)}}}

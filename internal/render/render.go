@@ -12,9 +12,13 @@
 //     a word: "as a english english ordinal", "as a german german ordinal",
 //     "als ein ein englischer Kardinal", "als ein ein ein englische
 //     Ordinalzahl", "als ein ein ein ein deutscher Kardinal".
-//   - More than one output or input, references to inputs or logical
-//     operations, negative numbers and numbers from 1000000000 on cannot be
-//     written at all; Render reports an *Error.
+//   - More than one output or input, references to logical operations,
+//     negative numbers and numbers from 1000000000 on cannot be written at
+//     all, nor references to inputs outside Very Sorted!; Render reports an
+//     *Error.
+//   - A Very Sorted! program (syntax.Program.Very) ends with "This code is
+//     very cool." / "Dieses Programm ist ganz hervorragend.", and its
+//     statements may be inputs ("the first input", "die erste Eingabe").
 //
 // Render checks its own work: it parses the text it produced and fails unless
 // the result is the same program in every observable respect, table layout
@@ -104,7 +108,7 @@ func write(p *syntax.Program, lang Lang) (string, *syntax.Program, error) {
 // labels and have the same entries in every table, wherever in Code those
 // tables lie.
 func SameEntries(p, q *syntax.Program) bool {
-	if p.LabelsCount != q.LabelsCount || fmt.Sprint(p.Data) != fmt.Sprint(q.Data) {
+	if p.Very != q.Very || p.LabelsCount != q.LabelsCount || fmt.Sprint(p.Data) != fmt.Sprint(q.Data) {
 		return false
 	}
 	for c := syntax.Sums; c < syntax.NumCategories; c++ {
@@ -120,7 +124,7 @@ func SameEntries(p, q *syntax.Program) bool {
 // table positions, and every slot of the static Code array (zero past what
 // was written), since references past a table read neighbouring slots.
 func Equal(p, q *syntax.Program) bool {
-	if p.LabelsCount != q.LabelsCount || p.TypeCount != q.TypeCount || p.Tables != q.Tables ||
+	if p.Very != q.Very || p.LabelsCount != q.LabelsCount || p.TypeCount != q.TypeCount || p.Tables != q.Tables ||
 		fmt.Sprint(p.Data) != fmt.Sprint(q.Data) {
 		return false
 	}
@@ -271,6 +275,7 @@ var nouns = map[syntax.OperandType]noun{
 	syntax.Label:     {"label", "Sprungziel", 'n'},
 	syntax.Condition: {"condition", "Bedingung", 'f'},
 	syntax.Write:     {"output", "Ausgabe", 'f'},
+	syntax.Read:      {"input", "Eingabe", 'f'}, // Very Sorted! only (the parser decides)
 }
 
 // ref writes a reference such as "the third number" or "der dritten Zahl".
@@ -592,6 +597,11 @@ func (r *renderer) implementation() (sentence, error) {
 	return list(r.lang, r.say("This code implements", "Dieses Programm implementiert"), items), nil
 }
 
+// cool writes the last sentence, which also names the dialect: a Very
+// Sorted! program is very cool.
 func (r *renderer) cool() (sentence, error) {
+	if r.p.Very {
+		return sentence{head: r.say("This code is very cool", "Dieses Programm ist ganz hervorragend")}, nil
+	}
 	return sentence{head: r.say("Cool", "Hervorragend")}, nil
 }

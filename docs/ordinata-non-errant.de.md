@@ -112,7 +112,9 @@ Programm liest keine Eingaben."** ist daher die einzige Erklärung der
 Eingabe, die die ganze Wahrheit sagt. Wäre das Lesen möglich gewesen, so
 wäre das Zeichen im nie gefüllten zweiten Operanden des Leseeintrags
 abgelegt worden, und das ist die erste Zelle. Die Sprache hat ihren
-Gläubigen dies erspart.
+Gläubigen dies erspart. Der Dialekt Very Sorted! nennt "die erste Eingabe"
+und legt das Gelesene dort ab, wo das Programm es sagt; für das Jahr 2000
+bleibt das Lesen, was es war: erklärt und nie getan.
 
 ## Caput VII. De operatione logica quae non est
 

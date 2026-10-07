@@ -13,8 +13,26 @@ func (e *Error) Error() string { return "ERROR, missing or invalid " + e.What }
 // Parse parses filtered source text (see Filter) into a Program. A program is
 // exactly fourteen sentences in a fixed order; the first one that does not
 // parse is reported. Text after the final "Cool." is ignored.
+//
+// A program that does not parse as the original's Sorted! may be Very
+// Sorted! (#25): the same fourteen sentences, ending with "This code is very
+// cool." instead, in which a statement can also be an input ("the first
+// input"). Parse tries the original grammar first and the very one only
+// when that fails, so everything the original accepts parses exactly as
+// before, and when neither does, the original's error is reported.
 func Parse(src string) (*Program, error) {
-	ps := &parser{s: src, code: &Program{}}
+	p, err := parseDialect(src, false)
+	if err == nil {
+		return p, nil
+	}
+	if v, verr := parseDialect(src, true); verr == nil {
+		return v, nil
+	}
+	return nil, err
+}
+
+func parseDialect(src string, very bool) (*Program, error) {
+	ps := &parser{s: src, code: &Program{Very: very}, very: very}
 	sentences := []struct {
 		parse func() bool
 		what  string
@@ -48,6 +66,7 @@ type parser struct {
 	s    string
 	p    int
 	code *Program
+	very bool // the Very Sorted! dialect (see Parse)
 }
 
 // at returns the byte under the cursor, NUL at the end.
@@ -300,6 +319,8 @@ func (ps *parser) directUse(op *Operand) bool {
 				t = Condition
 			case ps.kw("output") || ps.kw("ausgabe"):
 				t = Write
+			case ps.very && (ps.kw("input") || ps.kw("eingabe")):
+				t = Read
 			default:
 				ok = false
 			}
@@ -385,8 +406,13 @@ func (ps *parser) sumDeclaration() bool {
 	return false
 }
 
-// cool is the last sentence. It ignores whatever follows.
+// cool is the last sentence. It ignores whatever follows. In Very Sorted!
+// the code is very cool.
 func (ps *parser) cool() bool {
+	if ps.very {
+		return ps.seq("this", "code", "is", "very", "cool", ".") || ps.seq("very", "cool", ".") ||
+			ps.seq("dieses", "programm", "ist", "ganz", "hervorragend", ".") || ps.seq("ganz", "hervorragend", ".")
+	}
 	return ps.seq("this", "code", "is", "cool", ".") || ps.seq("cool", ".") ||
 		ps.seq("dieses", "programm", "ist", "hervorragend", ".") || ps.seq("hervorragend", ".")
 }

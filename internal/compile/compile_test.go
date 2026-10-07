@@ -37,14 +37,17 @@ func toSorted(t *testing.T, src string, lang render.Lang) string {
 }
 
 // runSorted runs Sorted! text the way the CLI does: parse, then interpret.
-func runSorted(t *testing.T, text string) string {
+func runSorted(t *testing.T, text string) string { t.Helper(); return runSortedIn(t, text, "") }
+
+// runSortedIn runs a Sorted! program with stdin.
+func runSortedIn(t *testing.T, text, stdin string) string {
 	t.Helper()
 	p, err := syntax.Parse(syntax.Filter([]byte(text)))
 	if err != nil {
 		t.Fatalf("%v in:\n%s", err, text)
 	}
 	var out bytes.Buffer
-	if err := interp.Run(p, strings.NewReader(""), &out, 10000000); err != nil {
+	if err := interp.Run(p, strings.NewReader(stdin), &out, 10000000); err != nil {
 		t.Fatalf("%v; output so far %q", err, out.String())
 	}
 	return out.String()
@@ -52,7 +55,10 @@ func runSorted(t *testing.T, text string) string {
 
 // runNative compiles C with the host compiler and runs it. It skips the
 // test when there is no C compiler.
-func runNative(t *testing.T, src string) string {
+func runNative(t *testing.T, src string) string { t.Helper(); return runNativeIn(t, src, "") }
+
+// runNativeIn compiles C with the host compiler and runs it with stdin.
+func runNativeIn(t *testing.T, src, stdin string) string {
 	t.Helper()
 	compiler, err := exec.LookPath("cc")
 	if err != nil {
@@ -69,7 +75,9 @@ func runNative(t *testing.T, src string) string {
 	if out, err := exec.Command(compiler, "-std=c17", "-w", "-o", bin, file).CombinedOutput(); err != nil {
 		t.Fatalf("cc: %v\n%s", err, out)
 	}
-	out, err := exec.Command(bin).Output()
+	cmd := exec.Command(bin)
+	cmd.Stdin = strings.NewReader(stdin)
+	out, err := cmd.Output()
 	if err != nil {
 		if _, exit := err.(*exec.ExitError); !exit {
 			t.Fatal(err)
@@ -961,6 +969,80 @@ int main() {
 	{ return 0; }
 	putchar(33);
 }`,
+}
+
+// Programs that read: they compile to Very Sorted! (only that dialect can
+// read), and print the same as the C program on the same input, in English,
+// German and back through C. The inputs have no CR and no Ctrl-Z, which the
+// interpreter reads as Win32's text mode does.
+var programsWithInput = map[string]struct{ src, stdin string }{
+	"wc": {`#include <stdio.h>
+int pn; int pp;
+int main() {
+	int lines = 0, words = 0, chars = 0, inword = 0, c;
+	while ((c = getchar()) != -1) {
+		chars++;
+		if (c == '\n') lines++;
+		if (c == ' ' || c == '\n' || c == '\t') inword = 0;
+		else if (!inword) { inword = 1; words++; }
+	}
+	` + printNum("lines") + printNum("words") + printNum("chars") + `
+	return 0;
+}`, "This code is very cool.\nDieses Programm ist ganz hervorragend.\n\nhello\tworld\n"},
+	"two reads in one expression": {`#include <stdio.h>
+int main() {
+	/* the order of the two reads is unspecified in C, an equality does not care */
+	putchar('0' + (getchar() == getchar()));
+	putchar('0' + (getchar() == getchar()));
+	putchar('\n');
+	return 0;
+}`, "ABCC"},
+	"rot13": {`#include <stdio.h>
+int rot(int c) {
+	if (c >= 'a' && c <= 'z') return (c - 'a' + 13) % 26 + 'a';
+	if (c >= 'A' && c <= 'Z') return (c - 'A' + 13) % 26 + 'A';
+	return c;
+}
+int main() { int c; while ((c = getchar()) != -1) putchar(rot(c)); return 0; }`, "Ordinata non errant!\nGur fbegrq qb abg ree.\n"},
+	"reverse by recursion": {`#include <stdio.h>
+void rev(void) { int c = getchar(); if (c == -1 || c == '\n') return; rev(); putchar(c); }
+int main() { rev(); putchar('\n'); rev(); putchar('\n'); return 0; }`, "stressed\nlevel\n"},
+	"sum of numbers": {`#include <stdio.h>
+int pn; int pp;
+int main() {
+	int sum = 0, n = 0, c, any = 0;
+	getchar(); /* a header character, thrown away */
+	while ((c = getchar()) != -1) {
+		if (c >= '0' && c <= '9') { n = n * 10 + c - '0'; any = 1; }
+		else if (any) { sum += n; n = 0; any = 0; }
+	}
+	` + printNum("sum + n") + printNum("getchar() + getchar()") + `
+	return 0;
+}`, "#12 345, 6789 and 1000000\n"},
+}
+
+func TestDifferentialInput(t *testing.T) {
+	for name, p := range programsWithInput {
+		t.Run(name, func(t *testing.T) {
+			want := runNativeIn(t, p.src, p.stdin)
+			for _, lang := range []render.Lang{render.English, render.German} {
+				text := toSorted(t, p.src, lang)
+				if !strings.Contains(text, map[render.Lang]string{render.English: "This code is very cool.", render.German: "Dieses Programm ist ganz hervorragend."}[lang]) {
+					t.Errorf("lang %d: no Very Sorted! marker:\n%s", lang, text)
+				}
+				if got := runSortedIn(t, text, p.stdin); got != want {
+					t.Errorf("lang %d: Sorted! printed %q, C printed %q\n%s", lang, got, want, text)
+				}
+			}
+			q, err := syntax.Parse(syntax.Filter([]byte(toSorted(t, p.src, render.English))))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := runNativeIn(t, emit.Exact(q), p.stdin); got != want {
+				t.Errorf("C -> Sorted! -> C printed %q, C printed %q", got, want)
+			}
+		})
+	}
 }
 
 func TestDifferential(t *testing.T) {

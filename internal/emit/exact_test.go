@@ -237,6 +237,15 @@ func TestExactQuirks(t *testing.T) {
 			b.table(syntax.Jumps, slide(op(LB, 0), syntax.Operand{}, syntax.UnconditionalJump))
 			b.table(syntax.Statements, slide(op(N, 0), op(N, 2), syntax.ConditionalJump), stmt(syntax.Jump, 1))
 		},
+		"very input": func(b *builder) {
+			// Very Sorted! reads into the declared cell (here the second);
+			// the original would read into the first.
+			b.p.Very = true
+			b.p.Data = []int32{'A', 'B'}
+			b.table(syntax.Reads, stmt(N, 1))
+			b.table(syntax.Writes, write(syntax.FormatCharacter, op(N, 1)), write(syntax.FormatCharacter, op(N, 0)))
+			b.table(syntax.Statements, stmt(syntax.Read, 0), stmt(syntax.Write, 0), stmt(syntax.Write, 1), stmt(syntax.Read, 0), stmt(syntax.Write, 0))
+		},
 		"a jump below the code": func(b *builder) {
 			b.p.Data = []int32{-100}
 			b.table(syntax.Jumps, slide(op(N, 0), syntax.Operand{}, syntax.UnconditionalJump))

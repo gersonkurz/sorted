@@ -128,8 +128,10 @@ func (ps *parser) typeOf(n *Node) *Type {
 		}
 		ps.fail(n.Pos, "the branches of '?:' have different types ('%s' and '%s')", a, b)
 	case NdFuncall:
-		if n.Fn == nil { // putchar
-			ps.integer(n.Args[0], "putchar's argument")
+		if n.Fn == nil { // putchar, getchar
+			if n.Func == "putchar" {
+				ps.integer(n.Args[0], "putchar's argument")
+			}
 			return tyInt
 		}
 		for i, a := range n.Args {

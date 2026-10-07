@@ -18,10 +18,34 @@ type result struct {
 	stdout, stderr string
 }
 
-func runCLI(args ...string) result {
+func runCLI(args ...string) result { return runCLIIn("", args...) }
+
+// runCLIIn runs the command line with stdin.
+func runCLIIn(stdin string, args ...string) result {
 	var stdout, stderr bytes.Buffer
-	code := run(args, strings.NewReader(""), &stdout, &stderr)
+	code := run(args, strings.NewReader(stdin), &stdout, &stderr)
 	return result{code, stdout.String(), stderr.String()}
+}
+
+// A C program that reads compiles to Very Sorted!, which runs it on stdin,
+// and --lang translates it with its marker.
+func TestFromCVery(t *testing.T) {
+	cFile := filepath.Join(t.TempDir(), "rev.c")
+	src := "#include <stdio.h>\nint main() { char s[64]; int n = 0, c; while ((c = getchar()) != -1 && c != 10) s[n++] = c; while (n > 0) putchar(s[--n]); putchar(10); }\n"
+	if err := os.WriteFile(cFile, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := runCLI("--from-c", cFile, "--english")
+	if r.code != 0 || !strings.HasSuffix(r.stdout, "This code is very cool.\n") || !strings.Contains(r.stdout, "the first input") {
+		t.Fatalf("%+v", r)
+	}
+	prog := writeProgram(t, r.stdout)
+	if run := runCLIIn("Ordinata non errant\n", prog); run.code != 0 || run.stdout != "tnarre non atanidrO\n" {
+		t.Errorf("running it: %+v", run)
+	}
+	if de := runCLI("--deutsch", prog); de.code != 0 || !strings.HasSuffix(de.stdout, "Dieses Programm ist ganz hervorragend.\n") || !strings.Contains(de.stdout, "die erste Eingabe") {
+		t.Errorf("--deutsch: %+v", de)
+	}
 }
 
 func TestVersion(t *testing.T) {
