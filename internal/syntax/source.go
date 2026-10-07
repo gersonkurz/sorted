@@ -1,6 +1,13 @@
 package syntax
 
-import "bytes"
+import (
+	"bytes"
+	"strings"
+	"unicode"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/unicode/norm"
+)
 
 // Filter prepares raw source the way ReadSortedSourcecode does before parsing:
 // every byte outside [A-Za-z.,] becomes a space.
@@ -47,6 +54,44 @@ func Filter(raw []byte) string {
 	return string(out)
 }
 
+// FilterVery prepares raw source for Very Sorted! (#28), which reads its text
+// as UTF-8: every letter (and combining mark) of any script is kept, so are
+// '.' and ',', and everything else becomes a space, as do bytes that are not
+// UTF-8. The text is normalised first, so that keywords match ignoring case
+// and encoding: NFC (an "ü" may be one code point or "u" and a combining
+// diaeresis), full Unicode case folding ("STRASSE", "Straße" and "strasse"
+// meet as "strasse"), and the German umlauts written out the way the 2000
+// word tables spell them (ä ö ü as ae oe ue), so that "fünf", "zwölf",
+// "dreißig" and "Verhältnis" read as "fuenf", "zwoelf", "dreissig" and
+// "verhaeltnis", and the ASCII spellings still work.
+//
+// The Win32 text-mode reading that Filter reproduces belongs to 2000: here a
+// Ctrl-Z or a NUL is just another character that is not a letter.
+func FilterVery(raw []byte) string {
+	s := norm.NFC.String(cases.Fold().String(norm.NFC.String(string(raw))))
+	s = umlauts.Replace(s)
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r == '.' || r == ',', unicode.IsLetter(r), unicode.Is(unicode.M, r):
+			b.WriteRune(r)
+		default:
+			b.WriteByte(' ')
+		}
+	}
+	return b.String()
+}
+
+var umlauts = strings.NewReplacer("ä", "ae", "ö", "oe", "ü", "ue")
+
 func isChar(b byte) bool { return 'A' <= b && b <= 'Z' || 'a' <= b && b <= 'z' }
 
 func isValidChar(b byte) bool { return isChar(b) || b == '.' || b == ',' }
+
+// isLetter reports whether the parser takes b as part of a word: an ASCII
+// letter, or a byte of a UTF-8 letter that FilterVery kept. Filter leaves no
+// byte above 0x7F, so for 2000 text this is isChar.
+func isLetter(b byte) bool { return isChar(b) || b >= 0x80 }
+
+// isText reports whether the parser stops skipping at b (isValidChar).
+func isText(b byte) bool { return isLetter(b) || b == '.' || b == ',' }

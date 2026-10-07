@@ -27,7 +27,7 @@ func readFile(t *testing.T, path ...string) []byte {
 
 func parse(t *testing.T, src []byte) *syntax.Program {
 	t.Helper()
-	p, err := syntax.Parse(syntax.Filter(src))
+	p, err := syntax.Parse(src)
 	if err != nil {
 		t.Fatalf("%v in:\n%s", err, src)
 	}
@@ -97,7 +97,7 @@ func parseRef(s string) (syntax.Operand, bool) {
 	if strings.Contains(s, "input") || strings.Contains(s, "Eingabe") { // Very Sorted! only
 		src = strings.Replace(src, "Cool.", "This code is very cool.", 1)
 	}
-	p, err := syntax.Parse(syntax.Filter([]byte(src)))
+	p, err := syntax.Parse([]byte(src))
 	if err != nil {
 		return syntax.Operand{}, false
 	}
@@ -295,7 +295,7 @@ func TestOrdinalLimits(t *testing.T) {
 func TestVery(t *testing.T) {
 	src := strings.Replace(strings.Replace(strings.Replace(skeleton, "STATEMENT", "the first input, and the first output", 1),
 		"This code cannot read.", "This code reads the first number as a character.", 1), "Cool.", "This code is very cool.", 1)
-	p, err := syntax.Parse(syntax.Filter([]byte(src)))
+	p, err := syntax.Parse([]byte(src))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -318,10 +318,38 @@ func TestVery(t *testing.T) {
 	}
 }
 
+// Very Sorted! German is written in UTF-8 (#28), and reads back; the
+// original's German keeps its ASCII spelling.
+func TestVeryGermanSpelling(t *testing.T) {
+	src := strings.Replace(skeleton, "STATEMENT", "the first number", 1)
+	src = strings.Replace(src, "This code does not use any numbers.", "This code uses the numbers five, twelve, and thirtyfive.", 1)
+	for _, tt := range []struct {
+		end  string
+		want []string
+	}{
+		{"Cool.", []string{"fuenf", "zwoelf", "fuenfunddreissig", "Verhaeltnisse", "Hervorragend."}},
+		{"This code is very cool.", []string{"fünf", "zwölf", "fünfunddreißig", "Verhältnisse", "Dieses Programm ist ganz hervorragend."}},
+	} {
+		p, err := syntax.Parse([]byte(strings.Replace(src, "Cool.", tt.end, 1)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		text, err := Render(p, German)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, w := range tt.want {
+			if !strings.Contains(text, w) {
+				t.Errorf("%s: no %q in\n%s", tt.end, w, text)
+			}
+		}
+	}
+}
+
 // The dialect is part of a program: the same tables in Very Sorted! are a
 // different program (inputs are read elsewhere).
 func TestEqualDialect(t *testing.T) {
-	p, err := syntax.Parse(syntax.Filter([]byte(strings.Replace(skeleton, "STATEMENT", "the first number", 1))))
+	p, err := syntax.Parse([]byte(strings.Replace(skeleton, "STATEMENT", "the first number", 1)))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -10,22 +10,24 @@ type Error struct {
 
 func (e *Error) Error() string { return "ERROR, missing or invalid " + e.What }
 
-// Parse parses filtered source text (see Filter) into a Program. A program is
-// exactly fourteen sentences in a fixed order; the first one that does not
-// parse is reported. Text after the final "Cool." is ignored.
+// Parse parses a program's source text. A program is exactly fourteen
+// sentences in a fixed order; the first one that does not parse is
+// reported. Text after the final "Cool." is ignored.
 //
 // A program that does not parse as the original's Sorted! may be Very
 // Sorted! (#25): the same fourteen sentences, ending with "This code is very
 // cool." instead, in which a statement can also be an input ("the first
-// input"). Parse tries the original grammar first and the very one only
-// when that fails, so everything the original accepts parses exactly as
-// before, and when neither does, the original's error is reported.
-func Parse(src string) (*Program, error) {
-	p, err := parseDialect(src, false)
+// input"), and which is read as UTF-8 (FilterVery, #28). Parse tries the
+// original grammar on the text as the original reads it (Filter) first, and
+// the very one only when that fails, so everything the original accepts
+// parses exactly as before, and when neither does, the original's error is
+// reported.
+func Parse(raw []byte) (*Program, error) {
+	p, err := parseDialect(Filter(raw), false)
 	if err == nil {
 		return p, nil
 	}
-	if v, verr := parseDialect(src, true); verr == nil {
+	if v, verr := parseDialect(FilterVery(raw), true); verr == nil {
 		return v, nil
 	}
 	return nil, err
@@ -77,11 +79,12 @@ func (ps *parser) at() byte {
 	return 0
 }
 
-// skipWhitespaces skips everything that is not [A-Za-z.,]. The Win32 build
+// skipWhitespaces skips everything that is not [A-Za-z.,] (or a byte of a
+// UTF-8 letter, see isLetter). The Win32 build
 // lacks the NUL check and runs past the end of the text (undefined
 // behaviour); the port stops at the end.
 func (ps *parser) skipWhitespaces() {
-	for ps.p < len(ps.s) && !isValidChar(ps.s[ps.p]) {
+	for ps.p < len(ps.s) && !isText(ps.s[ps.p]) {
 		ps.p++
 	}
 }
@@ -92,7 +95,7 @@ func (ps *parser) skipWhitespaces() {
 func (ps *parser) kw(k string) bool {
 	ps.skipWhitespaces()
 	end := ps.p + len(k)
-	if end > len(ps.s) || (end < len(ps.s) && isChar(ps.s[end])) {
+	if end > len(ps.s) || (end < len(ps.s) && isLetter(ps.s[end])) {
 		return false
 	}
 	if !equalFold(ps.s[ps.p:end], k) {

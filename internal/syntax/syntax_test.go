@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -22,7 +23,7 @@ func readFile(t *testing.T, path ...string) []byte {
 
 func parseSample(t *testing.T, name string) *Program {
 	t.Helper()
-	p, err := Parse(Filter(readFile(t, "legacy", "sorted.win32", name+".s")))
+	p, err := Parse(readFile(t, "legacy", "sorted.win32", name+".s"))
 	if err != nil {
 		t.Fatalf("%s.s: %v", name, err)
 	}
@@ -56,7 +57,7 @@ This code does not use any ratios.
 This code does not use any logical operations.
 Cool.`
 
-func parse(src string) (*Program, error) { return Parse(Filter([]byte(src))) }
+func parse(src string) (*Program, error) { return Parse([]byte(src)) }
 
 // Very Sorted! (#25): a program that ends very coolly may implement its
 // input. Everything the original accepts or rejects stays exactly as it was.
@@ -97,6 +98,83 @@ func TestVerySorted(t *testing.T) {
 	}
 	if _, err := parse(strings.Replace(minimal, "Cool.", "This code is very very cool.", 1)); err == nil || err.Error() != "ERROR, missing or invalid coolness" {
 		t.Errorf("a dialect not spoken yet: %v", err)
+	}
+}
+
+// germanVery is a Very Sorted! program in German, written in UTF-8 (#28).
+const germanVery = `Dieses Programm benutzt die Zahlen fünf, zwölf, dreißig, und fünfunddreißig.
+Dieses Programm geht nirgendwo hin.
+Dieses Programm schreibt die vierte Zahl als eine deutsche Ordinalzahl.
+Dieses Programm kann nicht lesen.
+Dieses Programm benutzt keine Summen.
+Dieses Programm benutzt keine Bedingungen.
+Dieses Programm benutzt keine Sprungziele.
+Dieses Programm benutzt keine geordneten Differenzen.
+Dieses Programm benutzt keine Zuweisungen.
+Dieses Programm benutzt keine Produkte.
+Dieses Programm implementiert die erste Ausgabe.
+Dieses Programm benutzt keine Verhältnisse.
+Dieses Programm ist unlogisch.
+Dieses Programm ist ganz hervorragend.`
+
+// Very Sorted! reads UTF-8 (#28): German is written with umlauts and ß, in
+// any case and either Unicode form, and the ASCII spellings still work. The
+// original's dialect reads bytes, as before.
+func TestVeryUTF8(t *testing.T) {
+	want := []int32{5, 12, 30, 35}
+	for _, tt := range []struct{ name, src string }{
+		{"umlauts and ß", germanVery},
+		{"upper case", strings.ToUpper(germanVery)},
+		{"capital sharp s", strings.Replace(germanVery, "dreißig,", "DREIẞIG,", 1)},
+		{"decomposed", strings.ReplaceAll(strings.ReplaceAll(germanVery, "ü", "u\u0308"), "ö", "o\u0308")},
+		{"ASCII spelling", strings.NewReplacer("ü", "ue", "ö", "oe", "ä", "ae", "ß", "ss").Replace(germanVery)},
+		{"with a byte order mark and CRLF", "\ufeff" + strings.ReplaceAll(germanVery, "\n", "\r\n")},
+	} {
+		p, err := parse(tt.src)
+		if err != nil {
+			t.Errorf("%s: %v", tt.name, err)
+			continue
+		}
+		if !p.Very || !slices.Equal(p.Data[:4], want) || p.Entries(Writes)[0].Flags != FormatGermanOrdinal {
+			t.Errorf("%s: very %v, data %v", tt.name, p.Very, p.Data[:4])
+		}
+	}
+	// The original reads "fünf" as "f nf": its error stands.
+	if _, err := parse(strings.Replace(germanVery, "ganz hervorragend", "hervorragend", 1)); err == nil || err.Error() != "ERROR, missing or invalid number declaration" {
+		t.Errorf("UTF-8 in the original's dialect: %v", err)
+	}
+	// Letters of any script are letters, so a stray one is a word that is
+	// not Sorted!. In the original it was a space.
+	stray := strings.Replace(germanVery, "Dieses Programm geht", "Dieses Programm é geht", 1)
+	if _, err := parse(stray); err == nil {
+		t.Error("a stray letter in Very Sorted! parses")
+	}
+	if p, err := parse(strings.Replace(minimal, "uses the number", "uses é the number", 1)); err != nil || p.Very {
+		t.Errorf("a stray letter in the original's Sorted!: %v", err)
+	}
+}
+
+func TestFilterVery(t *testing.T) {
+	tests := []struct {
+		name, in, want string
+	}{
+		{"letters, period and comma survive", "Ab.,c", "ab.,c"},
+		{"everything else becomes a space", "a1-b\tc\"d", "a  b c d"},
+		{"umlauts are written out", "Zwölf Fünf Verhältnis", "zwoelf fuenf verhaeltnis"},
+		{"ß folds to ss", "Dreißig DREIẞIG", "dreissig dreissig"},
+		{"decomposed umlauts compose first", "fu\u0308nf", "fuenf"},
+		{"other letters stay", "Été 日本 ελλά", "été 日本 ελλά"},
+		{"combining marks stay", "q\u0301", "q\u0301"},
+		{"not UTF-8 becomes spaces", "a\xffb", "a b"},
+		{"Ctrl-Z and NUL are just characters", "ab\x1acd\x00ef", "ab cd ef"},
+		{"CRLF", "a\r\nb", "a  b"},
+		{"byte order mark", "\ufeffa", " a"},
+		{"punctuation of other scripts", "a\u3002b\u00a0c", "a b c"},
+	}
+	for _, tt := range tests {
+		if got := FilterVery([]byte(tt.in)); got != tt.want {
+			t.Errorf("%s: FilterVery(%q) = %q, want %q", tt.name, tt.in, got, tt.want)
+		}
 	}
 }
 

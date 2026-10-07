@@ -297,7 +297,7 @@ func (m *machine) run(maxSteps int) error {
 }
 
 // write prints v in the given format: a character (putchar), or a cardinal or
-// ordinal followed by a newline.
+// ordinal followed by a newline. Very Sorted! spells German numbers in UTF-8.
 func (m *machine) write(format int32, v int32) error {
 	var s string
 	var err error
@@ -315,6 +315,9 @@ func (m *machine) write(format int32, v int32) error {
 	}
 	if err != nil {
 		return fail("cannot write a negative number as a cardinal")
+	}
+	if m.p.Very && (format == syntax.FormatGermanCardinal || format == syntax.FormatGermanOrdinal) {
+		s = numbers.VerySpelling(s) // UTF-8 (#28)
 	}
 	_, err = m.out.WriteString(s + "\n")
 	return err

@@ -80,7 +80,15 @@ func TestExactSamples(t *testing.T) {
 }
 
 // The number words in C against internal/numbers, for every format.
+// TestExactWords compares the C number words with internal/numbers, in the
+// 2000 spelling and in Very Sorted!'s (German in UTF-8, #28).
 func TestExactWords(t *testing.T) {
+	for _, very := range []bool{false, true} {
+		t.Run(fmt.Sprintf("very=%v", very), func(t *testing.T) { exactWordsTest(t, very) })
+	}
+}
+
+func exactWordsTest(t *testing.T, very bool) {
 	values := []int32{-5, -1, 0, 1000000000, 2000000000, 2147483647}
 	for v := int32(1); v <= 120; v++ {
 		values = append(values, v)
@@ -88,7 +96,7 @@ func TestExactWords(t *testing.T) {
 	values = append(values, 199, 200, 201, 219, 999, 1000, 1001, 1015, 1100, 2002, 12345, 19999, 20000, 99999, 100000, 101101, 999999,
 		1000000, 1000001, 1001000, 7000013, 12012012, 999999999, 1000000001, 1234567890)
 	var b strings.Builder
-	b.WriteString(exactHeader + "static I _[193719];\n" + exactRuntime + exactWords + "int main(void) {\n")
+	b.WriteString(exactHeader + "static I _[193719];\n" + exactRuntime + words(very) + "int main(void) {\n")
 	var want strings.Builder
 	for _, v := range values {
 		for f := int32(1); f <= 4; f++ {
@@ -106,6 +114,9 @@ func TestExactWords(t *testing.T) {
 				s, _ = numbers.GermanCardinal(v)
 			case 4:
 				s, _ = numbers.GermanOrdinal(v)
+			}
+			if very && f >= 3 {
+				s = numbers.VerySpelling(s)
 			}
 			want.WriteString(s + "\n")
 		}
@@ -245,6 +256,14 @@ func TestExactQuirks(t *testing.T) {
 			b.table(syntax.Reads, stmt(N, 1))
 			b.table(syntax.Writes, write(syntax.FormatCharacter, op(N, 1)), write(syntax.FormatCharacter, op(N, 0)))
 			b.table(syntax.Statements, stmt(syntax.Read, 0), stmt(syntax.Write, 0), stmt(syntax.Write, 1), stmt(syntax.Read, 0), stmt(syntax.Write, 0))
+		},
+		"very german numbers": func(b *builder) {
+			// Very Sorted! prints German numbers in UTF-8 (#28).
+			b.p.Very = true
+			b.p.Data = []int32{35, 12, 1005, 30}
+			b.table(syntax.Writes, write(syntax.FormatGermanCardinal, op(N, 0)), write(syntax.FormatGermanOrdinal, op(N, 1)),
+				write(syntax.FormatGermanCardinal, op(N, 2)), write(syntax.FormatGermanOrdinal, op(N, 3)), write(syntax.FormatEnglishCardinal, op(N, 2)))
+			b.table(syntax.Statements, stmt(syntax.Write, 0), stmt(syntax.Write, 1), stmt(syntax.Write, 2), stmt(syntax.Write, 3), stmt(syntax.Write, 4))
 		},
 		"a jump below the code": func(b *builder) {
 			b.p.Data = []int32{-100}

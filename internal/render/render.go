@@ -17,8 +17,9 @@
 //     all, nor references to inputs outside Very Sorted!; Render reports an
 //     *Error.
 //   - A Very Sorted! program (syntax.Program.Very) ends with "This code is
-//     very cool." / "Dieses Programm ist ganz hervorragend.", and its
-//     statements may be inputs ("the first input", "die erste Eingabe").
+//     very cool." / "Dieses Programm ist ganz hervorragend.", its
+//     statements may be inputs ("the first input", "die erste Eingabe"),
+//     and its German is written in UTF-8 ("fünf", "Verhältnisse").
 //
 // Render checks its own work: it parses the text it produced and fails unless
 // the result is the same program in every observable respect, table layout
@@ -97,11 +98,21 @@ func write(p *syntax.Program, lang Lang) (string, *syntax.Program, error) {
 		b.WriteString("\n")
 	}
 	text := b.String()
-	q, err := syntax.Parse(syntax.Filter([]byte(text)))
+	if p.Very {
+		text = verySpelling(text)
+	}
+	q, err := syntax.Parse([]byte(text))
 	if err != nil {
 		return "", nil, fail("the generated text does not parse (%v)", err)
 	}
 	return text, q, nil
+}
+
+// verySpelling writes German as Very Sorted! reads it, in UTF-8 (#28): the
+// number words with umlauts and ß ("fünf", "zwölf", "dreißig") and
+// "Verhältnis" for "Verhaeltnis". "weisst" is the original's word and stays.
+func verySpelling(text string) string {
+	return numbers.VerySpelling(strings.ReplaceAll(text, "Verhaeltnis", "Verhältnis"))
 }
 
 // SameEntries reports whether two programs declare the same numbers and

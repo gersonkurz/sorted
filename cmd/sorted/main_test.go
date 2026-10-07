@@ -48,6 +48,36 @@ func TestFromCVery(t *testing.T) {
 	}
 }
 
+// A Very Sorted! program in UTF-8 German runs, prints German in UTF-8, and
+// translates to English and back (#28).
+func TestVeryUTF8(t *testing.T) {
+	prog := writeProgram(t, `Dieses Programm benutzt die Zahlen fünf, zwölf, und dreißig.
+Dieses Programm geht nirgendwo hin.
+Dieses Programm schreibt die dritte Zahl als eine deutsche Ordinalzahl.
+Dieses Programm kann nicht lesen.
+Dieses Programm benutzt keine Summen.
+Dieses Programm benutzt keine Bedingungen.
+Dieses Programm benutzt keine Sprungziele.
+Dieses Programm benutzt keine geordneten Differenzen.
+Dieses Programm benutzt keine Zuweisungen.
+Dieses Programm benutzt keine Produkte.
+Dieses Programm implementiert die erste Ausgabe.
+Dieses Programm benutzt keine Verhältnisse.
+Dieses Programm ist unlogisch.
+Dieses Programm ist ganz hervorragend.
+`)
+	if r := runCLI(prog); r.code != 0 || r.stdout != "dreißigste\n" {
+		t.Errorf("running it: %+v", r)
+	}
+	en := runCLI("--english", prog)
+	if en.code != 0 || !strings.Contains(en.stdout, "five,") || !strings.HasSuffix(en.stdout, "This code is very cool.\n") {
+		t.Fatalf("--english: %+v", en)
+	}
+	if de := runCLI("--deutsch", writeProgram(t, en.stdout)); de.code != 0 || !strings.Contains(de.stdout, "fünf,") || !strings.Contains(de.stdout, "Verhältnisse") {
+		t.Errorf("--deutsch: %+v", de)
+	}
+}
+
 func TestVersion(t *testing.T) {
 	r := runCLI("--version")
 	if r.code != 0 || r.stdout != "sorted "+version+"\n" || r.stderr != "" {

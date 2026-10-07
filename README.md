@@ -279,6 +279,13 @@ to Very Sorted! by itself, so `wc`, `rot13` and friends now sing. Everything
 the 2000 parser accepts or rejects stays exactly as it was: a program is
 Very Sorted! only if the original's grammar fails and the very one succeeds.
 
+Very Sorted! is also read as UTF-8, so German is finally German: "fünf",
+"zwölf", "dreißig" and "Verhältnisse", in any case and either Unicode form,
+and the 2000 spellings "fuenf" and "Verhaeltnisse" still work. German
+numbers are printed that way too, and `--deutsch` writes a very program
+with umlauts. On a Windows console, `chcp 65001` shows them as letters.
+The 2000 dialect still reads bytes, where "fünf" is "f nf".
+
 **And back to C.** `sorted --from-c prog.c --to-c obfuscated.c` takes a
 program on the full round trip: C → Sorted! → C. The result prints what
 `prog.c` prints, and nothing in it resembles the original. Every sum,

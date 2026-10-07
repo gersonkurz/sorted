@@ -42,7 +42,7 @@ func runSorted(t *testing.T, text string) string { t.Helper(); return runSortedI
 // runSortedIn runs a Sorted! program with stdin.
 func runSortedIn(t *testing.T, text, stdin string) string {
 	t.Helper()
-	p, err := syntax.Parse(syntax.Filter([]byte(text)))
+	p, err := syntax.Parse([]byte(text))
 	if err != nil {
 		t.Fatalf("%v in:\n%s", err, text)
 	}
@@ -1034,7 +1034,7 @@ func TestDifferentialInput(t *testing.T) {
 					t.Errorf("lang %d: Sorted! printed %q, C printed %q\n%s", lang, got, want, text)
 				}
 			}
-			q, err := syntax.Parse(syntax.Filter([]byte(toSorted(t, p.src, render.English))))
+			q, err := syntax.Parse([]byte(toSorted(t, p.src, render.English)))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1056,7 +1056,7 @@ func TestDifferential(t *testing.T) {
 				}
 			}
 			// and back to C (M5): the exact translation prints the same
-			p, err := syntax.Parse(syntax.Filter([]byte(toSorted(t, src, render.English))))
+			p, err := syntax.Parse([]byte(toSorted(t, src, render.English)))
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -121,7 +121,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "%s is not intelligible.\n", name)
 		return 1
 	}
-	p, err := syntax.Parse(syntax.Filter(raw))
+	p, err := syntax.Parse(raw)
 	if err != nil {
 		fmt.Fprintf(stdout, "%v\n", err)
 		fmt.Fprintf(stdout, "%s is not intelligible.\n", name)

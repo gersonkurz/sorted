@@ -1,5 +1,7 @@
 package numbers
 
+import "strings"
+
 // Word tables from GermanNumbers.cpp, in its ASCII spelling ("fuenf",
 // "dreissig", "zwoelf"). The C file also declares SingleDigitCardinal,
 // SingleDigitOrdinal and DecFactorOrdinal, which no German function reads;
@@ -287,3 +289,14 @@ func ParseGermanOrdinal(s string, pos int) (value int32, next int) {
 	}
 	return total, c.p
 }
+
+// verySpelling writes the umlauts and the ß that the 2000 tables spell out.
+// Each replacement has the same length in bytes as what it replaces, which
+// the C port in internal/emit relies on.
+var verySpelling = strings.NewReplacer("fuenf", "fünf", "zwoelf", "zwölf", "dreissig", "dreißig")
+
+// VerySpelling spells German number words (a cardinal or an ordinal from
+// this package) as Very Sorted! prints them, in UTF-8: "fünf", "zwölf",
+// "dreißig" instead of "fuenf", "zwoelf", "dreissig" (#28). The words are
+// otherwise the original's, "einstausend" and "siebente" included.
+func VerySpelling(s string) string { return verySpelling.Replace(s) }

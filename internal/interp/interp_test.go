@@ -34,7 +34,7 @@ func normalise(s string) string {
 func TestSamplesMatchCapturedOutput(t *testing.T) {
 	for _, name := range []string{"hello", "hallo", "fibo", "itoa"} {
 		t.Run(name, func(t *testing.T) {
-			p, err := syntax.Parse(syntax.Filter(readFile(t, "legacy", "sorted.win32", name+".s")))
+			p, err := syntax.Parse(readFile(t, "legacy", "sorted.win32", name+".s"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -81,7 +81,7 @@ func program(t *testing.T, s sentences) *syntax.Program {
 			src = append(src, o.none)
 		}
 	}
-	p, err := syntax.Parse(syntax.Filter([]byte(strings.Join(src, "\n"))))
+	p, err := syntax.Parse([]byte(strings.Join(src, "\n")))
 	if err != nil {
 		t.Fatalf("%v in:\n%s", err, strings.Join(src, "\n"))
 	}
@@ -255,6 +255,30 @@ func TestVeryReadStoresIntoDeclaredCell(t *testing.T) {
 		p.Very = true
 		if got, err := runHand(t, p, "Z"); err != nil || got != tt.want {
 			t.Errorf("got %q, %v; want %q", got, err, tt.want)
+		}
+	}
+}
+
+// Very Sorted! prints German numbers in UTF-8 (#28); the original's spelling
+// stays the original's, and English is English.
+func TestVeryGermanSpelling(t *testing.T) {
+	writes := []syntax.Slide{
+		{Ops: [2]syntax.Operand{num(0)}, Flags: syntax.FormatGermanCardinal},
+		{Ops: [2]syntax.Operand{num(1)}, Flags: syntax.FormatGermanOrdinal},
+		{Ops: [2]syntax.Operand{num(0)}, Flags: syntax.FormatEnglishCardinal},
+	}
+	w := func(i int) syntax.Operand { return syntax.Operand{Type: syntax.Write, Index: int32(i)} }
+	for _, tt := range []struct {
+		very bool
+		want string
+	}{
+		{false, "fuenfunddreissig\nzwoelfte\nthirtyfive\n"},
+		{true, "fünfunddreißig\nzwölfte\nthirtyfive\n"},
+	} {
+		p := hand([]int32{35, 12}, map[syntax.Category][]syntax.Slide{syntax.Writes: writes}, w(0), w(1), w(2))
+		p.Very = tt.very
+		if got, err := runHand(t, p, ""); err != nil || got != tt.want {
+			t.Errorf("very %v: %q, %v; want %q", tt.very, got, err, tt.want)
 		}
 	}
 }

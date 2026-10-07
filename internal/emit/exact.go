@@ -229,7 +229,7 @@ func (x *exact) render() string {
 	}
 	b.WriteString(exactRuntime)
 	if x.words {
-		b.WriteString(exactWords)
+		b.WriteString(words(x.p.Very))
 	}
 	if x.input {
 		b.WriteString(exactInput)
@@ -337,8 +337,31 @@ static void w_(I format, I v) {
 		if (i < 20) strcpy(b + n - strlen(deT[i]), deO[i]);
 		else strcat(b, "ste");
 	}
+	SPELL
 	fputs(b, stdout);
 	putchar('\n');
+}
+`
+
+// words is the C number formatting, for Very Sorted! with German spelled in
+// UTF-8.
+func words(very bool) string {
+	if very {
+		return exactSpelling + strings.Replace(exactWords, "\tSPELL\n", "\tif (format >= 3) spell_(b);\n", 1)
+	}
+	return strings.Replace(exactWords, "\tSPELL\n", "", 1)
+}
+
+// exactSpelling is numbers.VerySpelling: Very Sorted! prints German number
+// words in UTF-8. Each replacement is as long as what it replaces, so it is
+// written over it.
+const exactSpelling = `static void spell_(char *b) {
+	static const char *const from[3] = {"fuenf", "zwoelf", "dreissig"};
+	static const char *const to[3] = {"f\303\274nf", "zw\303\266lf", "drei\303\237ig"};
+	char *p;
+	int i;
+	for (i = 0; i < 3; i++)
+		for (p = b; (p = strstr(p, from[i])) != 0; p += strlen(to[i])) memcpy(p, to[i], strlen(to[i]));
 }
 `
 

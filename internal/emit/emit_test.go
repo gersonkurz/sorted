@@ -20,7 +20,7 @@ func readFile(t *testing.T, path ...string) string {
 
 func parseSample(t *testing.T, name string) *syntax.Program {
 	t.Helper()
-	p, err := syntax.Parse(syntax.Filter([]byte(readFile(t, "legacy", "sorted.win32", name+".s"))))
+	p, err := syntax.Parse([]byte(readFile(t, "legacy", "sorted.win32", name+".s")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ Cool.`
 
 func parseMinimal(t *testing.T) *syntax.Program {
 	t.Helper()
-	p, err := syntax.Parse(syntax.Filter([]byte(minimal)))
+	p, err := syntax.Parse([]byte(minimal))
 	if err != nil {
 		t.Fatal(err)
 	}

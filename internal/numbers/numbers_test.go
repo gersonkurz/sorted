@@ -333,3 +333,20 @@ func TestCardinalRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+// Very Sorted! spells German numbers in UTF-8 (#28), wherever the words
+// occur in a cardinal or an ordinal.
+func TestVerySpelling(t *testing.T) {
+	for n, want := range map[int32]string{5: "fünf", 12: "zwölf", 30: "dreißig", 535: "fünfhundertfünfunddreißig", 15: "fünfzehn", 50: "fünfzig", 1000: "einstausend"} {
+		s, _ := GermanCardinal(n)
+		if got := VerySpelling(s); got != want {
+			t.Errorf("%d: %q, want %q", n, got, want)
+		}
+	}
+	for n, want := range map[int32]string{5: "fünfte", 12: "zwölfte", 30: "dreißigste", 1000: "einstausendste"} {
+		s, _ := GermanOrdinal(n)
+		if got := VerySpelling(s); got != want {
+			t.Errorf("%dth: %q, want %q", n, got, want)
+		}
+	}
+}
