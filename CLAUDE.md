@@ -25,16 +25,17 @@ just test                  # go test -count 1 ./...
 just test-one 'TestA|TestB'   # go test -count 1 -v -run <regex> (the regex reaches go test via the environment, never the shell)
 just verify                # fmt-check + go vet + test: the review loop's Verify step
 just lint                  # fmt-check + go vet + staticcheck
-just check                 # lint + test; run before committing
+just check                 # lint + test + cross; run before committing
 just coverage              # out/coverage.out + out/coverage.html
 just examples              # regenerate examples/*.s (English, German) from examples/*.c
 just fmt
 just test-race             # unix only (the race detector needs cgo)
+just cross                 # build for every platform in the justfile's `platforms` (TestCrossCompile, SORTED_CROSS=1)
 just package               # unix only: cross-compile all platforms → out/dist/*.tar.gz / *.zip + SHA256SUMS
 just clean
 ```
 
-Release archives contain the binary, `README.md`, `LICENSE`, and under `examples/` the legacy sample `.s` programs plus the repo's `examples/` (C programs and the Sorted! versions `--from-c` writes for them, `<name>.s` English and `<name>.de.s` German). `cmd/sorted` `TestExamples` fails when a committed `.s` is not what the compiler writes now (run `just examples`), and checks that it prints what the C program prints natively.
+`platforms` in the justfile lists the 19 release targets (macOS, Linux on amd64/arm64/386/arm/riscv64/ppc64le/s390x, Windows, FreeBSD, OpenBSD, NetBSD, illumos, Plan 9, AIX); nobody runs most of them, but `just cross` checks that each builds. Release archives contain the binary, `README.md`, `LICENSE`, and under `examples/` the legacy sample `.s` programs plus the repo's `examples/` (C programs and the Sorted! versions `--from-c` writes for them, `<name>.s` English and `<name>.de.s` German). `cmd/sorted` `TestExamples` fails when a committed `.s` is not what the compiler writes now (run `just examples`), and checks that it prints what the C program prints natively.
 
 ## How the legacy implementation works
 

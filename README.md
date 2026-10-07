@@ -63,6 +63,7 @@ Or from a clone, with [just](https://github.com/casey/just):
 
 ```
 just build      # out/build/sorted (sorted.exe on Windows)
+just cross      # check that it builds for all 19 release platforms
 just package    # macOS/Linux: release archives for all platforms in out/dist
 ```
 

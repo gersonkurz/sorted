@@ -27,8 +27,12 @@ ldflags := "-ldflags=-X=main.version=" + version
 # The examples directory, as the shell of this OS spells paths
 ex := if os() == "windows" { "examples\\" } else { "examples/" }
 
-# Targets for `just package`, as GOOS/GOARCH pairs
-platforms := "darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 linux/386 windows/amd64 windows/386 windows/arm64"
+# Targets for `just package` and `just cross`, as GOOS/GOARCH pairs. The tool
+# is pure Go, so any target costs one line; nobody runs most of these, but Go
+# cross-compiles reliably, and `just cross` checks that each one builds.
+# linux/s390x: Sorted! on an IBM mainframe. plan9/amd64: an esoteric language
+# on an esoteric OS.
+platforms := "darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 linux/386 linux/arm linux/riscv64 linux/ppc64le linux/s390x windows/amd64 windows/386 windows/arm64 freebsd/amd64 freebsd/arm64 openbsd/amd64 netbsd/amd64 illumos/amd64 plan9/amd64 aix/ppc64"
 
 # Default recipe: show available commands
 default:
@@ -68,8 +72,12 @@ verify: fmt-check vet test
 # Format check, go vet and staticcheck
 lint: fmt-check vet staticcheck
 
-# Lint and test: run before committing
-check: lint test
+# Lint, test, and build for every release platform: run before committing
+check: lint test cross
+
+# Check that the tool builds for every platform `just package` ships
+cross $SORTED_CROSS="1":
+    go test -count 1 -run TestCrossCompile ./cmd/sorted
 
 # Regenerate the Sorted! versions (English and German) of the C examples
 examples:
