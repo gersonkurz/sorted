@@ -51,11 +51,13 @@
 //     jumps through a chain of conditional jumps back to the call site.
 //     Functions on a cycle of calls save their frame on a stack in the free
 //     memory around each call that can come back to them (see function).
-//   - Sorted! has no bit operations (logical operations cannot be
-//     referenced), so & | ^ ~ << >> are arithmetic: constants fold, ~x is
-//     -1 - x, shifts by a constant are products or floored ratios, x &
-//     (2^k - 1) is a remainder, and the rest call runtime functions written
-//     in the C subset (see runtime.go). Numbers beyond what a declaration
+//   - Bitwise operators are arithmetic where they can be: constants fold,
+//     ~x is -1 - x, shifts by a constant are products or floored ratios, x &
+//     (2^k - 1) is a remainder, and shifts by a variable count call runtime
+//     functions written in the C subset (see runtime.go). The other & | ^
+//     are Very Sorted! NANDs (two, three and four of them), which make the
+//     program Very Sorted!: the original's logical operation is a NOR that
+//     cannot be referenced. Numbers beyond what a declaration
 //     spells (999999999) are 1000000 * q + r.
 //   - A store into a char wraps the value to -128..127, as C does, by
 //     arithmetic: ((v + 128) % 256 + 256) % 256 - 128; an unsigned char
@@ -114,9 +116,13 @@ const (
 	vProd
 	vRatio
 	vCond
+	vNand // a Very Sorted! NAND
 	vInd  // the cell a pointer cell (variable i) indexes
 	vAddr // an address: a declared number, the cell of variable i (see program)
 )
+
+// exprKinds are the kinds that are table entries (c.exprs).
+var exprKinds = []valKind{vSum, vDiff, vProd, vRatio, vCond, vNand}
 
 // val is an operand before cells are numbered.
 type val struct {
@@ -264,7 +270,7 @@ func compileProgram(prog *cc.Program) (c *compiler, p *syntax.Program, err error
 		funcs:     map[*cc.Function]*function{},
 		exit:      -1,
 	}
-	for _, k := range []valKind{vSum, vDiff, vProd, vRatio, vCond} {
+	for _, k := range exprKinds {
 		c.exprs[k] = &table{}
 	}
 	defer func() {
@@ -1485,7 +1491,7 @@ func (c *compiler) program() *syntax.Program {
 		case vAddr:
 			return syntax.Operand{Type: syntax.Number, Index: int32(addrSlot[v.i])}
 		}
-		types := map[valKind]syntax.OperandType{vSum: syntax.Sum, vDiff: syntax.Diff, vProd: syntax.Prod, vRatio: syntax.Ratio, vCond: syntax.Condition}
+		types := map[valKind]syntax.OperandType{vSum: syntax.Sum, vDiff: syntax.Diff, vProd: syntax.Prod, vRatio: syntax.Ratio, vCond: syntax.Condition, vNand: syntax.Nand}
 		return syntax.Operand{Type: types[v.kind], Index: int32(v.i)}
 	}
 	put := func(cat syntax.Category, slides []syntax.Slide) {
@@ -1495,7 +1501,7 @@ func (c *compiler) program() *syntax.Program {
 	for _, k := range []struct {
 		kind valKind
 		cat  syntax.Category
-	}{{vSum, syntax.Sums}, {vDiff, syntax.Diffs}, {vProd, syntax.Prods}, {vRatio, syntax.Ratios}, {vCond, syntax.Conditions}} {
+	}{{vSum, syntax.Sums}, {vDiff, syntax.Diffs}, {vProd, syntax.Prods}, {vRatio, syntax.Ratios}, {vCond, syntax.Conditions}, {vNand, syntax.Nands}} {
 		var slides []syntax.Slide
 		for _, e := range c.exprs[k.kind].entries {
 			slides = append(slides, syntax.Slide{Ops: [2]syntax.Operand{operand(e.a), operand(e.b)}, Flags: e.flags})
@@ -1511,6 +1517,9 @@ func (c *compiler) program() *syntax.Program {
 		put(syntax.Writes, []syntax.Slide{{Ops: [2]syntax.Operand{operand(val{vVar, c.out})}, Flags: syntax.FormatCharacter}})
 	} else {
 		put(syntax.Writes, nil)
+	}
+	if len(c.exprs[vNand].entries) > 0 {
+		p.Very = true // the original cannot refer to a logical operation
 	}
 	if c.in >= 0 {
 		put(syntax.Reads, []syntax.Slide{{Ops: [2]syntax.Operand{operand(val{vVar, c.in})}, Flags: syntax.FormatCharacter}})

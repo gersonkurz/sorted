@@ -6,35 +6,19 @@ import (
 	"slices"
 
 	"github.com/gersonkurz/sorted/internal/cc"
+	"github.com/gersonkurz/sorted/internal/syntax"
 )
 
-// runtimeSource holds the functions that bitwise operators, and unsigned
-// division, remainder and right shift, call when they cannot be lowered to
-// plain arithmetic. The unsigned ones take and give unsigned values as
+// runtimeSource holds the functions that shifts by a variable count, and
+// unsigned division, remainder and right shift, call: they cannot be lowered
+// to plain arithmetic. The unsigned ones take and give unsigned values as
 // their 32-bit patterns in an int, and compare them with the sign bit
 // flipped (adding -2^31), which orders them as unsigned. They are written in the C subset
 // itself, so they compile like any user function, and only those a program
-// reaches end up in its Sorted! text. Sorted! has no bit operations at all
-// (its logical operations can be declared but never referenced), so they
-// take numbers apart digit by binary digit. Arithmetic wraps at 32 bits in
+// reaches end up in its Sorted! text. They take numbers apart by halving
+// and doubling (& | ^ are NANDs, see bitValue). Arithmetic wraps at 32 bits in
 // Sorted!, which these rely on; they never run natively. Parse wants a main.
 const runtimeSource = `
-int bits(int a, int b, int m, int s) {
-	int r = 0, bit = 1, i = 0;
-	int sa = a < 0, sb = b < 0;
-	if (sa) a = a + 2147483647 + 1;
-	if (sb) b = b + 2147483647 + 1;
-	while (i < 31) {
-		int x = a % 2, y = b % 2;
-		r = r + (m * x * y + s * (x + y)) * bit;
-		a = a / 2;
-		b = b / 2;
-		bit = bit + bit;
-		i++;
-	}
-	if (m * sa * sb + s * (sa + sb)) r = r - 2147483647 - 1;
-	return r;
-}
 int shl(int x, int n) {
 	while (n > 0) { x = x + x; n--; }
 	return x;
@@ -60,14 +44,6 @@ int umod(int a, int b) { return a - udiv(a, b) * b; }
 int main() { return 0; }
 `
 
-// bitsCoefficients are bits' m and s for &, | and ^: the bit of the result
-// is m*x*y + s*(x+y) for the operand bits x and y.
-var bitsCoefficients = map[cc.NodeKind][2]int32{
-	cc.NdBitAnd: {1, 0},
-	cc.NdBitOr:  {-1, 1},
-	cc.NdBitXor: {-2, 1},
-}
-
 // runtime returns the runtime function name, parsing the library on first
 // use.
 func (c *compiler) runtime(name string) *cc.Function {
@@ -86,11 +62,12 @@ func (c *compiler) runtime(name string) *cc.Function {
 	return c.rt[name]
 }
 
-// bitwise rewrites, in place, the bitwise operators that need a loop into
-// calls of the runtime functions, before functions() looks for calls. What
-// arithmetic can do stays for value: constants (folded), ~x (-1 - x),
-// shifts by a constant (a product or a floored ratio) and x & (2^k - 1)
-// (a non-negative remainder).
+// bitwise rewrites, in place, the operators that need a loop into calls of
+// the runtime functions, before functions() looks for calls: shifts by a
+// variable count, and unsigned division and remainder. The rest stays for
+// value: constants (folded), ~x (-1 - x), shifts by a constant (a product or
+// a floored ratio), x & (2^k - 1) (a non-negative remainder), and the other
+// & | ^, which are Very Sorted! NANDs (see bitValue).
 func (c *compiler) bitwise(n *cc.Node) {
 	if n == nil {
 		return
@@ -114,22 +91,12 @@ func (c *compiler) bitwise(n *cc.Node) {
 	call := func(name string, args ...*cc.Node) {
 		*n = cc.Node{Kind: cc.NdFuncall, Pos: n.Pos, Func: name, Fn: c.runtime(name), Args: args, Ty: n.Ty}
 	}
-	num := func(v int32) *cc.Node { return &cc.Node{Kind: cc.NdNum, Pos: n.Pos, Val: v} }
 	unsigned := n.Ty.IsUnsignedInt()
 	switch n.Kind {
 	case cc.NdDiv, cc.NdMod:
 		if unsigned {
 			call(map[cc.NodeKind]string{cc.NdDiv: "udiv", cc.NdMod: "umod"}[n.Kind], n.Lhs, n.Rhs)
 		}
-	case cc.NdBitAnd, cc.NdBitOr, cc.NdBitXor:
-		if _, ok := mask(n.Rhs); ok && n.Kind == cc.NdBitAnd {
-			return
-		}
-		if _, ok := mask(n.Lhs); ok && n.Kind == cc.NdBitAnd {
-			return
-		}
-		k := bitsCoefficients[n.Kind]
-		call("bits", n.Lhs, n.Rhs, num(k[0]), num(k[1]))
 	case cc.NdShl, cc.NdShr:
 		if k, ok := cc.Fold(n.Rhs); ok {
 			if k < 0 || k > 31 {
@@ -174,6 +141,16 @@ func (c *compiler) shiftCount(n *cc.Node) int32 {
 	return k
 }
 
+// cheap returns v if reading it is cheap (a number or a cell), and
+// otherwise v settled into a temporary.
+func (c *compiler) cheap(v val) val {
+	switch v.kind {
+	case vConst, vVar, vInd, vAddr:
+		return v
+	}
+	return c.settle(v)
+}
+
 // bitValue lowers what bitwise left to value (see there).
 func (c *compiler) bitValue(n *cc.Node) val {
 	if k, ok := cc.Fold(n); ok {
@@ -182,15 +159,33 @@ func (c *compiler) bitValue(n *cc.Node) val {
 	switch n.Kind {
 	case cc.NdBitNot: // ~x == -1 - x
 		return c.expr(vDiff, c.number(-1, n.Pos), c.value(n.Lhs), 0)
-	case cc.NdBitAnd: // x & (2^k - 1) == (x % 2^k + 2^k) % 2^k
-		x, m := n.Lhs, n.Rhs
-		k, ok := mask(m)
-		if !ok {
-			x, m = m, x
-			k, _ = mask(m)
+	case cc.NdBitAnd, cc.NdBitOr, cc.NdBitXor:
+		if n.Kind == cc.NdBitAnd { // x & (2^k - 1) == (x % 2^k + 2^k) % 2^k
+			x, m := n.Lhs, n.Rhs
+			k, ok := mask(m)
+			if !ok {
+				x, m = m, x
+				k, ok = mask(m)
+			}
+			if ok {
+				p := c.number(1<<k, n.Pos)
+				return c.mod(c.expr(vSum, c.mod(c.value(x), p), p, 0), p)
+			}
 		}
-		p := c.number(1<<k, n.Pos)
-		return c.mod(c.expr(vSum, c.mod(c.value(x), p), p, 0), p)
+		// NANDs, which make the program Very Sorted! (#26). Each operand is
+		// read more than once, so an expression is settled first.
+		a, b := c.operands(n.Lhs, n.Rhs)
+		a, b = c.cheap(a), c.cheap(b)
+		nand := func(x, y val) val { return c.expr(vNand, x, y, syntax.LogicalNand) }
+		switch n.Kind {
+		case cc.NdBitAnd: // ~(~(a & b))
+			ab := nand(a, b)
+			return nand(ab, ab)
+		case cc.NdBitOr: // ~(~a & ~b)
+			return nand(nand(a, a), nand(b, b))
+		}
+		ab := nand(a, b) // a ^ b == (a | b) & ~(a & b)
+		return nand(nand(a, ab), nand(b, ab))
 	case cc.NdShl: // x << k == x * 2^k (and 2^31 is -2^31 in 32 bits)
 		k := c.shiftCount(n)
 		return c.expr(vProd, c.value(n.Lhs), c.number(int32(uint32(1)<<k), n.Pos), 0)

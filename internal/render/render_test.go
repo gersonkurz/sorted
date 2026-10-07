@@ -94,7 +94,7 @@ func TestReferencesRoundTrip(t *testing.T) {
 // the only statement.
 func parseRef(s string) (syntax.Operand, bool) {
 	src := strings.Replace(skeleton, "STATEMENT", strings.TrimSuffix(s, " x"), 1)
-	if strings.Contains(s, "input") || strings.Contains(s, "Eingabe") { // Very Sorted! only
+	if strings.Contains(s, "input") || strings.Contains(s, "Eingabe") || strings.Contains(s, "logical") || strings.Contains(s, "logische") { // Very Sorted! only
 		src = strings.Replace(src, "Cool.", "This code is very cool.", 1)
 	}
 	p, err := syntax.Parse([]byte(src))
@@ -343,6 +343,45 @@ func TestVeryGermanSpelling(t *testing.T) {
 				t.Errorf("%s: no %q in\n%s", tt.end, w, text)
 			}
 		}
+	}
+}
+
+// Very Sorted! writes its logical operations, NAND and NOR, in either
+// language, and references to them (#26); the original's NOR stays English.
+func TestVeryNand(t *testing.T) {
+	src := strings.Replace(skeleton, "STATEMENT", "the first logical operation", 1)
+	src = strings.Replace(src, "This code does not use any numbers.", "This code uses the numbers twelve, and ten.", 1)
+	src = strings.Replace(src, "This code does not use any logical operations.", "This code uses the logical operations of not both the first number and the second number, and of not the second logical operation and not the first number.", 1)
+	p, err := syntax.Parse([]byte(strings.Replace(src, "Cool.", "This code is very cool.", 1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for lang, want := range map[Lang][]string{
+		English: {"This code uses the logical operations", "of not both the first number and the second number", "and of not the second logical operation and not the first number", "This code implements the first logical operation."},
+		German:  {"Dieses Programm benutzt die logischen Verknüpfungen", "von nicht beiden, der ersten Zahl und der zweiten Zahl", "und von nicht der zweiten logischen Verknüpfung und nicht der ersten Zahl", "Dieses Programm implementiert die erste logische Verknüpfung."},
+	} {
+		text, err := Render(p, lang)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, w := range want {
+			if !strings.Contains(strings.Join(strings.Fields(text), " "), w) {
+				t.Errorf("lang %d: no %q in\n%s", lang, w, text)
+			}
+		}
+	}
+	// Not very, a NAND cannot be written, nor a reference.
+	p.Very = false
+	if _, err := Render(p, English); err == nil || !strings.Contains(err.Error(), "only Very Sorted! NAND") {
+		t.Errorf("a NAND rendered outside Very Sorted!: %v", err)
+	}
+	// The original's NOR in German falls back to English.
+	q, err := syntax.Parse([]byte(strings.Replace(strings.Replace(skeleton, "STATEMENT", "the first number", 1), "This code does not use any logical operations.", "This code uses the logical operation of not the first number and not the first number.", 1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text, err := Render(q, German); err != nil || !strings.Contains(strings.Join(strings.Fields(text), " "), "This code uses the logical operation of not the first number and not the first number.") {
+		t.Errorf("the original's NOR in German: %v\n%s", err, text)
 	}
 }
 

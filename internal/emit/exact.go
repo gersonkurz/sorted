@@ -107,6 +107,9 @@ func (x *exact) expression(k fnKey) string {
 		r = "div_(a, b)"
 	case syntax.Nand:
 		r = "~a & ~b"
+		if s.Flags == syntax.LogicalNand {
+			r = "~(a & b)"
+		}
 	default:
 		r = "a < b"
 		if s.Flags == syntax.CompareEqual {

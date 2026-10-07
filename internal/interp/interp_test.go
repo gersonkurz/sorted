@@ -283,13 +283,19 @@ func TestVeryGermanSpelling(t *testing.T) {
 	}
 }
 
-// "Logical operations" compute ~a & ~b.
+// "Logical operations" compute ~a & ~b (NOR); Very Sorted!'s NAND (#26)
+// computes ~(a & b).
 func TestLogicalOperation(t *testing.T) {
-	nands := []syntax.Slide{{Ops: [2]syntax.Operand{num(0), num(1)}}}
-	writes := []syntax.Slide{{Ops: [2]syntax.Operand{{Type: syntax.Nand}}}}
-	got, err := runHand(t, hand([]int32{12, 10}, map[syntax.Category][]syntax.Slide{syntax.Nands: nands, syntax.Writes: writes}, syntax.Operand{Type: syntax.Write}), "")
-	if err != nil || got != "\xf1" { // ~12 & ~10 == -15
-		t.Errorf("%q, %v; want \"\\xf1\"", got, err)
+	for _, tt := range []struct {
+		flags int32
+		want  string
+	}{{syntax.LogicalNor, "\xf1"}, {syntax.LogicalNand, "\xf7"}} { // ~12 & ~10 == -15, ~(12 & 10) == -9
+		nands := []syntax.Slide{{Ops: [2]syntax.Operand{num(0), num(1)}, Flags: tt.flags}}
+		writes := []syntax.Slide{{Ops: [2]syntax.Operand{{Type: syntax.Nand}}}}
+		got, err := runHand(t, hand([]int32{12, 10}, map[syntax.Category][]syntax.Slide{syntax.Nands: nands, syntax.Writes: writes}, syntax.Operand{Type: syntax.Write}), "")
+		if err != nil || got != tt.want {
+			t.Errorf("flags %d: %q, %v; want %q", tt.flags, got, err, tt.want)
+		}
 	}
 }
 

@@ -247,12 +247,12 @@ jumps through a chain of "go to the call site if the return address is ..."
 back to where it came from. A function that can call itself, directly or
 through others, saves its parameters and locals on a stack before such a
 call and restores them afterwards; the stack is the free memory after the
-variables, so a recursion that goes too deep runs out of cells. Sorted! has
-no bit operations either (its logical
-operations can be declared but never used), so the bitwise operators are
-arithmetic: `~x` is `-1 - x`, shifting by a constant multiplies or divides,
-`x & 255` is a remainder, and the rest call small helper functions, written
-in the C subset itself, that take numbers apart one binary digit at a time.
+variables, so a recursion that goes too deep runs out of cells. The
+bitwise operators are arithmetic where they can be: `~x` is `-1 - x`,
+shifting by a constant multiplies or divides, `x & 255` is a remainder, and
+shifting by a variable count calls a small helper function, written in the
+C subset itself. Any other `&`, `|` or `^` is built from NANDs, which only
+Very Sorted! (below) has, so such a program comes out very.
 Numbers from 1000000000 on are built as `1000000 * q + r`. Every program the compiler writes is parsed back to
 make sure it is the same program, and the tests check that it prints exactly
 what the C program prints when compiled with clang.
@@ -278,6 +278,14 @@ into the cell the input declares. A C program that calls `getchar()` compiles
 to Very Sorted! by itself, so `wc`, `rot13` and friends now sing. Everything
 the 2000 parser accepts or rejects stays exactly as it was: a program is
 Very Sorted! only if the original's grammar fails and the very one succeeds.
+
+Very Sorted! also has a NAND, at last: "the logical operation of not both
+the first number and the second number" ("die logische Verknüpfung von
+nicht beiden, der ersten Zahl und der zweiten Zahl"), and statements and
+expressions can name it ("the first logical operation", "die erste logische
+Verknüpfung"). The original's "of not X and not Y" stays what it always
+was, a NOR, and now has German too ("von nicht X und nicht Y"). The
+compiler builds `&`, `|` and `^` from two, three and four NANDs.
 
 Very Sorted! is also read as UTF-8, so German is finally German: "fünf",
 "zwölf", "dreißig" and "Verhältnisse", in any case and either Unicode form,

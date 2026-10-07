@@ -1101,20 +1101,41 @@ func TestSharing(t *testing.T) {
 // loop, no jump): constants fold, ~x is -1 - x, shifts by a constant are a
 // product or a floored ratio, and x & (2^k - 1) is a remainder. The rest call
 // the runtime library.
+// Bitwise operators are arithmetic where they can be, a runtime loop for a
+// shift by a variable count, and NANDs otherwise, which make the program
+// Very Sorted! (#26): two for &, three for |, four for ^.
 func TestBitwiseArithmetic(t *testing.T) {
-	for src, jumps := range map[string]bool{
-		`int main() { putchar((1 << 4) | 3 ^ ~0x10 & 0xFF); }`:                               false,
-		`int main() { int x = 7; putchar(~x + (x << 3) + (x >> 2) + (x & 15) + (63 & x)); }`: false,
-		`int main() { int x = 7; putchar(x & 6); }`:                                          true,
-		`int main() { int x = 7; putchar(1 << x); }`:                                         true,
-		`int main() { int x = 7; putchar(x | 1); }`:                                          true,
+	for _, tt := range []struct {
+		src         string
+		jumps, very bool
+		nands       int
+	}{
+		{`int main() { putchar((1 << 4) | 3 ^ ~0x10 & 0xFF); }`, false, false, 0},
+		{`int main() { int x = 7; putchar(~x + (x << 3) + (x >> 2) + (x & 15) + (63 & x)); }`, false, false, 0},
+		{`int main() { int x = 7; putchar(1 << x); }`, true, false, 0},
+		{`int main() { int x = 7; putchar(x & 6); }`, false, true, 2},
+		{`int main() { int x = 7; putchar(x | 1); }`, false, true, 3},
+		{`int main() { int x = 7, y = 3; putchar(x ^ y); }`, false, true, 4},
+		{`int main() { int x = 7, y = 3; putchar((x + 1) ^ (y - 2)); }`, false, true, 4},
 	} {
-		p, err := compileC(t, src)
+		p, err := compileC(t, tt.src)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := p.Tables[syntax.Jumps].Count > 0; got != jumps {
-			t.Errorf("%s: jumps %v, want %v", src, got, jumps)
+		if jumps := p.Tables[syntax.Jumps].Count > 0; jumps != tt.jumps || p.Very != tt.very || p.Tables[syntax.Nands].Count != tt.nands {
+			t.Errorf("%s: jumps %v, very %v, %d nands; want %v, %v, %d", tt.src, jumps, p.Very, p.Tables[syntax.Nands].Count, tt.jumps, tt.very, tt.nands)
+		}
+		for _, e := range p.Entries(syntax.Nands) {
+			if e.Flags != syntax.LogicalNand {
+				t.Errorf("%s: a logical operation that is not a NAND: %v", tt.src, e)
+			}
+			// NANDs read their operands more than once: an operand is a cell
+			// or another NAND, never an expression evaluated again each time.
+			for _, o := range e.Ops {
+				if o.Type != syntax.Number && o.Type != syntax.Nand {
+					t.Errorf("%s: a NAND reads %v", tt.src, o)
+				}
+			}
 		}
 	}
 	p, err := compileC(t, `int main() { putchar((1 << 4) | 3); }`)
@@ -1252,7 +1273,7 @@ func TestErrors(t *testing.T) {
 // addresses point.
 func TestAddressCollision(t *testing.T) {
 	c := &compiler{pool: []int32{5}, addrs: []int{3}, exprs: map[valKind]*table{}}
-	for _, k := range []valKind{vSum, vDiff, vProd, vRatio, vCond} {
+	for _, k := range exprKinds {
 		c.exprs[k] = &table{}
 	}
 	p := c.program()

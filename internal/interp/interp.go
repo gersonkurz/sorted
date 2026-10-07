@@ -169,6 +169,9 @@ func (m *machine) expression(t syntax.OperandType, index int32) (int32, error) {
 		}
 		return a / b, nil
 	case syntax.Nand:
+		if s.Flags == syntax.LogicalNand {
+			return ^(a & b), nil
+		}
 		return ^a & ^b, nil
 	}
 	// Condition

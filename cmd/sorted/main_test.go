@@ -78,6 +78,25 @@ Dieses Programm ist ganz hervorragend.
 	}
 }
 
+// A C program with a bitwise operator compiles to Very Sorted! NANDs and
+// runs (#26).
+func TestFromCNand(t *testing.T) {
+	cFile := filepath.Join(t.TempDir(), "xor.c")
+	if err := os.WriteFile(cFile, []byte("#include <stdio.h>\nint main() { int x = 65, y = 3; putchar(x ^ y); putchar(10); }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, lang := range []string{"--english", "--deutsch"} {
+		r := runCLI("--from-c", cFile, lang)
+		text := strings.Join(strings.Fields(r.stdout), " ")
+		if r.code != 0 || !strings.Contains(text, "of not both") && !strings.Contains(text, "von nicht beiden,") {
+			t.Fatalf("%s: %+v", lang, r)
+		}
+		if run := runCLI(writeProgram(t, r.stdout)); run.code != 0 || run.stdout != "B\n" {
+			t.Errorf("%s: running it: %+v", lang, run)
+		}
+	}
+}
+
 func TestVersion(t *testing.T) {
 	r := runCLI("--version")
 	if r.code != 0 || r.stdout != "sorted "+version+"\n" || r.stderr != "" {

@@ -257,6 +257,17 @@ func TestExactQuirks(t *testing.T) {
 			b.table(syntax.Writes, write(syntax.FormatCharacter, op(N, 1)), write(syntax.FormatCharacter, op(N, 0)))
 			b.table(syntax.Statements, stmt(syntax.Read, 0), stmt(syntax.Write, 0), stmt(syntax.Write, 1), stmt(syntax.Read, 0), stmt(syntax.Write, 0))
 		},
+		"nand and nor": func(b *builder) {
+			// Very Sorted!'s NAND and the original's NOR (#26); the third
+			// reference reads past the table into a condition's slot, whose
+			// flags (CompareLess, 1) make it a NAND.
+			b.p.Very = true
+			b.p.Data = []int32{12, 10, 100}
+			b.table(syntax.Nands, slide(op(N, 0), op(N, 1), syntax.LogicalNand), slide(op(N, 0), op(N, 1), syntax.LogicalNor))
+			b.table(syntax.Conditions, slide(op(N, 2), op(N, 1), syntax.CompareLess))
+			b.table(syntax.Writes, write(syntax.FormatCharacter, op(syntax.Nand, 0)), write(syntax.FormatCharacter, op(syntax.Nand, 1)), write(syntax.FormatCharacter, op(syntax.Nand, 2)))
+			b.table(syntax.Statements, stmt(syntax.Write, 0), stmt(syntax.Write, 1), stmt(syntax.Write, 2))
+		},
 		"very german numbers": func(b *builder) {
 			// Very Sorted! prints German numbers in UTF-8 (#28).
 			b.p.Very = true

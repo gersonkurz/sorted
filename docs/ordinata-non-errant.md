@@ -120,8 +120,9 @@ says. It was the faithful who misread it.
 Moreover, no reference can name a logical operation, so none was ever
 evaluated. A NOR that could not be observed, called NAND by everyone, in a
 language from p-nand-q.com: let this chapter be read aloud whenever someone
-claims to understand Sorted! completely. The dialect Very Sorted! shall
-reference a true NAND; this NOR remains as it is, for the year 2000.
+claims to understand Sorted! completely. The dialect Very Sorted! names a
+true NAND, "of not both X and Y", and lets statements refer to it; this NOR
+remains as it is, for the year 2000, and in Very Sorted! too.
 
 ## Caput VIII. De translatione reprobata
 

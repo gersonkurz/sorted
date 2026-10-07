@@ -4,22 +4,25 @@
 // What it writes is exactly what the parser accepts. Some things have no
 // form in one language, or none at all:
 //
-//   - German has no ratios, no logical operations and no lists of ordered
-//     differences, so those sentences fall back to English. Sorted! allows
-//     mixing languages per sentence.
+//   - German has no ratios and no lists of ordered differences, and the
+//     original's German has no logical operations (Very Sorted!'s has), so
+//     those sentences fall back to English. Sorted! allows mixing languages
+//     per sentence.
 //   - Output formats are written the only way the parser accepts them. Its
 //     alternatives share an unrestored cursor, so each failed alternative eats
 //     a word: "as a english english ordinal", "as a german german ordinal",
 //     "als ein ein englischer Kardinal", "als ein ein ein englische
 //     Ordinalzahl", "als ein ein ein ein deutscher Kardinal".
-//   - More than one output or input, references to logical operations,
-//     negative numbers and numbers from 1000000000 on cannot be written at
-//     all, nor references to inputs outside Very Sorted!; Render reports an
-//     *Error.
+//   - More than one output or input, negative numbers and numbers from
+//     1000000000 on cannot be written at all, nor, outside Very Sorted!,
+//     references to inputs and logical operations, or a NAND; Render
+//     reports an *Error.
 //   - A Very Sorted! program (syntax.Program.Very) ends with "This code is
 //     very cool." / "Dieses Programm ist ganz hervorragend.", its
 //     statements may be inputs ("the first input", "die erste Eingabe"),
-//     and its German is written in UTF-8 ("fünf", "Verhältnisse").
+//     it may refer to logical operations and have NANDs ("of not both a and
+//     b", "von nicht beiden, a und b"), and its German is written in UTF-8
+//     ("fünf", "Verhältnisse").
 //
 // Render checks its own work: it parses the text it produced and fails unless
 // the result is the same program in every observable respect, table layout
@@ -109,10 +112,10 @@ func write(p *syntax.Program, lang Lang) (string, *syntax.Program, error) {
 }
 
 // verySpelling writes German as Very Sorted! reads it, in UTF-8 (#28): the
-// number words with umlauts and ß ("fünf", "zwölf", "dreißig") and
-// "Verhältnis" for "Verhaeltnis". "weisst" is the original's word and stays.
+// number words with umlauts and ß ("fünf", "zwölf", "dreißig"),
+// "Verhältnis" and "Verknüpfung". "weisst" is the original's word and stays.
 func verySpelling(text string) string {
-	return numbers.VerySpelling(strings.ReplaceAll(text, "Verhaeltnis", "Verhältnis"))
+	return numbers.VerySpelling(strings.NewReplacer("Verhaeltnis", "Verhältnis", "Verknuepfung", "Verknüpfung").Replace(text))
 }
 
 // SameEntries reports whether two programs declare the same numbers and
@@ -286,7 +289,8 @@ var nouns = map[syntax.OperandType]noun{
 	syntax.Label:     {"label", "Sprungziel", 'n'},
 	syntax.Condition: {"condition", "Bedingung", 'f'},
 	syntax.Write:     {"output", "Ausgabe", 'f'},
-	syntax.Read:      {"input", "Eingabe", 'f'}, // Very Sorted! only (the parser decides)
+	syntax.Read:      {"input", "Eingabe", 'f'},                           // Very Sorted! only (the parser decides)
+	syntax.Nand:      {"logical operation", "logische Verknuepfung", 'f'}, // likewise
 }
 
 // ref writes a reference such as "the third number" or "der dritten Zahl".
@@ -335,7 +339,11 @@ func (r *renderer) ref(l Lang, op syntax.Operand, c gcase) (string, error) {
 	} else if !ordinalParses(ord, n, nn.de) {
 		return "", fail("no German ordinal for %d reads back", n)
 	}
-	return article + " " + ord + " " + nn.de, nil
+	de := nn.de
+	if inflect && op.Type == syntax.Nand {
+		de = "logischen Verknuepfung" // "der ersten logischen Verknüpfung"
+	}
+	return article + " " + ord + " " + de, nil
 }
 
 // ordinalParses reports whether "<ord> <noun>" reads back as n with the
@@ -498,22 +506,51 @@ func (r *renderer) ratios() (sentence, error) {
 	return r.binary(English, syntax.Ratios, "This code does not use any ratios", "This code uses the ratio", "This code uses the ratios", "of", "to")
 }
 
+// nands writes the logical operations: the original's NOR ("of not a and not
+// b"), and in Very Sorted! the NAND ("of not both a and b") and German for
+// both (#26).
 func (r *renderer) nands() (sentence, error) {
 	es := r.entries(syntax.Nands)
 	if len(es) == 0 {
 		return list(r.lang, r.say("This code does not use any logical operations", "Dieses Programm ist unlogisch"), nil), nil
 	}
+	l := English
+	if r.p.Very {
+		l = r.lang
+	}
 	items := make([]string, len(es))
 	for i, e := range es {
-		a, err := r.ref(English, e.Ops[0], nominative)
+		if e.Flags != syntax.LogicalNor && (e.Flags != syntax.LogicalNand || !r.p.Very) {
+			return sentence{}, fail("logical operation %d has flags %d, which only Very Sorted! NAND (1) or NOR (0) has", i, e.Flags)
+		}
+		c := nominative
+		if l == German {
+			c = dative
+		}
+		a, err := r.ref(l, e.Ops[0], c)
 		if err != nil {
 			return sentence{}, err
 		}
-		b, err := r.ref(English, e.Ops[1], nominative)
+		b, err := r.ref(l, e.Ops[1], c)
 		if err != nil {
 			return sentence{}, err
 		}
-		items[i] = "of not " + a + " and not " + b
+		switch {
+		case l == German && e.Flags == syntax.LogicalNand:
+			items[i] = "von nicht beiden, " + a + " und " + b
+		case l == German:
+			items[i] = "von nicht " + a + " und nicht " + b
+		case e.Flags == syntax.LogicalNand:
+			items[i] = "of not both " + a + " and " + b
+		default:
+			items[i] = "of not " + a + " and not " + b
+		}
+	}
+	if l == German {
+		if len(items) == 1 {
+			return list(German, "Dieses Programm benutzt die logische Verknuepfung", items), nil
+		}
+		return list(German, "Dieses Programm benutzt die logischen Verknuepfungen", items), nil
 	}
 	if len(items) == 1 {
 		return list(English, "This code uses the logical operation", items), nil

@@ -131,8 +131,9 @@ tut genau, was es sagt. Die Gläubigen waren es, die es falsch gelesen haben.
 keine je ausgewertet. Ein NOR, das niemand beobachten konnte, von allen NAND
 genannt, in einer Sprache von p-nand-q.com: Dieses Kapitel werde laut
 verlesen, wann immer jemand behauptet, Sorted! ganz zu verstehen. Der
-Dialekt Very Sorted! soll ein wahres NAND benennen; dieses NOR bleibt, wie
-es ist, für das Jahr 2000.
+Dialekt Very Sorted! benennt ein wahres NAND, "von nicht beiden, X und Y",
+und lässt Anweisungen darauf verweisen; dieses NOR bleibt, wie es ist, für
+das Jahr 2000 und auch in Very Sorted!.
 
 ## Caput VIII. De translatione reprobata
 

@@ -324,6 +324,8 @@ func (ps *parser) directUse(op *Operand) bool {
 				t = Write
 			case ps.very && (ps.kw("input") || ps.kw("eingabe")):
 				t = Read
+			case ps.very && (ps.seq("logical", "operation") || ps.seq("logische", "verknuepfung") || ps.seq("logischen", "verknuepfung")):
+				t = Nand
 			default:
 				ok = false
 			}
@@ -635,11 +637,33 @@ func (ps *parser) ratioDeclaration() bool {
 	return false
 }
 
-// --- logical operations (NAND, English only) ---
+// --- logical operations ---
 
+// nandSpec is one logical operation. The original's "of not X and not Y"
+// computes ~X & ~Y (NOR, LogicalNor), as it says. Very Sorted! (#26) adds
+// the NAND, "of not both X and Y" (LogicalNand), and German for both, "von
+// nicht beiden, X und Y" and "von nicht X und nicht Y".
 func (ps *parser) nandSpec() bool {
 	save := ps.p
 	cell := ps.code.slot(Nands)
+	if ps.very {
+		flags, ok := LogicalNand, false
+		switch {
+		case ps.seq("of", "not", "both"):
+			ok = ps.identifier(&cell.Ops[0]) && ps.kw("and") && ps.identifier(&cell.Ops[1])
+		case ps.seq("von", "nicht", "beiden", ","):
+			ok = ps.identifier(&cell.Ops[0]) && ps.kw("und") && ps.identifier(&cell.Ops[1])
+		case ps.seq("von", "nicht"):
+			ok = ps.identifier(&cell.Ops[0]) && ps.seq("und", "nicht") && ps.identifier(&cell.Ops[1])
+			flags = LogicalNor
+		}
+		if ok {
+			cell.Flags = flags
+			ps.accept(Nands)
+			return true
+		}
+		ps.p = save
+	}
 	if ps.kw("of") && ps.kw("not") {
 		if ps.identifier(&cell.Ops[0]) {
 			if ps.kw("and") && ps.kw("not") {
@@ -668,6 +692,15 @@ func (ps *parser) usesNands() bool {
 	save := ps.p
 	if ps.seq("this", "code", "uses", "the") {
 		if ps.singleNand() || ps.nandSequence() {
+			return true
+		}
+	}
+	ps.p = save
+	if ps.very && ps.seq("dieses", "programm", "benutzt", "die") {
+		if ps.seq("logische", "verknuepfung") && ps.nandSpec() {
+			return true
+		}
+		if ps.seq("logischen", "verknuepfungen") && ps.sequence(ps.nandSpec) {
 			return true
 		}
 	}

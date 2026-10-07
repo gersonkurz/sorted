@@ -76,6 +76,11 @@ const (
 
 	UnconditionalJump int32 = 0
 	ConditionalJump   int32 = 1
+
+	// Logical operations: the original's computes ~a & ~b, a NOR, as its
+	// sentence says ("of not a and not b"); Very Sorted! adds the NAND (#26).
+	LogicalNor  int32 = 0
+	LogicalNand int32 = 1
 )
 
 // Table locates a category's entries in Code (SLIDE_INFO).

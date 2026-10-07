@@ -101,6 +101,67 @@ func TestVerySorted(t *testing.T) {
 	}
 }
 
+// Very Sorted! names logical operations and has a real NAND (#26), "of not
+// both X and Y", with German for it and for the original's NOR.
+func TestVeryNand(t *testing.T) {
+	very := func(nands, impl string) string {
+		s := strings.Replace(minimal, "This code does not use any logical operations.", nands, 1)
+		s = strings.Replace(s, "This code implements the first output.", impl, 1)
+		return strings.Replace(s, "Cool.", "This code is very cool.", 1)
+	}
+	n0, n1 := Operand{Number, 0}, Operand{Number, 1}
+	for _, tt := range []struct {
+		name, nands string
+		want        []Slide
+	}{
+		{"english nand", "This code uses the logical operation of not both the first number and the second number.",
+			[]Slide{{Ops: [2]Operand{n0, n1}, Flags: LogicalNand}}},
+		{"english nor", "This code uses the logical operation of not the first number and not the second number.",
+			[]Slide{{Ops: [2]Operand{n0, n1}, Flags: LogicalNor}}},
+		{"english list", "This code uses the logical operations of not both the first number and the second number, of not the second number and not the first number, and of not both the second number and the second number.",
+			[]Slide{{Ops: [2]Operand{n0, n1}, Flags: LogicalNand}, {Ops: [2]Operand{n1, n0}, Flags: LogicalNor}, {Ops: [2]Operand{n1, n1}, Flags: LogicalNand}}},
+		{"german nand", "Dieses Programm benutzt die logische Verknüpfung von nicht beiden, der ersten Zahl und der zweiten Zahl.",
+			[]Slide{{Ops: [2]Operand{n0, n1}, Flags: LogicalNand}}},
+		{"german list", "Dieses Programm benutzt die logischen Verknüpfungen von nicht beiden, der ersten Zahl und der zweiten Zahl, von nicht der zweiten Zahl und nicht der ersten Zahl, und von nicht beiden, der ersten logischen Verknüpfung und der ersten Zahl.",
+			[]Slide{{Ops: [2]Operand{n0, n1}, Flags: LogicalNand}, {Ops: [2]Operand{n1, n0}, Flags: LogicalNor}, {Ops: [2]Operand{{Nand, 0}, n0}, Flags: LogicalNand}}},
+	} {
+		p, err := parse(very(tt.nands, "This code implements the first output."))
+		if err != nil {
+			t.Errorf("%s: %v", tt.name, err)
+			continue
+		}
+		if got := p.Entries(Nands); !slices.Equal(got, tt.want) {
+			t.Errorf("%s: %v, want %v", tt.name, got, tt.want)
+		}
+	}
+	// References, in both languages and cases.
+	nand := "This code uses the logical operation of not both the first number and the second number."
+	for _, ref := range []string{"the first logical operation", "die erste logische Verknüpfung", "der ersten logischen Verknuepfung"} {
+		p, err := parse(very(nand, "This code implements "+ref+"."))
+		if err != nil || p.Entries(Statements)[0].Ops[0] != (Operand{Nand, 0}) {
+			t.Errorf("%s: %v", ref, err)
+		}
+	}
+	// The original has neither the NAND nor a reference: its errors stand.
+	if _, err := parse(strings.Replace(very(nand, "This code implements the first output."), "This code is very cool.", "Cool.", 1)); err == nil || err.Error() != "ERROR, missing or invalid declaration of logical operations" {
+		t.Errorf("NAND in the original's Sorted!: %v", err)
+	}
+	nor := "This code uses the logical operation of not the first number and not the second number."
+	if _, err := parse(strings.Replace(very(nor, "This code implements the first logical operation."), "This code is very cool.", "Cool.", 1)); err == nil || err.Error() != "ERROR, missing or invalid declaration of implementation" {
+		t.Errorf("a logical operation reference in the original's Sorted!: %v", err)
+	}
+	// German declarations are very only, even with the original's English
+	// operation after them.
+	for _, decl := range []string{
+		"Dieses Programm benutzt die logische Verknuepfung von nicht der ersten Zahl und nicht der zweiten Zahl.",
+		"Dieses Programm benutzt die logische Verknuepfung of not the first number and not the second number.",
+	} {
+		if _, err := parse(strings.Replace(very(decl, "This code implements the first output."), "This code is very cool.", "Cool.", 1)); err == nil || err.Error() != "ERROR, missing or invalid declaration of logical operations" {
+			t.Errorf("%s in the original's Sorted!: %v", decl, err)
+		}
+	}
+}
+
 // germanVery is a Very Sorted! program in German, written in UTF-8 (#28).
 const germanVery = `Dieses Programm benutzt die Zahlen fünf, zwölf, dreißig, und fünfunddreißig.
 Dieses Programm geht nirgendwo hin.
