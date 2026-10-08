@@ -98,10 +98,24 @@ func TestFromCNand(t *testing.T) {
 	}
 }
 
+// --version prints the newest dialect's marker, and the build unless it is
+// exactly that dialect's release tag (#39).
 func TestVersion(t *testing.T) {
 	r := runCLI("--version")
-	if r.code != 0 || r.stdout != "sorted "+version+"\n" || r.stderr != "" {
+	if r.code != 0 || r.stdout != versionLine(version)+"\n" || r.stderr != "" {
 		t.Errorf("%+v", r)
+	}
+	for build, want := range map[string]string{
+		"very-cool":           "This code is very cool.",
+		"dev":                 "This code is very cool. (dev)",
+		"a105f41-dirty":       "This code is very cool. (a105f41-dirty)",
+		"very-cool-3-gabc123": "This code is very cool. (very-cool-3-gabc123)",
+		"very-cool-dirty":     "This code is very cool. (very-cool-dirty)",
+		"cool":                "This code is very cool. (cool)",
+	} {
+		if got := versionLine(build); got != want {
+			t.Errorf("%s: %q, want %q", build, got, want)
+		}
 	}
 }
 
@@ -390,7 +404,7 @@ func TestLanguageNames(t *testing.T) {
 	if r := runCLI("prog.s", "--deutsch"); r.code != 2 || !strings.Contains(r.stderr, "usage: sorted") {
 		t.Errorf("a name after the program: %+v", r)
 	}
-	if r := runCLI("--version", "--deutsch", "prog.s"); r.code != 0 || !strings.HasPrefix(r.stdout, "sorted ") {
+	if r := runCLI("--version", "--deutsch", "prog.s"); r.code != 0 || r.stdout != versionLine(version)+"\n" {
 		t.Errorf("a bool flag before a name: %+v", r)
 	}
 	if r := runCLI("--help"); !strings.Contains(r.stderr, "en: English, Englisch, anglais") || !strings.Contains(r.stderr, "zh (not yet): Mandarin") {

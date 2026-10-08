@@ -16,6 +16,9 @@ set windows-shell := ["cmd.exe", "/c"]
 bin := if os() == "windows" { "out\\build\\sorted.exe" } else { "out/build/sorted" }
 
 # Version baked into the binary. Only the branch for this OS is evaluated.
+# Release tags are the dialects (#39): cool, very-cool, very-very-cool, ...
+# --version prints the dialect's sentence, and this string too when it is
+# not exactly that tag.
 version := if os() == "windows" { `git describe --tags --always --dirty 2>nul || echo dev` } else { `git describe --tags --always --dirty 2>/dev/null || echo dev` }
 
 # Linker flags in a form that needs no quotes (see the Windows note above).

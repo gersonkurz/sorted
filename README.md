@@ -103,6 +103,19 @@ the port. The exit code is 0 on success, 1 if the program cannot be read or
 parsed or fails at run time, and 2 for a usage error. (The original always
 exited with 0.)
 
+There is no version 1.0. The versions are the dialects, and `--version`
+says which one this `sorted` reads, in its own words:
+
+```
+$ sorted --version
+This code is very cool.
+```
+
+A build that is not a release adds where it comes from, as in `This code is
+very cool. (a105f41-dirty)`. Releases are tagged the same way (`cool`,
+`very-cool`, `very-very-cool`, ...), and the first one will be
+`very-very-cool`: nothing is released before Very Very Sorted!.
+
 ## The language in brief
 
 A program is fourteen sentences, always in this order:

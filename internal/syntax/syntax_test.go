@@ -184,6 +184,23 @@ func TestVeryIndexedStore(t *testing.T) {
 	}
 }
 
+// Every dialect up to the newest ends with its marker, and the one after
+// the newest is not read yet (#39: --version claims Marker(Newest)).
+func TestMarkers(t *testing.T) {
+	for n := 0; n <= Newest; n++ {
+		p, err := parse(strings.Replace(minimal, "Cool.", Marker(n), 1))
+		if err != nil || p.Very != (n == 1) {
+			t.Errorf("%s: %v", Marker(n), err)
+		}
+	}
+	if _, err := parse(strings.Replace(minimal, "Cool.", Marker(Newest+1), 1)); err == nil {
+		t.Errorf("%s parses: raise Newest", Marker(Newest+1))
+	}
+	if Marker(2) != "This code is very very cool." || Tag(0) != "cool" || Tag(2) != "very-very-cool" {
+		t.Errorf("%q %q %q", Marker(2), Tag(0), Tag(2))
+	}
+}
+
 // germanVery is a Very Sorted! program in German, written in UTF-8 (#28).
 const germanVery = `Dieses Programm benutzt die Zahlen fünf, zwölf, dreißig, und fünfunddreißig.
 Dieses Programm geht nirgendwo hin.

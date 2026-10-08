@@ -39,8 +39,21 @@ import (
 	"github.com/gersonkurz/sorted/internal/syntax"
 )
 
-// version is set at build time via -ldflags "-X main.version=...".
+// version is set at build time via -ldflags "-X main.version=...": what git
+// describe says, or dev.
 var version = "dev"
+
+// versionLine is what --version prints (#39): the marker sentence of the
+// newest dialect this binary reads, the dialect being the version, and, for
+// a build that is not exactly on that dialect's release tag, the build in
+// parentheses: "This code is very cool. (a105f41-dirty)".
+func versionLine(build string) string {
+	line := syntax.Marker(syntax.Newest)
+	if build != syntax.Tag(syntax.Newest) {
+		line += " (" + build + ")"
+	}
+	return line
+}
 
 // pickLang chooses the language of a compiled program that nobody chose a
 // language for (defaultPick: either, at random). Tests replace it.
@@ -77,7 +90,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if *showVersion {
-		fmt.Fprintln(stdout, "sorted", version)
+		fmt.Fprintln(stdout, versionLine(version))
 		return 0
 	}
 	positional := 1 // the Sorted! program, unless compiling from C
