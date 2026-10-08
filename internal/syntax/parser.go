@@ -1,6 +1,10 @@
 package syntax
 
-import "github.com/gersonkurz/sorted/internal/numbers"
+import (
+	"strings"
+
+	"github.com/gersonkurz/sorted/internal/numbers"
+)
 
 // Error is a parse failure. Its text is the line the original prints.
 type Error struct {
@@ -17,24 +21,29 @@ func (e *Error) Error() string { return "ERROR, missing or invalid " + e.What }
 // A program that does not parse as the original's Sorted! may be Very
 // Sorted! (#25): the same fourteen sentences, ending with "This code is very
 // cool." instead, in which a statement can also be an input ("the first
-// input"), and which is read as UTF-8 (FilterVery, #28). Parse tries the
-// original grammar on the text as the original reads it (Filter) first, and
-// the very one only when that fails, so everything the original accepts
-// parses exactly as before, and when neither does, the original's error is
-// reported.
+// input"), and which is read as UTF-8 (FilterVery, #28). Or it may be Very
+// Very Sorted! (#30), ending with "This code is very very cool.", which
+// also speaks Italian (italian.go) and reads its text without accents
+// (FilterVeryVery). Parse tries the original grammar on the text as the
+// original reads it (Filter) first, and each newer one only when the older
+// ones fail, so everything the original accepts parses exactly as before,
+// and when none does, the original's error is reported.
 func Parse(raw []byte) (*Program, error) {
-	p, err := parseDialect(Filter(raw), false)
+	p, err := parseDialect(Filter(raw), 0)
 	if err == nil {
 		return p, nil
 	}
-	if v, verr := parseDialect(FilterVery(raw), true); verr == nil {
+	if v, verr := parseDialect(FilterVery(raw), 1); verr == nil {
+		return v, nil
+	}
+	if v, verr := parseDialect(FilterVeryVery(raw), 2); verr == nil {
 		return v, nil
 	}
 	return nil, err
 }
 
-func parseDialect(src string, very bool) (*Program, error) {
-	ps := &parser{s: src, code: &Program{Very: very}, very: very}
+func parseDialect(src string, verys int) (*Program, error) {
+	ps := &parser{s: src, code: &Program{Verys: verys}, verys: verys}
 	sentences := []struct {
 		parse func() bool
 		what  string
@@ -65,11 +74,17 @@ func parseDialect(src string, very bool) (*Program, error) {
 // parser holds the cursor (m_pszExpression) and the tables being built.
 // Saving and restoring p is pushExpression/popExpression.
 type parser struct {
-	s    string
-	p    int
-	code *Program
-	very bool // the Very Sorted! dialect (see Parse)
+	s     string
+	p     int
+	code  *Program
+	verys int // the dialect, counted in verys (see Parse)
 }
+
+// very reports whether the dialect is Very Sorted! or newer.
+func (ps *parser) very() bool { return ps.verys >= 1 }
+
+// italian reports whether the dialect speaks Italian (Very Very Sorted!).
+func (ps *parser) italian() bool { return ps.verys >= 2 }
 
 // at returns the byte under the cursor, NUL at the end.
 func (ps *parser) at() byte {
@@ -200,7 +215,7 @@ func (ps *parser) usesNoNumbers() bool {
 		return true
 	}
 	ps.p = save
-	return false
+	return ps.italian() && ps.itNone("usa numeri")
 }
 
 func (ps *parser) usesNumbers() bool {
@@ -211,7 +226,7 @@ func (ps *parser) usesNumbers() bool {
 		}
 	}
 	ps.p = save
-	return false
+	return ps.italian() && ps.itUses(ps.itNumber, "il numero", "i numeri")
 }
 
 // storeSingleNumber appends n to the data unless it is already there
@@ -272,7 +287,7 @@ func (ps *parser) numberDeclaration() bool {
 // --- identifiers ---
 
 func (ps *parser) identifier(op *Operand) bool {
-	return ps.indirectUse(op) || ps.directUse(op)
+	return ps.indirectUse(op) || ps.directUse(op) || ps.italian() && ps.itIdentifier(op)
 }
 
 func (ps *parser) indirectUse(op *Operand) bool {
@@ -322,9 +337,9 @@ func (ps *parser) directUse(op *Operand) bool {
 				t = Condition
 			case ps.kw("output") || ps.kw("ausgabe"):
 				t = Write
-			case ps.very && (ps.kw("input") || ps.kw("eingabe")):
+			case ps.very() && (ps.kw("input") || ps.kw("eingabe")):
 				t = Read
-			case ps.very && (ps.seq("logical", "operation") || ps.seq("logische", "verknuepfung") || ps.seq("logischen", "verknuepfung")):
+			case ps.very() && (ps.seq("logical", "operation") || ps.seq("logische", "verknuepfung") || ps.seq("logischen", "verknuepfung")):
 				t = Nand
 			default:
 				ok = false
@@ -356,6 +371,10 @@ func (ps *parser) sumSpec() bool {
 		}
 	}
 	ps.p = save
+	if ps.italian() && ps.itPair(cell) {
+		ps.accept(Sums)
+		return true
+	}
 	return false
 }
 
@@ -366,7 +385,7 @@ func (ps *parser) usesNoSums() bool {
 		return true
 	}
 	ps.p = save
-	return false
+	return ps.italian() && ps.itNone("usa somme")
 }
 
 func (ps *parser) usesSums() bool {
@@ -377,7 +396,7 @@ func (ps *parser) usesSums() bool {
 		}
 	}
 	ps.p = save
-	return false
+	return ps.italian() && ps.itUses(ps.sumSpec, "la somma", "le somme")
 }
 
 func (ps *parser) singleSum() bool {
@@ -411,15 +430,34 @@ func (ps *parser) sumDeclaration() bool {
 	return false
 }
 
-// cool is the last sentence. It ignores whatever follows. In Very Sorted!
-// the code is very cool.
+// cool is the last sentence, which names the dialect: the code is as cool
+// as it has verys ("This code is cool.", "Very cool.", "Ganz ganz
+// hervorragend."), and from Very Very Sorted! on, Italian ("Questo programma
+// è molto molto figo."). It ignores whatever follows.
 func (ps *parser) cool() bool {
-	if ps.very {
-		return ps.seq("this", "code", "is", "very", "cool", ".") || ps.seq("very", "cool", ".") ||
-			ps.seq("dieses", "programm", "ist", "ganz", "hervorragend", ".") || ps.seq("ganz", "hervorragend", ".")
+	for _, f := range []struct {
+		head, very, cool string
+		italian          bool
+	}{
+		{"this code is", "very", "cool", false},
+		{"", "very", "cool", false},
+		{"dieses programm ist", "ganz", "hervorragend", false},
+		{"", "ganz", "hervorragend", false},
+		{"questo programma e", "molto", "figo", true},
+		{"", "molto", "figo", true},
+	} {
+		if f.italian && !ps.italian() {
+			continue
+		}
+		words := strings.Fields(f.head)
+		for range ps.verys {
+			words = append(words, f.very)
+		}
+		if ps.seq(append(words, f.cool, ".")...) {
+			return true
+		}
 	}
-	return ps.seq("this", "code", "is", "cool", ".") || ps.seq("cool", ".") ||
-		ps.seq("dieses", "programm", "ist", "hervorragend", ".") || ps.seq("hervorragend", ".")
+	return false
 }
 
 // --- ordered differences ---
@@ -438,6 +476,10 @@ func (ps *parser) diffSpec() bool {
 		}
 	}
 	ps.p = save
+	if ps.italian() && ps.itBetween(cell) {
+		ps.accept(Diffs)
+		return true
+	}
 	return false
 }
 
@@ -448,7 +490,7 @@ func (ps *parser) usesNoDiffs() bool {
 		return true
 	}
 	ps.p = save
-	return false
+	return ps.italian() && ps.itNone("usa differenze ordinate")
 }
 
 func (ps *parser) usesDiffs() bool {
@@ -459,7 +501,7 @@ func (ps *parser) usesDiffs() bool {
 		}
 	}
 	ps.p = save
-	return false
+	return ps.italian() && ps.itUses(ps.diffSpec, "la differenza ordinata", "le differenze ordinate")
 }
 
 func (ps *parser) singleDiff() bool {
@@ -511,6 +553,10 @@ func (ps *parser) prodSpec() bool {
 		}
 	}
 	ps.p = save
+	if ps.italian() && ps.itPair(cell) {
+		ps.accept(Prods)
+		return true
+	}
 	return false
 }
 
@@ -521,7 +567,7 @@ func (ps *parser) usesNoProds() bool {
 		return true
 	}
 	ps.p = save
-	return false
+	return ps.italian() && ps.itNone("usa prodotti")
 }
 
 func (ps *parser) usesProds() bool {
@@ -532,7 +578,7 @@ func (ps *parser) usesProds() bool {
 		}
 	}
 	ps.p = save
-	return false
+	return ps.italian() && ps.itUses(ps.prodSpec, "il prodotto", "i prodotti")
 }
 
 func (ps *parser) singleProd() bool {
@@ -582,6 +628,10 @@ func (ps *parser) ratioSpec() bool {
 		}
 	}
 	ps.p = save
+	if ps.italian() && ps.itBetween(cell) {
+		ps.accept(Ratios)
+		return true
+	}
 	return false
 }
 
@@ -592,7 +642,7 @@ func (ps *parser) usesNoRatios() bool {
 		return true
 	}
 	ps.p = save
-	return false
+	return ps.italian() && ps.itNone("usa rapporti")
 }
 
 func (ps *parser) usesRatios() bool {
@@ -603,7 +653,7 @@ func (ps *parser) usesRatios() bool {
 		}
 	}
 	ps.p = save
-	return false
+	return ps.italian() && ps.itUses(ps.ratioSpec, "il rapporto", "i rapporti")
 }
 
 func (ps *parser) singleRatio() bool {
@@ -646,7 +696,7 @@ func (ps *parser) ratioDeclaration() bool {
 func (ps *parser) nandSpec() bool {
 	save := ps.p
 	cell := ps.code.slot(Nands)
-	if ps.very {
+	if ps.very() {
 		flags, ok := LogicalNand, false
 		switch {
 		case ps.seq("of", "not", "both"):
@@ -675,6 +725,10 @@ func (ps *parser) nandSpec() bool {
 		}
 	}
 	ps.p = save
+	if ps.italian() && ps.itNand(cell) {
+		ps.accept(Nands)
+		return true
+	}
 	return false
 }
 
@@ -685,7 +739,7 @@ func (ps *parser) usesNoNands() bool {
 		return true
 	}
 	ps.p = save
-	return false
+	return ps.italian() && (ps.itHead("e illogico", always) || ps.itNone("usa operazioni logiche"))
 }
 
 func (ps *parser) usesNands() bool {
@@ -696,7 +750,7 @@ func (ps *parser) usesNands() bool {
 		}
 	}
 	ps.p = save
-	if ps.very && ps.seq("dieses", "programm", "benutzt", "die") {
+	if ps.very() && ps.seq("dieses", "programm", "benutzt", "die") {
 		if ps.seq("logische", "verknuepfung") && ps.nandSpec() {
 			return true
 		}
@@ -705,7 +759,7 @@ func (ps *parser) usesNands() bool {
 		}
 	}
 	ps.p = save
-	return false
+	return ps.italian() && ps.itUses(ps.nandSpec, "l operazione logica", "le operazioni logiche")
 }
 
 func (ps *parser) singleNand() bool {
@@ -748,7 +802,7 @@ func (ps *parser) usesNoLabels() bool {
 		return true
 	}
 	ps.p = save
-	return false
+	return ps.italian() && ps.itNone("usa etichette")
 }
 
 func (ps *parser) usesLabels() bool {
@@ -766,7 +820,7 @@ func (ps *parser) usesLabels() bool {
 		}
 	}
 	ps.p = save
-	return false
+	return ps.italian() && ps.itLabels()
 }
 
 func (ps *parser) labelDeclaration() bool {
@@ -785,9 +839,7 @@ func (ps *parser) assignSpec() bool {
 	if ps.identifier(&cell.Ops[0]) {
 		if ps.kw("to") || ps.kw("an") {
 			if ps.identifier(&cell.Ops[1]) {
-				// Very Sorted! also stores into the cell any value
-				// indexes (#27); the original only into a cell.
-				if t := cell.Ops[1].Type; t&0xFF == Number || ps.very && t&Indirect != 0 {
+				if ps.assignable(cell.Ops[1]) {
 					ps.accept(Assigns)
 					return true
 				}
@@ -795,7 +847,20 @@ func (ps *parser) assignSpec() bool {
 		}
 	}
 	ps.p = save
+	// Italian: "il primo numero al secondo numero"
+	if ps.italian() && ps.identifier(&cell.Ops[0]) && ps.itIdentifier(&cell.Ops[1]) && ps.assignable(cell.Ops[1]) {
+		ps.accept(Assigns)
+		return true
+	}
+	ps.p = save
 	return false
+}
+
+// assignable reports whether an assignment may store into op: a number
+// (cell), direct or indirect, and in Very Sorted! the cell any value
+// indexes (#27).
+func (ps *parser) assignable(op Operand) bool {
+	return op.Type&0xFF == Number || ps.very() && op.Type&Indirect != 0
 }
 
 func (ps *parser) usesNoAssigns() bool {
@@ -805,7 +870,7 @@ func (ps *parser) usesNoAssigns() bool {
 		return true
 	}
 	ps.p = save
-	return false
+	return ps.italian() && ps.itNone("usa assegnamenti")
 }
 
 func (ps *parser) usesAssigns() bool {
@@ -816,7 +881,7 @@ func (ps *parser) usesAssigns() bool {
 		}
 	}
 	ps.p = save
-	return false
+	return ps.italian() && ps.itStatements("assegna", ps.singleAssign, ps.assignSpec)
 }
 
 // singleAssign accepts one assignment only if the period follows directly;
@@ -856,6 +921,10 @@ func (ps *parser) outputSpec() bool {
 	save := ps.p
 	cell := ps.code.slot(Writes)
 	if ps.identifier(&cell.Ops[0]) {
+		if ps.italian() && ps.veryVeryFormat(cell) {
+			ps.accept(Writes)
+			return true
+		}
 		if (ps.kw("as") && ps.kw("a")) || ps.kw("als") {
 			switch {
 			case ps.kw("character") || (ps.kw("ein") && ps.kw("zeichen")):
@@ -893,7 +962,7 @@ func (ps *parser) usesNoOutput() bool {
 		return true
 	}
 	ps.p = save
-	return false
+	return ps.italian() && (ps.itNone("puo scrivere") || ps.itNone("produce uscite"))
 }
 
 func (ps *parser) usesOutput() bool {
@@ -904,7 +973,7 @@ func (ps *parser) usesOutput() bool {
 		}
 	}
 	ps.p = save
-	return false
+	return ps.italian() && ps.itStatements("scrive", ps.singleOutput, ps.outputSpec)
 }
 
 // singleOutput, unlike singleAssign, does not check for the period: it
@@ -935,6 +1004,10 @@ func (ps *parser) inputSpec() bool {
 	save := ps.p
 	cell := ps.code.slot(Reads)
 	if ps.identifier(&cell.Ops[0]) {
+		if ps.italian() && ps.itCharacter(cell) {
+			ps.accept(Reads)
+			return true
+		}
 		if (ps.kw("as") && ps.kw("a")) || ps.kw("als") {
 			if ps.kw("character") || (ps.kw("ein") && ps.kw("zeichen")) {
 				cell.Flags = FormatCharacter
@@ -959,7 +1032,7 @@ func (ps *parser) usesNoInput() bool {
 		return true
 	}
 	ps.p = save
-	return false
+	return ps.italian() && (ps.itNone("puo leggere") || ps.itNone("riceve ingressi"))
 }
 
 func (ps *parser) usesInput() bool {
@@ -970,7 +1043,7 @@ func (ps *parser) usesInput() bool {
 		}
 	}
 	ps.p = save
-	return false
+	return ps.italian() && ps.itStatements("legge", ps.singleInput, ps.inputSpec)
 }
 
 // singleInput has no period check either: one input per program.
@@ -1023,6 +1096,10 @@ func (ps *parser) conditionSpec() bool {
 		}
 	}
 	ps.p = save
+	if ps.italian() && ps.itCondition(cell) {
+		ps.accept(Conditions)
+		return true
+	}
 	return false
 }
 
@@ -1033,7 +1110,7 @@ func (ps *parser) usesNoConditions() bool {
 		return true
 	}
 	ps.p = save
-	return false
+	return ps.italian() && ps.itNone("usa condizioni")
 }
 
 func (ps *parser) usesConditions() bool {
@@ -1044,7 +1121,7 @@ func (ps *parser) usesConditions() bool {
 		}
 	}
 	ps.p = save
-	return false
+	return ps.italian() && ps.itStatements("usa", ps.singleCondition, ps.conditionSpec)
 }
 
 func (ps *parser) singleCondition() bool {
@@ -1107,7 +1184,7 @@ func (ps *parser) implementationDeclaration() bool {
 		}
 	}
 	ps.p = save
-	return false
+	return ps.italian() && ps.itStatements("implementa", ps.singleStatement, ps.statementSpec) && ps.kw(".")
 }
 
 // --- jumps ---
@@ -1143,6 +1220,10 @@ func (ps *parser) jumpSpec() bool {
 		}
 	}
 	ps.p = save
+	if ps.italian() && ps.itJump(cell) {
+		ps.accept(Jumps)
+		return true
+	}
 	return false
 }
 
@@ -1153,7 +1234,7 @@ func (ps *parser) usesNoJumps() bool {
 		return true
 	}
 	ps.p = save
-	return false
+	return ps.italian() && ps.itNone("va mai da nessuna parte")
 }
 
 func (ps *parser) usesJumps() bool {
@@ -1164,7 +1245,7 @@ func (ps *parser) usesJumps() bool {
 		}
 	}
 	ps.p = save
-	return false
+	return ps.italian() && ps.itStatements("", ps.singleJump, ps.jumpSpec)
 }
 
 func (ps *parser) singleJump() bool {

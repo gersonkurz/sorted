@@ -82,12 +82,14 @@ check: lint test cross
 cross $SORTED_CROSS="1":
     go test -count 1 -run TestCrossCompile ./cmd/sorted
 
-# Regenerate the Sorted! versions (English and German) of the C examples
+# Regenerate the Sorted! versions (English, German, Italian) of the C examples
 examples:
     go run ./cmd/sorted --from-c {{ex}}99-bottles.c --lang en > {{ex}}99-bottles.s
     go run ./cmd/sorted --from-c {{ex}}99-bottles.c --lang de > {{ex}}99-bottles.de.s
+    go run ./cmd/sorted --from-c {{ex}}99-bottles.c --lang it > {{ex}}99-bottles.it.s
     go run ./cmd/sorted --from-c {{ex}}brainfuck.c --lang en > {{ex}}brainfuck.s
     go run ./cmd/sorted --from-c {{ex}}brainfuck.c --lang de > {{ex}}brainfuck.de.s
+    go run ./cmd/sorted --from-c {{ex}}brainfuck.c --lang it > {{ex}}brainfuck.it.s
 
 # Run tests with coverage; writes out/coverage.out and out/coverage.html
 coverage: _out-dir

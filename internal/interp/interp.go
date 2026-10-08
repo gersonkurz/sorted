@@ -194,7 +194,7 @@ func b2i(b bool) int32 {
 // pointer returns the cell an assignment or read stores into
 // (GetDataPointer): a number directly, an indirect number at Data[Data[i]].
 func (m *machine) pointer(op syntax.Operand) (int32, error) {
-	if m.p.Very && op.Type&syntax.Indirect != 0 && op.Type&0xFF != syntax.Number {
+	if m.p.Verys > 0 && op.Type&syntax.Indirect != 0 && op.Type&0xFF != syntax.Number {
 		// Very Sorted! (#27): the cell any value indexes, the write's
 		// Data[v] (a read takes Data[v-1], as for a cell).
 		i, err := m.value(syntax.Operand{Type: op.Type &^ syntax.Indirect, Index: op.Index})
@@ -268,7 +268,7 @@ func (m *machine) run(maxSteps int) error {
 			// never fills (sic): the first cell. Very Sorted! stores into the
 			// cell the input declares.
 			target := r.Ops[1]
-			if m.p.Very {
+			if m.p.Verys > 0 {
 				target = r.Ops[0]
 			}
 			i, err := m.pointer(target)
@@ -316,6 +316,8 @@ func (m *machine) run(maxSteps int) error {
 
 // write prints v in the given format: a character (putchar), or a cardinal or
 // ordinal followed by a newline. Very Sorted! spells German numbers in UTF-8.
+// Italian numbers (Very Very Sorted!) are always UTF-8, and any number has
+// one ("meno sette", "zeresimo").
 func (m *machine) write(format int32, v int32) error {
 	var s string
 	var err error
@@ -328,13 +330,17 @@ func (m *machine) write(format int32, v int32) error {
 		s, err = numbers.GermanCardinal(v)
 	case syntax.FormatGermanOrdinal:
 		s, err = numbers.GermanOrdinal(v)
+	case syntax.FormatItalianCardinal:
+		s = numbers.ItalianCardinal(v)
+	case syntax.FormatItalianOrdinal:
+		s = numbers.ItalianOrdinal(v, false)
 	default:
 		return m.out.WriteByte(byte(v))
 	}
 	if err != nil {
 		return fail("cannot write a negative number as a cardinal")
 	}
-	if m.p.Very && (format == syntax.FormatGermanCardinal || format == syntax.FormatGermanOrdinal) {
+	if m.p.Verys > 0 && (format == syntax.FormatGermanCardinal || format == syntax.FormatGermanOrdinal) {
 		s = numbers.VerySpelling(s) // UTF-8 (#28)
 	}
 	_, err = m.out.WriteString(s + "\n")

@@ -169,6 +169,23 @@ sagt. Very Sorted! definiert "diejenige Zelle die indiziert wird durch die
 erste Summe" so, wie die Lehre von Caput II es für jede Zelle lehrt: Sie
 liest die Zelle vor jener, die sie schreibt.
 
+## Caput X. De lingua tertia
+
+*Von der dritten Zunge*
+
+Die Sprache zählt ihre Zeitalter in verys, und im zweiten, Very Very
+Sorted!, lernte sie eine dritte Zunge. Das Italienische wurde geboren,
+nachdem der Interpreter gesprochen hatte, und so erbte es keine seiner
+Eigenschaften: Es hat für jeden Satz eine Form, jede seiner Formen lässt
+sich lesen, wie sie geschrieben steht, und seine Zahlen kennen die Null
+("zeresimo") und das Negative ("meno sette"). Niemand halte dies für eine
+Berichtigung der älteren Zungen. "einstausend" bleibt tausend, "als ein ein
+ein ein deutscher Kardinal" bleibt die Art, nach einer Kardinalzahl zu
+fragen, und ein Programm des Jahres 2000, das auf Italienisch anders sänge,
+wird gar nicht erst übersetzt. Die Geordneten irren nicht: weder die alten,
+die ihre Wege behalten, noch die neue, die nie abwich. **Questo programma è
+molto molto figo.**
+
 ---
 
 *Datum ad p-nand-q.com, anno linguae MM, confirmatum anno MMXXVI.*

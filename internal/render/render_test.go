@@ -37,9 +37,12 @@ func parse(t *testing.T, src []byte) *syntax.Program {
 // Each sample, rendered in each language, parses back into the same tables
 // (including their layout in Code, so even references past a table behave
 // alike), and prints what Sorted.exe printed (testdata/golden/<sample>.out).
+//
+// In Italian, each becomes a Very Very Sorted! program (#30) with the same
+// tables.
 func TestSamplesRoundTrip(t *testing.T) {
 	for _, name := range samples {
-		for _, lang := range []Lang{English, German} {
+		for _, lang := range []Lang{English, German, Italian} {
 			t.Run(fmt.Sprintf("%s/%d", name, lang), func(t *testing.T) {
 				p := parse(t, readFile(t, "legacy", "sorted.win32", name+".s"))
 				text, err := Render(p, lang)
@@ -47,6 +50,7 @@ func TestSamplesRoundTrip(t *testing.T) {
 					t.Fatal(err)
 				}
 				q := parse(t, []byte(text))
+				p.Verys = lang.Verys()
 				if p.TypeCount != q.TypeCount || p.Tables != q.Tables || !Equal(p, q) {
 					t.Errorf("tables differ:\n%s", text)
 				}
@@ -67,13 +71,22 @@ func TestSamplesRoundTrip(t *testing.T) {
 // all types, both languages, every grammatical case, indices 1 to 2000
 // (some German "-n" endings do not parse, "zwanzigsten" for one, so this
 // covers both forms).
+//
+// Italian (#30): every preposition its article fuses with.
 func TestReferencesRoundTrip(t *testing.T) {
 	r := &renderer{}
-	for _, lang := range []Lang{English, German} {
+	for _, lang := range []Lang{English, German, Italian} {
+		cases := []gcase{nominative, accusative, dative}
+		if lang == Italian {
+			cases = []gcase{nominative, itDi, itA, itDa}
+		}
 		for typ := range nouns {
 			for _, indirect := range []syntax.OperandType{0, syntax.Indirect} {
-				for _, c := range []gcase{nominative, accusative, dative} {
+				for _, c := range cases {
 					for i := int32(0); i < 2000; i++ {
+						if lang == Italian && i >= 300 && i%97 != 0 { // numbers tests its ordinals
+							continue
+						}
 						op := syntax.Operand{Type: typ | indirect, Index: i}
 						s, err := r.ref(lang, op, c)
 						if err != nil {
@@ -91,17 +104,16 @@ func TestReferencesRoundTrip(t *testing.T) {
 }
 
 // parseRef parses a reference through a minimal program: the reference is
-// the only statement.
+// the only statement, in the oldest dialect that reads it (inputs and logical
+// operations need Very Sorted!, Italian Very Very Sorted!).
 func parseRef(s string) (syntax.Operand, bool) {
 	src := strings.Replace(skeleton, "STATEMENT", strings.TrimSuffix(s, " x"), 1)
-	if strings.Contains(s, "input") || strings.Contains(s, "Eingabe") || strings.Contains(s, "logical") || strings.Contains(s, "logische") { // Very Sorted! only
-		src = strings.Replace(src, "Cool.", "This code is very cool.", 1)
+	for n := 0; n <= syntax.Newest; n++ {
+		if p, err := syntax.Parse([]byte(strings.Replace(src, "Cool.", syntax.Marker(n), 1))); err == nil {
+			return p.Entries(syntax.Statements)[0].Ops[0], true
+		}
 	}
-	p, err := syntax.Parse([]byte(src))
-	if err != nil {
-		return syntax.Operand{}, false
-	}
-	return p.Entries(syntax.Statements)[0].Ops[0], true
+	return syntax.Operand{}, false
 }
 
 const skeleton = `This code does not use any numbers.
@@ -122,7 +134,7 @@ Cool.`
 // Numbers from zero to 999999999 are declarable in both languages.
 func TestNumbersRoundTrip(t *testing.T) {
 	values := []int32{0, 1, 2, 15, 99, 100, 101, 999, 1000, 1001, 65536, 999999, 1000000, 41281927, 123456789, 999999999}
-	for _, lang := range []Lang{English, German} {
+	for _, lang := range []Lang{English, German, Italian} {
 		p := parse(t, []byte(strings.Replace(skeleton, "STATEMENT", "the first number", 1)))
 		p.Data = values // the data does not affect the layout
 		if _, err := Render(p, lang); err != nil {
@@ -312,7 +324,7 @@ func TestVery(t *testing.T) {
 	}
 	// Not very, the same tables cannot be written: the original has no
 	// input references.
-	p.Very = false
+	p.Verys = 0
 	if _, err := Render(p, English); err == nil {
 		t.Error("an input reference rendered outside Very Sorted!")
 	}
@@ -371,7 +383,7 @@ func TestVeryNand(t *testing.T) {
 		}
 	}
 	// Not very, a NAND cannot be written, nor a reference.
-	p.Very = false
+	p.Verys = 0
 	if _, err := Render(p, English); err == nil || !strings.Contains(err.Error(), "only Very Sorted! NAND") {
 		t.Errorf("a NAND rendered outside Very Sorted!: %v", err)
 	}
@@ -404,7 +416,7 @@ func TestVeryIndexedStore(t *testing.T) {
 			t.Errorf("lang %d: no %q in\n%s", lang, want, text)
 		}
 	}
-	p.Very = false
+	p.Verys = 0
 	if _, err := Render(p, English); err == nil || !strings.Contains(err.Error(), "does not store into a cell") {
 		t.Errorf("an indexed store outside Very Sorted!: %v", err)
 	}
@@ -418,7 +430,7 @@ func TestEqualDialect(t *testing.T) {
 		t.Fatal(err)
 	}
 	q := *p
-	q.Very = true
+	q.Verys = 1
 	if Equal(p, &q) || SameEntries(p, &q) {
 		t.Error("a Very Sorted! program equals its original's twin")
 	}
@@ -459,6 +471,9 @@ func TestLogicalOperationList(t *testing.T) {
 // Every output format can be written in both languages, in the only
 // phrasings the parser accepts ("as a english english ordinal", "als ein ein
 // ein ein deutscher Kardinal", ...), and prints the same.
+//
+// Very Very Sorted! (#30) has them in Italian too, and the Italian numbers in
+// all three languages; an older program in Italian becomes one.
 func TestOutputFormats(t *testing.T) {
 	want := map[int32]string{
 		syntax.FormatCharacter:       "\x15",
@@ -466,13 +481,26 @@ func TestOutputFormats(t *testing.T) {
 		syntax.FormatEnglishOrdinal:  "twentyfirst\n",
 		syntax.FormatGermanCardinal:  "einundzwanzig\n",
 		syntax.FormatGermanOrdinal:   "einundzwanzigste\n",
+		syntax.FormatItalianCardinal: "ventuno\n",
+		syntax.FormatItalianOrdinal:  "ventunesimo\n",
 	}
 	for format, output := range want {
-		for _, lang := range []Lang{English, German} {
+		for _, lang := range []Lang{English, German, Italian} {
 			p := parse(t, []byte(strings.Replace(strings.Replace(strings.Replace(skeleton, "STATEMENT", "the first output", 1),
 				"This code does not use any numbers.", "This code uses the number twentyone.", 1),
 				"This code cannot write.", "This code writes the first number as a character.", 1)))
 			p.Code[p.Tables[syntax.Writes].Index].Flags = format // flags do not affect the layout
+			if format >= syntax.FormatItalianCardinal {
+				if _, err := Render(p, lang); lang != Italian && err == nil {
+					t.Errorf("format %d, lang %d: rendered outside Very Very Sorted!", format, lang)
+				}
+				p.Verys = 2
+			} else if lang == Italian && (format == syntax.FormatGermanCardinal || format == syntax.FormatGermanOrdinal) {
+				if _, err := Render(p, lang); err == nil || !strings.Contains(err.Error(), "UTF-8") {
+					t.Errorf("format %d in Italian: %v", format, err)
+				}
+				p.Verys = 2
+			}
 			text, err := Render(p, lang)
 			if err != nil {
 				t.Fatalf("format %d, lang %d: %v", format, lang, err)
@@ -508,5 +536,121 @@ func TestLayoutIsPreserved(t *testing.T) {
 	var e *Error
 	if _, err := Render(p, English); !errors.As(err, &e) {
 		t.Errorf("err %v, want a refusal", err)
+	}
+}
+
+// Italian (#30): the articles fuse with their prepositions and elide before
+// a vowel, simple lists have no comma before "e" and lists of pairs do, and
+// a program in Italian is Very Very Sorted!.
+func TestItalian(t *testing.T) {
+	src := `This code uses the numbers seven, eight, nine, and ten.
+This code always goes to the first label, and sometimes goes to the second label if the eleventh condition is true.
+This code writes the first sum as an italian ordinal.
+This code reads the first number as a character.
+This code uses the sums of the first number and the second number, and of the eight number and the cell indexed by the first number.
+This code uses the condition that the first number is equal to the eight number, and the condition that the first number is less than the first ratio.
+This code uses one label.
+This code uses the ordered difference between the eleventh number and the second number.
+This code assigns the first sum to the third number, the first input to the eight number, and the first product to the cell indexed by the first sum.
+This code uses the products of the first number and the second number, and of the first sum and the first ordered difference.
+This code implements the first assignment, the first label, the first jump, the second assignment, the first input, the first output, and the eleventh label.
+This code uses the ratios of the first number to the second number, and of the second number to the first number.
+This code uses the logical operations of not the first number and not the eight number, and of not both the first logical operation and the second number.
+This code is very very cool.`
+	p := parse(t, []byte(src))
+	text, err := Render(p, Italian)
+	if err != nil {
+		t.Fatal(err)
+	}
+	flat := strings.Join(strings.Fields(text), " ")
+	for _, want := range []string{
+		"Questo programma usa i numeri sette, otto, nove e dieci.",
+		"va sempre alla prima etichetta e va talvolta alla seconda etichetta se l'undicesima condizione è vera.",
+		"Questo programma scrive la prima somma come ordinale italiano.",
+		"Questo programma legge il primo numero come carattere.",
+		"le somme del primo numero e del secondo numero, e dell'ottavo numero e della cella indicizzata dal primo numero.",
+		"la condizione che il primo numero sia uguale all'ottavo numero e la condizione che il primo numero sia minore del primo rapporto.",
+		"Questo programma usa un'etichetta.",
+		"Questo programma usa la differenza ordinata tra l'undicesimo numero e il secondo numero.",
+		"Questo programma assegna la prima somma al terzo numero, il primo ingresso all'ottavo numero e il primo prodotto alla cella indicizzata dalla prima somma.",
+		"i prodotti del primo numero e del secondo numero, e della prima somma e della prima differenza ordinata.",
+		"implementa il primo assegnamento, la prima etichetta, il primo salto, il secondo assegnamento, il primo ingresso, la prima uscita e l'undicesima etichetta.",
+		"i rapporti tra il primo numero e il secondo numero, e tra il secondo numero e il primo numero.",
+		"le operazioni logiche né il primo numero né l'ottavo numero, e non entrambi la prima operazione logica e il secondo numero.",
+		"Questo programma è molto molto figo.",
+	} {
+		if !strings.Contains(flat, want) {
+			t.Errorf("no %q in\n%s", want, text)
+		}
+	}
+	if q := parse(t, []byte(text)); !Equal(p, q) {
+		t.Errorf("tables differ:\n%s", text)
+	}
+	// The other languages say Very Very Sorted! too.
+	for lang, want := range map[Lang][]string{
+		English: {"as an italian ordinal", "This code is very very cool."},
+		German:  {"als eine italienische Ordinalzahl", "Dieses Programm ist ganz ganz hervorragend."},
+	} {
+		text, err := Render(p, lang)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, w := range want {
+			if !strings.Contains(text, w) {
+				t.Errorf("lang %d: no %q in\n%s", lang, w, text)
+			}
+		}
+	}
+	// None of anything, in Italian.
+	none := parse(t, []byte(strings.Replace(skeleton, "STATEMENT", "the first number", 1)))
+	text, err = Render(none, Italian)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"non usa numeri.", "non va mai da nessuna parte.", "non può scrivere.", "non può leggere.", "non usa somme.",
+		"non usa condizioni.", "non usa etichette.", "non usa differenze ordinate.", "non usa assegnamenti.", "non usa prodotti.",
+		"implementa il primo numero.", "non usa rapporti.", "è illogico.", "è molto molto figo."} {
+		if !strings.Contains(text, "Questo programma "+want) {
+			t.Errorf("no %q in\n%s", want, text)
+		}
+	}
+}
+
+// A program of the original's Sorted! becomes Very Very Sorted! in Italian,
+// unless that changes what it does: German numbers would print in UTF-8,
+// and a statement past its table might store or read elsewhere. A Very
+// Sorted! one always can.
+func TestItalianDialect(t *testing.T) {
+	base := func() *syntax.Program {
+		return parse(t, []byte(strings.Replace(strings.Replace(skeleton, "STATEMENT", "the first output", 1), "This code cannot write.", "This code writes the first number as a character.", 1)))
+	}
+	if _, err := Render(base(), Italian); err != nil {
+		t.Fatal(err)
+	}
+	for name, change := range map[string]func(*syntax.Program){
+		"German numbers": func(p *syntax.Program) { p.Code[p.Tables[syntax.Writes].Index].Flags = syntax.FormatGermanOrdinal },
+		"assignment past its table": func(p *syntax.Program) {
+			p.Code[p.Tables[syntax.Statements].Index].Ops[0] = syntax.Operand{Type: syntax.Assign}
+		},
+		"jump past its table": func(p *syntax.Program) {
+			p.Code[p.Tables[syntax.Statements].Index].Ops[0] = syntax.Operand{Type: syntax.Jump, Index: 3}
+		},
+	} {
+		p := base()
+		change(p)
+		var e *Error
+		if _, err := Render(p, Italian); !errors.As(err, &e) {
+			t.Errorf("%s: %v", name, err)
+		}
+		if _, _, err := Compose(p, Italian); !errors.As(err, &e) {
+			t.Errorf("%s: Compose: %v", name, err)
+		}
+		p.Verys = 1
+		if _, err := Render(p, English); err != nil && name == "German numbers" {
+			t.Errorf("%s in Very Sorted!: %v", name, err)
+		}
+		if _, err := Render(p, Italian); err != nil && name == "German numbers" {
+			t.Errorf("%s from Very Sorted!: %v", name, err)
+		}
 	}
 }

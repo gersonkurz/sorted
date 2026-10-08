@@ -37,6 +37,7 @@ type exact struct {
 	funcs   map[fnKey]bool // expression functions needed
 	queue   []fnKey
 	words   bool // a write prints a cardinal or an ordinal
+	italian bool // ... in Italian
 	input   bool // a read can run
 	dynamic bool // a jump target is not a label, so pc can be anything
 }
@@ -122,7 +123,7 @@ func (x *exact) expression(k fnKey) string {
 // pointer renders the code that sets p_ to the cell a store goes to
 // (GetDataPointer), or a runtime error.
 func (x *exact) pointer(o syntax.Operand) string {
-	if x.p.Very && o.Type&syntax.Indirect != 0 && o.Type&0xFF != syntax.Number {
+	if x.p.Verys > 0 && o.Type&syntax.Indirect != 0 && o.Type&0xFF != syntax.Number {
 		// Very Sorted! stores into the cell any value indexes (see interp)
 		return fmt.Sprintf("p_ = %s; N(p_); ", x.operand(syntax.Operand{Type: o.Type &^ syntax.Indirect, Index: o.Index}))
 	}
@@ -166,7 +167,7 @@ func (x *exact) statement(i int) string {
 	case syntax.Read:
 		x.input = true
 		target := e.Ops[1] // sic, as the original (see interp)
-		if x.p.Very {
+		if x.p.Verys > 0 {
 			target = e.Ops[0]
 		}
 		return x.pointer(target) + "fflush(stdout); _[p_] = g_();"
@@ -176,6 +177,9 @@ func (x *exact) statement(i int) string {
 		case syntax.FormatEnglishCardinal, syntax.FormatEnglishOrdinal, syntax.FormatGermanCardinal, syntax.FormatGermanOrdinal:
 			x.words = true
 			return fmt.Sprintf("w_(%d, %s);", e.Flags, v)
+		case syntax.FormatItalianCardinal, syntax.FormatItalianOrdinal:
+			x.words, x.italian = true, true
+			return fmt.Sprintf("wi_(%d, %s);", e.Flags, v)
 		}
 		return fmt.Sprintf("putchar((unsigned char)%s);", v)
 	}
@@ -236,7 +240,10 @@ func (x *exact) render() string {
 	}
 	b.WriteString(exactRuntime)
 	if x.words {
-		b.WriteString(words(x.p.Very))
+		b.WriteString(words(x.p.Verys > 0))
+	}
+	if x.italian {
+		b.WriteString(exactItalian)
 	}
 	if x.input {
 		b.WriteString(exactInput)
@@ -369,6 +376,62 @@ const exactSpelling = `static void spell_(char *b) {
 	int i;
 	for (i = 0; i < 3; i++)
 		for (p = b; (p = strstr(p, from[i])) != 0; p += strlen(to[i])) memcpy(p, to[i], strlen(to[i]));
+}
+`
+
+// exactItalian is the Italian number formatting of internal/numbers (Very
+// Very Sorted!, #30), after exactWords (it uses ends_): any number has its
+// words, in UTF-8.
+const exactItalian = `static const char *const itU[20] = {"", "uno", "due", "tre", "quattro", "cinque", "sei", "sette", "otto", "nove", "dieci", "undici", "dodici", "tredici", "quattordici", "quindici", "sedici", "diciassette", "diciotto", "diciannove"};
+static const char *const itD[10] = {"", "", "venti", "trenta", "quaranta", "cinquanta", "sessanta", "settanta", "ottanta", "novanta"};
+static const char *const itO[11] = {"", "primo", "secondo", "terzo", "quarto", "quinto", "sesto", "settimo", "ottavo", "nono", "decimo"};
+static void it3_(char *b, U n) {
+	U h = n / 100, r = n % 100;
+	if (h > 1) strcat(b, itU[h]);
+	if (h > 0) strcat(b, r / 10 == 8 ? "cent" : "cento");
+	if (r < 20) { strcat(b, itU[r]); return; }
+	strcat(b, itD[r / 10]);
+	if (r % 10 == 1 || r % 10 == 8) b[strlen(b) - 1] = 0;
+	strcat(b, itU[r % 10]);
+}
+static void itg_(char *b, U n, const char *one, const char *more) {
+	if (n == 1) strcat(b, one);
+	else { it3_(b, n); strcat(b, more); }
+}
+static void itc_(char *b, U n) {
+	if (n == 0) { strcat(b, "zero"); return; }
+	if (n >= 1000000000) { itg_(b, n / 1000000000, "unmiliardo", "miliardi"); n %= 1000000000; }
+	if (n >= 1000000) { itg_(b, n / 1000000, "unmilione", "milioni"); n %= 1000000; }
+	if (n >= 1000) { itg_(b, n / 1000, "mille", "mila"); n %= 1000; }
+	if (n > 0) it3_(b, n);
+}
+static void wi_(I format, I v) {
+	char b[512];
+	char *w;
+	size_t n;
+	U m = v < 0 ? 0u - (U)v : (U)v;
+	strcpy(b, v < 0 ? "meno " : "");
+	w = b + strlen(b);
+	if (format == 5) {
+		itc_(w, m);
+		n = strlen(w);
+		if (n > 3 && ends_(w, "tre")) strcpy(w + n - 1, "\303\251");
+	} else if (m == 0) strcpy(w, "zeresimo");
+	else if (m <= 10) strcpy(w, itO[m]);
+	else if (m == 1000000) strcpy(w, "milionesimo");
+	else if (m == 1000000000) strcpy(w, "miliardesimo");
+	else {
+		itc_(w, m);
+		n = strlen(w);
+		if (ends_(w, "tre") || ends_(w, "sei")) {}
+		else if (ends_(w, "mila")) strcpy(w + n - 4, "mill");
+		else if (ends_(w, "centouno")) strcpy(w + n - 4, "un");
+		else if (ends_(w, "centootto")) strcpy(w + n - 5, "ott");
+		else w[n - 1] = 0;
+		strcat(w, "esimo");
+	}
+	fputs(b, stdout);
+	putchar('\n');
 }
 `
 

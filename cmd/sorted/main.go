@@ -10,7 +10,7 @@
 // (--from-c with --to-c) turns a C program into an equivalent, thoroughly
 // obfuscated one. --lang NAME, or just --NAME, prints the program in that
 // language instead of running it, and NAME may name it in any language
-// Sorted! speaks (--english, --deutsch, --lang anglais, --英語; see
+// Sorted! speaks (--english, --deutsch, --italiano, --lang anglais, --英語; see
 // langs.go). --from-c compiles a C program into Sorted! and prints it;
 // Sorted! does not prefer any language, so unless one is asked for, each
 // run picks one at random.
@@ -56,14 +56,18 @@ func versionLine(build string) string {
 }
 
 // pickLang chooses the language of a compiled program that nobody chose a
-// language for (defaultPick: either, at random). Tests replace it.
+// language for (defaultPick: any Sorted! speaks, at random). Tests replace
+// it.
 var pickLang = defaultPick
 
 func defaultPick() render.Lang {
-	if rand.IntN(2) == 0 {
-		return render.English
+	var spoken []render.Lang
+	for _, l := range languages {
+		if l.spoken {
+			spoken = append(spoken, l.lang)
+		}
 	}
-	return render.German
+	return spoken[rand.IntN(len(spoken))]
 }
 
 func main() {
@@ -198,7 +202,7 @@ func translate(name string, lang render.Lang, files outputs, stdout, stderr io.W
 		fmt.Fprintf(stderr, "sorted: %s:%v\n", name, err)
 		return 1
 	}
-	compiled, err := compile.Compile(prog)
+	compiled, err := compile.Compile(prog, lang.Verys())
 	if err != nil {
 		fmt.Fprintf(stderr, "sorted: %s:%v\n", name, err)
 		return 1

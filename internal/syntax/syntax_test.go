@@ -70,8 +70,8 @@ func TestVerySorted(t *testing.T) {
 			t.Errorf("%s: %v", end, err)
 			continue
 		}
-		if !p.Very || p.Entries(Statements)[0].Ops[0] != (Operand{Read, 0}) {
-			t.Errorf("%s: very %v, statements %v", end, p.Very, p.Entries(Statements))
+		if !(p.Verys == 1) || p.Entries(Statements)[0].Ops[0] != (Operand{Read, 0}) {
+			t.Errorf("%s: very %v, statements %v", end, (p.Verys == 1), p.Entries(Statements))
 		}
 	}
 	// German reference, in a German program.
@@ -80,13 +80,13 @@ func TestVerySorted(t *testing.T) {
 		t.Errorf("die erste Eingabe: %v", err)
 	}
 	// A very program need not read.
-	if p, err := parse(strings.Replace(minimal, "Cool.", "This code is very cool.", 1)); err != nil || !p.Very {
+	if p, err := parse(strings.Replace(minimal, "Cool.", "This code is very cool.", 1)); err != nil || !(p.Verys == 1) {
 		t.Errorf("very without input: %v", err)
 	}
 	// The original's programs are not very, and an input reference needs the
 	// very ending: without it the original's error stands.
-	if p, err := parse(minimal); err != nil || p.Very {
-		t.Errorf("minimal: very %v, %v", p != nil && p.Very, err)
+	if p, err := parse(minimal); err != nil || (p.Verys == 1) {
+		t.Errorf("minimal: very %v, %v", p != nil && (p.Verys == 1), err)
 	}
 	if _, err := parse(reading); err == nil || err.Error() != "ERROR, missing or invalid declaration of implementation" {
 		t.Errorf("input reference in the original's Sorted!: %v", err)
@@ -96,7 +96,7 @@ func TestVerySorted(t *testing.T) {
 	if _, err := parse(broken); err == nil || err.Error() != "ERROR, missing or invalid sum declaration" {
 		t.Errorf("broken very program: %v", err)
 	}
-	if _, err := parse(strings.Replace(minimal, "Cool.", "This code is very very cool.", 1)); err == nil || err.Error() != "ERROR, missing or invalid coolness" {
+	if _, err := parse(strings.Replace(minimal, "Cool.", "This code is very very very cool.", 1)); err == nil || err.Error() != "ERROR, missing or invalid coolness" {
 		t.Errorf("a dialect not spoken yet: %v", err)
 	}
 }
@@ -189,7 +189,7 @@ func TestVeryIndexedStore(t *testing.T) {
 func TestMarkers(t *testing.T) {
 	for n := 0; n <= Newest; n++ {
 		p, err := parse(strings.Replace(minimal, "Cool.", Marker(n), 1))
-		if err != nil || p.Very != (n == 1) {
+		if err != nil || p.Verys != n {
 			t.Errorf("%s: %v", Marker(n), err)
 		}
 	}
@@ -235,8 +235,8 @@ func TestVeryUTF8(t *testing.T) {
 			t.Errorf("%s: %v", tt.name, err)
 			continue
 		}
-		if !p.Very || !slices.Equal(p.Data[:4], want) || p.Entries(Writes)[0].Flags != FormatGermanOrdinal {
-			t.Errorf("%s: very %v, data %v", tt.name, p.Very, p.Data[:4])
+		if !(p.Verys == 1) || !slices.Equal(p.Data[:4], want) || p.Entries(Writes)[0].Flags != FormatGermanOrdinal {
+			t.Errorf("%s: very %v, data %v", tt.name, (p.Verys == 1), p.Data[:4])
 		}
 	}
 	// The original reads "fünf" as "f nf": its error stands.
@@ -249,7 +249,7 @@ func TestVeryUTF8(t *testing.T) {
 	if _, err := parse(stray); err == nil {
 		t.Error("a stray letter in Very Sorted! parses")
 	}
-	if p, err := parse(strings.Replace(minimal, "uses the number", "uses é the number", 1)); err != nil || p.Very {
+	if p, err := parse(strings.Replace(minimal, "uses the number", "uses é the number", 1)); err != nil || (p.Verys == 1) {
 		t.Errorf("a stray letter in the original's Sorted!: %v", err)
 	}
 }

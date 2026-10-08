@@ -106,12 +106,12 @@ func TestVersion(t *testing.T) {
 		t.Errorf("%+v", r)
 	}
 	for build, want := range map[string]string{
-		"very-cool":           "This code is very cool.",
-		"dev":                 "This code is very cool. (dev)",
-		"a105f41-dirty":       "This code is very cool. (a105f41-dirty)",
-		"very-cool-3-gabc123": "This code is very cool. (very-cool-3-gabc123)",
-		"very-cool-dirty":     "This code is very cool. (very-cool-dirty)",
-		"cool":                "This code is very cool. (cool)",
+		"very-very-cool":       "This code is very very cool.",
+		"dev":                  "This code is very very cool. (dev)",
+		"a105f41-dirty":        "This code is very very cool. (a105f41-dirty)",
+		"very-very-cool-dirty": "This code is very very cool. (very-very-cool-dirty)",
+		"very-cool":            "This code is very very cool. (very-cool)",
+		"cool":                 "This code is very very cool. (cool)",
 	} {
 		if got := versionLine(build); got != want {
 			t.Errorf("%s: %q, want %q", build, got, want)
@@ -282,8 +282,8 @@ func TestGolden(t *testing.T) {
 }
 
 // The examples: the committed Sorted! versions are what --from-c writes
-// today (run "just examples" after changing the compiler), English and
-// German print the same, and that is what the C program prints compiled
+// today (run "just examples" after changing the compiler), English, German
+// and Italian print the same, and that is what the C program prints compiled
 // natively (where there is a C compiler).
 func TestExamples(t *testing.T) {
 	sources, err := filepath.Glob(filepath.Join("..", "..", "examples", "*.c"))
@@ -299,7 +299,7 @@ func TestExamples(t *testing.T) {
 				t.Fatal(err)
 			}
 			var printed []string
-			for _, v := range []struct{ file, lang string }{{base + ".s", "en"}, {base + ".de.s", "de"}} {
+			for _, v := range []struct{ file, lang string }{{base + ".s", "en"}, {base + ".de.s", "de"}, {base + ".it.s", "it"}} {
 				committed, err := os.ReadFile(v.file)
 				if err != nil {
 					t.Fatal(err)
@@ -314,8 +314,8 @@ func TestExamples(t *testing.T) {
 				}
 				printed = append(printed, run.stdout)
 			}
-			if printed[0] != printed[1] {
-				t.Errorf("English and German print differently")
+			if printed[0] != printed[1] || printed[0] != printed[2] {
+				t.Errorf("English, German and Italian print differently")
 			}
 			if native := runCIn(t, src, string(stdin)); printed[0] != native {
 				t.Errorf("Sorted! printed %q..., C printed %q...", printed[0][:min(80, len(printed[0]))], native[:min(80, len(native))])
@@ -330,11 +330,13 @@ func TestExamples(t *testing.T) {
 // case and accents, with --lang or as a flag of its own.
 func TestLanguageNames(t *testing.T) {
 	hello := filepath.Join("..", "..", "legacy", "sorted.win32", "hello.s")
-	const en, de = "This code uses the numbers", "Dieses Programm benutzt die Zahlen"
+	const en, de, it = "This code uses the numbers", "Dieses Programm benutzt die Zahlen", "Questo programma usa i numeri"
 	for _, tt := range []struct {
 		args []string
 		head string
 	}{
+		{[]string{"--italiano"}, it}, {[]string{"--lang", "Italienisch"}, it}, {[]string{"--italien"}, it},
+		{[]string{"--Italian"}, it}, {[]string{"--イタリア語"}, it}, {[]string{"--lang", "yidaliyu"}, it}, {[]string{"--it"}, it},
 		{[]string{"--lang", "Englisch"}, en}, {[]string{"--anglais"}, en}, {[]string{"--INGLESE"}, en},
 		{[]string{"--lang=inglês"}, en}, {[]string{"--ingles"}, en}, {[]string{"--英語"}, en},
 		{[]string{"--lang", "yingyu"}, en}, {[]string{"-eigo"}, en}, {[]string{"--en"}, en},
@@ -347,7 +349,7 @@ func TestLanguageNames(t *testing.T) {
 			t.Errorf("%v: %+v", tt.args, r)
 		}
 	}
-	for _, name := range []string{"Französisch", "franzosisch", "franzoesisch", "vaudois", "Waadtlaendisch", "italiano", "português", "日本語", "中文", "zhongwen", "pǔtōnghuà"} {
+	for _, name := range []string{"Französisch", "franzosisch", "franzoesisch", "vaudois", "Waadtlaendisch", "português", "日本語", "中文", "zhongwen", "pǔtōnghuà"} {
 		if r := runCLI("--lang", name, hello); r.code != 2 || r.stderr != "sorted: Sorted! does not speak "+name+" yet\n" {
 			t.Errorf("%s: %+v", name, r)
 		}
@@ -462,13 +464,14 @@ func TestFromC(t *testing.T) {
 	if err := os.WriteFile(cFile, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	const en, de = "This code uses the numbers", "Dieses Programm benutzt die Zahlen"
+	const en, de, it = "This code uses the numbers", "Dieses Programm benutzt die Zahlen", "Questo programma usa i numeri"
 	for _, tt := range []struct {
 		flags []string
 		head  string
 	}{
 		{[]string{"--lang", "en"}, en}, {[]string{"--english"}, en},
 		{[]string{"--lang", "de"}, de}, {[]string{"--german"}, de},
+		{[]string{"--lang", "it"}, it}, {[]string{"--italiano"}, it},
 	} {
 		r := runCLI(append([]string{"--from-c", cFile}, tt.flags...)...)
 		if r.code != 0 || r.stderr != "" || !strings.HasPrefix(r.stdout, tt.head) {
@@ -480,21 +483,21 @@ func TestFromC(t *testing.T) {
 	}
 	// Without a choice, the language is whatever pickLang picks...
 	defer func(pick func() render.Lang) { pickLang = pick }(pickLang)
-	for lang, head := range map[render.Lang]string{render.English: en, render.German: de} {
+	for lang, head := range map[render.Lang]string{render.English: en, render.German: de, render.Italian: it} {
 		pickLang = func() render.Lang { return lang }
 		if r := runCLI("--from-c", cFile); r.code != 0 || !strings.HasPrefix(r.stdout, head) {
 			t.Errorf("picked %d: %+v", lang, r)
 		}
 	}
-	// ...and pickLang picks either: 40 runs show both, unless chance is
-	// against it 1 time in 2^39.
+	// ...and pickLang picks any: 80 runs show all three, unless chance is
+	// against it about 3 times in 10^14.
 	pickLang = defaultPick
 	seen := map[string]bool{}
-	for range 40 {
+	for range 80 {
 		r := runCLI("--from-c", cFile)
 		seen[r.stdout[:strings.Index(r.stdout, " ")]] = true
 	}
-	if !seen["This"] || !seen["Dieses"] || len(seen) != 2 {
+	if !seen["This"] || !seen["Dieses"] || !seen["Questo"] || len(seen) != 3 {
 		t.Errorf("languages picked: %v", seen)
 	}
 	// One choice at most.

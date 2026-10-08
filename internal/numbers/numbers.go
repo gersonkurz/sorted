@@ -1,11 +1,13 @@
-// Package numbers converts between integers and English or German number
-// words, as Sorted! does when it parses number declarations and ordinal
-// references, and when it writes a value as a cardinal or ordinal.
+// Package numbers converts between integers and English, German or Italian
+// number words, as Sorted! does when it parses number declarations and
+// ordinal references, and when it writes a value as a cardinal or ordinal.
+// Italian (italian.go, Very Very Sorted!) is new and has no quirks.
 //
-// It is a line-by-line port of EnglishNumbers.cpp and GermanNumbers.cpp from
-// legacy/sorted.win32, quirks included: the misspellings in the word tables
-// ("fiveteen", "fourty", "nineth", "twelveth", ...), prefix matching without
-// word boundaries, and cursors that move even when parsing fails.
+// English and German are a line-by-line port of EnglishNumbers.cpp and
+// GermanNumbers.cpp from legacy/sorted.win32, quirks included: the
+// misspellings in the word tables ("fiveteen", "fourty", "nineth",
+// "twelveth", ...), prefix matching without word boundaries, and cursors
+// that move even when parsing fails.
 //
 // Undefined behaviour of the C code is not emulated (Gerson's ruling): it gets
 // a simple, documented result instead. Formatting a negative cardinal indexes

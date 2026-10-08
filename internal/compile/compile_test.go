@@ -18,20 +18,21 @@ import (
 	"github.com/gersonkurz/sorted/internal/syntax"
 )
 
-// toSorted compiles C source and writes it as Sorted! text in lang.
+// toSorted compiles C source and writes it as Sorted! text in lang, in the
+// dialect lang needs, as the CLI does.
 func toSorted(t *testing.T, src string, lang render.Lang) string {
 	t.Helper()
-	return toSortedAs(t, src, lang, false)
+	return toSortedAs(t, src, lang, lang.Verys())
 }
 
-// toSortedAs is toSorted, as Very Sorted! when very is set.
-func toSortedAs(t *testing.T, src string, lang render.Lang, very bool) string {
+// toSortedAs is toSorted, in the dialect with verys verys at least.
+func toSortedAs(t *testing.T, src string, lang render.Lang, verys int) string {
 	t.Helper()
 	prog, err := cc.Parse(src)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, p, err := compileProgram(prog, very)
+	_, p, err := compileProgram(prog, verys)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1055,9 +1056,9 @@ func TestDifferentialInput(t *testing.T) {
 	for name, p := range programsWithInput {
 		t.Run(name, func(t *testing.T) {
 			want := runNativeIn(t, p.src, p.stdin)
-			for _, lang := range []render.Lang{render.English, render.German} {
+			for _, lang := range []render.Lang{render.English, render.German, render.Italian} {
 				text := toSorted(t, p.src, lang)
-				if !strings.Contains(text, map[render.Lang]string{render.English: "This code is very cool.", render.German: "Dieses Programm ist ganz hervorragend."}[lang]) {
+				if !strings.Contains(text, map[render.Lang]string{render.English: "This code is very cool.", render.German: "Dieses Programm ist ganz hervorragend.", render.Italian: "Questo programma è molto molto figo."}[lang]) {
 					t.Errorf("lang %d: no Very Sorted! marker:\n%s", lang, text)
 				}
 				if got := runSortedIn(t, text, p.stdin); got != want {
@@ -1098,8 +1099,8 @@ func TestVeryIndexing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plain.Very || indexes(plain) {
-		t.Errorf("a program that need not be very: very %v, indexes %v", plain.Very, indexes(plain))
+	if plain.Verys > 0 || indexes(plain) {
+		t.Errorf("a program that need not be very: verys %d, indexes %v", plain.Verys, indexes(plain))
 	}
 	// An operator whose value is never computed needs no NAND, so it does
 	// not make the program very: a discarded expression, main's result.
@@ -1107,11 +1108,11 @@ func TestVeryIndexing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if discarded.Very || indexes(discarded) || discarded.Tables[syntax.Nands].Count != 0 {
-		t.Errorf("discarded operators: very %v, indexes %v, %d nands", discarded.Very, indexes(discarded), discarded.Tables[syntax.Nands].Count)
+	if discarded.Verys > 0 || indexes(discarded) || discarded.Tables[syntax.Nands].Count != 0 {
+		t.Errorf("discarded operators: verys %d, indexes %v, %d nands", discarded.Verys, indexes(discarded), discarded.Tables[syntax.Nands].Count)
 	}
-	if !reading.Very || !indexes(reading) {
-		t.Errorf("a program that reads: very %v, indexes %v", reading.Very, indexes(reading))
+	if reading.Verys != 1 || !indexes(reading) {
+		t.Errorf("a program that reads: verys %d, indexes %v", reading.Verys, indexes(reading))
 	}
 	if na, nb := plain.Tables[syntax.Assigns].Count, reading.Tables[syntax.Assigns].Count; nb >= na {
 		t.Errorf("%d assignments in Very Sorted!, %d without: no pointer cells saved", nb, na)
@@ -1132,12 +1133,12 @@ int main() {
 	putchar(10);
 }`
 	var outs []string
-	for _, very := range []bool{false, true} {
+	for _, verys := range []int{0, 1} {
 		prog, err := cc.Parse(src) // the compiler rewrites the tree
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, p, err := compileProgram(prog, very)
+		_, p, err := compileProgram(prog, verys)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1159,7 +1160,7 @@ func TestDifferentialVery(t *testing.T) {
 	for name, src := range programs {
 		t.Run(name, func(t *testing.T) {
 			want := runNative(t, src)
-			text := toSortedAs(t, src, render.English, true)
+			text := toSortedAs(t, src, render.English, 1)
 			if !strings.Contains(text, "This code is very cool.") {
 				t.Fatalf("no Very Sorted! marker:\n%s", text)
 			}
@@ -1181,19 +1182,22 @@ func TestDifferential(t *testing.T) {
 	for name, src := range programs {
 		t.Run(name, func(t *testing.T) {
 			want := runNative(t, src)
-			for _, lang := range []render.Lang{render.English, render.German} {
+			for _, lang := range []render.Lang{render.English, render.German, render.Italian} {
 				text := toSorted(t, src, lang)
 				if got := runSorted(t, text); got != want {
 					t.Errorf("lang %d: Sorted! printed %q, C printed %q\n%s", lang, got, want, text)
 				}
 			}
-			// and back to C (M5): the exact translation prints the same
-			p, err := syntax.Parse([]byte(toSorted(t, src, render.English)))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if got := runNative(t, emit.Exact(p)); got != want {
-				t.Errorf("C -> Sorted! -> C printed %q, C printed %q", got, want)
+			// and back to C (M5): the exact translation prints the same,
+			// of the original's dialect and of Very Very Sorted! (Italian)
+			for _, lang := range []render.Lang{render.English, render.Italian} {
+				p, err := syntax.Parse([]byte(toSorted(t, src, lang)))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got := runNative(t, emit.Exact(p)); got != want {
+					t.Errorf("lang %d: C -> Sorted! -> C printed %q, C printed %q", lang, got, want)
+				}
 			}
 		})
 	}
@@ -1205,7 +1209,7 @@ func compileC(t *testing.T, src string) (*syntax.Program, error) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return Compile(prog)
+	return Compile(prog, 0)
 }
 
 // "Thou shalt not have the same cardinal more than once": every constant is
@@ -1254,8 +1258,8 @@ func TestBitwiseArithmetic(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if jumps := p.Tables[syntax.Jumps].Count > 0; jumps != tt.jumps || p.Very != tt.very || p.Tables[syntax.Nands].Count != tt.nands {
-			t.Errorf("%s: jumps %v, very %v, %d nands; want %v, %v, %d", tt.src, jumps, p.Very, p.Tables[syntax.Nands].Count, tt.jumps, tt.very, tt.nands)
+		if jumps := p.Tables[syntax.Jumps].Count > 0; jumps != tt.jumps || (p.Verys == 1) != tt.very || p.Tables[syntax.Nands].Count != tt.nands {
+			t.Errorf("%s: jumps %v, verys %d, %d nands; want %v, %v, %d", tt.src, jumps, p.Verys, p.Tables[syntax.Nands].Count, tt.jumps, tt.very, tt.nands)
 		}
 		for _, e := range p.Entries(syntax.Nands) {
 			if e.Flags != syntax.LogicalNand {
@@ -1312,7 +1316,7 @@ func TestRecursiveSave(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		c, _, err := compileProgram(prog, false)
+		c, _, err := compileProgram(prog, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1430,7 +1434,7 @@ int main() { int i = 2; a[i] = %d; putchar('A' + a[2] - %d); putchar(a[i] / %d +
 		if err != nil {
 			t.Fatal(err)
 		}
-		c, _, err := compileProgram(prog, false)
+		c, _, err := compileProgram(prog, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1438,7 +1442,7 @@ int main() { int i = 2; a[i] = %d; putchar('A' + a[2] - %d); putchar(a[i] / %d +
 			continue
 		}
 		want := runNative(t, src)
-		for _, lang := range []render.Lang{render.English, render.German} {
+		for _, lang := range []render.Lang{render.English, render.German, render.Italian} {
 			text := toSorted(t, src, lang)
 			if got := runSorted(t, text); got != want {
 				t.Errorf("n=%d lang %d: %q, want %q\n%s", n, lang, got, want, text)

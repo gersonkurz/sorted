@@ -1,5 +1,5 @@
 // Package render writes a program's tables as Sorted! source: the inverse of
-// the parser, in English or German, laid out to be sung.
+// the parser, in English, German or Italian, laid out to be sung.
 //
 // What it writes is exactly what the parser accepts. Some things have no
 // form in one language, or none at all:
@@ -23,6 +23,11 @@
 //     it may refer to logical operations and have NANDs ("of not both a and
 //     b", "von nicht beiden, a und b"), and its German is written in UTF-8
 //     ("fünf", "Verhältnisse").
+//   - Italian (#30) is Very Very Sorted! ("Questo programma è molto molto
+//     figo."), and has a form for everything. A program written in Italian
+//     is Very Very Sorted!: an older program becomes one, unless that would
+//     change what it does (veryCompatible). Very Very Sorted! also writes
+//     Italian numbers ("as an italian cardinal", "come ordinale italiano").
 //
 // Render checks its own work: it parses the text it produced and fails unless
 // the result is the same program in every observable respect, table layout
@@ -45,7 +50,57 @@ type Lang int
 const (
 	English Lang = iota
 	German
+	Italian
 )
+
+// Verys is the dialect a program written in l needs, counted in verys:
+// Italian is Very Very Sorted! (#30).
+func (l Lang) Verys() int {
+	if l == Italian {
+		return 2
+	}
+	return 0
+}
+
+// inDialect returns p as it is written in lang: p itself, or, for a language
+// of a newer dialect than p's, a copy of p in that dialect. A program of the
+// original's Sorted! may do something else as a Very one (veryCompatible);
+// such a program is refused.
+func inDialect(p *syntax.Program, lang Lang) (*syntax.Program, error) {
+	if p.Verys >= lang.Verys() {
+		return p, nil
+	}
+	if p.Verys == 0 {
+		if err := veryCompatible(p); err != nil {
+			return nil, err
+		}
+	}
+	q := *p
+	q.Verys = lang.Verys()
+	return &q, nil
+}
+
+// veryCompatible reports why a program of the original's Sorted! might do
+// something else as Very Sorted!, where German numbers print in UTF-8 and
+// stores and reads go elsewhere in some cases (see interp): it writes German
+// numbers, or a statement refers past its table to an assignment or a jump
+// (which can then run any slot as a statement).
+func veryCompatible(p *syntax.Program) error {
+	for _, s := range p.Code {
+		if s.Flags == syntax.FormatGermanCardinal || s.Flags == syntax.FormatGermanOrdinal {
+			return fail("its German numbers would print in UTF-8 in Very Very Sorted!")
+		}
+	}
+	for _, s := range p.Entries(syntax.Statements) {
+		op := s.Ops[0]
+		if op.Type == syntax.Read ||
+			op.Type == syntax.Assign && int(op.Index) >= p.Tables[syntax.Assigns].Count ||
+			op.Type == syntax.Jump && int(op.Index) >= p.Tables[syntax.Jumps].Count {
+			return fail("a statement past its table could mean something else in Very Very Sorted!")
+		}
+	}
+	return nil
+}
 
 // Error reports a program that cannot be written as Sorted! source.
 type Error struct {
@@ -58,6 +113,10 @@ func fail(format string, args ...any) error { return &Error{fmt.Sprintf(format, 
 
 // Render writes p as Sorted! source in lang.
 func Render(p *syntax.Program, lang Lang) (string, error) {
+	p, err := inDialect(p, lang)
+	if err != nil {
+		return "", err
+	}
 	text, q, err := write(p, lang)
 	if err != nil {
 		return "", err
@@ -74,6 +133,10 @@ func Render(p *syntax.Program, lang Lang) (string, error) {
 // parses into the same entries (SameEntries) and returns the program as the
 // parser sees it, with the layout any Sorted! interpreter will use.
 func Compose(p *syntax.Program, lang Lang) (string, *syntax.Program, error) {
+	p, err := inDialect(p, lang)
+	if err != nil {
+		return "", nil, err
+	}
 	text, q, err := write(p, lang)
 	if err != nil {
 		return "", nil, err
@@ -101,7 +164,7 @@ func write(p *syntax.Program, lang Lang) (string, *syntax.Program, error) {
 		b.WriteString("\n")
 	}
 	text := b.String()
-	if p.Very {
+	if p.Verys > 0 {
 		text = verySpelling(text)
 	}
 	q, err := syntax.Parse([]byte(text))
@@ -122,7 +185,7 @@ func verySpelling(text string) string {
 // labels and have the same entries in every table, wherever in Code those
 // tables lie.
 func SameEntries(p, q *syntax.Program) bool {
-	if p.Very != q.Very || p.LabelsCount != q.LabelsCount || fmt.Sprint(p.Data) != fmt.Sprint(q.Data) {
+	if p.Verys != q.Verys || p.LabelsCount != q.LabelsCount || fmt.Sprint(p.Data) != fmt.Sprint(q.Data) {
 		return false
 	}
 	for c := syntax.Sums; c < syntax.NumCategories; c++ {
@@ -138,7 +201,7 @@ func SameEntries(p, q *syntax.Program) bool {
 // table positions, and every slot of the static Code array (zero past what
 // was written), since references past a table read neighbouring slots.
 func Equal(p, q *syntax.Program) bool {
-	if p.Very != q.Very || p.LabelsCount != q.LabelsCount || p.TypeCount != q.TypeCount || p.Tables != q.Tables ||
+	if p.Verys != q.Verys || p.LabelsCount != q.LabelsCount || p.TypeCount != q.TypeCount || p.Tables != q.Tables ||
 		fmt.Sprint(p.Data) != fmt.Sprint(q.Data) {
 		return false
 	}
@@ -158,11 +221,14 @@ func slot(p *syntax.Program, i int) syntax.Slide {
 }
 
 // sentence is a Sorted! sentence: a head, then one item, or a list whose last
-// item follows ", and"/", und", then a period.
+// item follows ", and"/", und", or in Italian "e", then a period. Italian
+// keeps the comma before "e" only where the items are pairs that contain an
+// "e" themselves (comma).
 type sentence struct {
 	head  string
 	items []string
 	conj  string
+	comma bool
 }
 
 // width is the line length up to which a sentence stays on one line.
@@ -179,7 +245,11 @@ func (s sentence) text() string {
 	case 1:
 		line = s.head + " " + s.items[0] + "."
 	default:
-		line = s.head + " " + strings.Join(s.items[:n-1], ", ") + ", " + s.conj + " " + s.items[n-1] + "."
+		sep := " "
+		if s.comma {
+			sep = ", "
+		}
+		line = s.head + " " + strings.Join(s.items[:n-1], ", ") + sep + s.conj + " " + s.items[n-1] + "."
 	}
 	if len(line) <= width {
 		return line
@@ -191,6 +261,8 @@ func (s sentence) text() string {
 		switch {
 		case n == 1:
 			b.WriteString(item + ".")
+		case i == n-2 && !s.comma:
+			b.WriteString(item)
 		case i < n-1:
 			b.WriteString(item + ",")
 		default:
@@ -205,21 +277,26 @@ type renderer struct {
 	lang Lang
 }
 
-// say picks the English or the German text.
-func (r *renderer) say(en, de string) string {
-	if r.lang == German {
+// say picks the English, German or Italian text.
+func (r *renderer) say(en, de, it string) string {
+	switch r.lang {
+	case German:
 		return de
+	case Italian:
+		return it
 	}
 	return en
 }
 
 // list makes a sentence in language l.
 func list(l Lang, head string, items []string) sentence {
-	conj := "and"
-	if l == German {
-		conj = "und"
+	switch l {
+	case German:
+		return sentence{head: head, items: items, conj: "und", comma: true}
+	case Italian:
+		return sentence{head: head, items: items, conj: "e"}
 	}
-	return sentence{head: head, items: items, conj: conj}
+	return sentence{head: head, items: items, conj: "and", comma: true}
 }
 
 func (r *renderer) entries(c syntax.Category) []syntax.Slide { return r.p.Entries(c) }
@@ -229,7 +306,7 @@ func (r *renderer) entries(c syntax.Category) []syntax.Slide { return r.p.Entrie
 func (r *renderer) numbers() (sentence, error) {
 	data := r.p.Data
 	if len(data) == 0 {
-		return list(r.lang, r.say("This code does not use any numbers", "Dieses Programm benutzt keine Zahlen"), nil), nil
+		return list(r.lang, r.say("This code does not use any numbers", "Dieses Programm benutzt keine Zahlen", "Questo programma non usa numeri"), nil), nil
 	}
 	items := make([]string, len(data))
 	for i, d := range data {
@@ -240,12 +317,14 @@ func (r *renderer) numbers() (sentence, error) {
 		items[i] = w
 	}
 	if len(items) == 1 {
-		return list(r.lang, r.say("This code uses the number", "Dieses Programm benutzt die Zahl"), items), nil
+		return list(r.lang, r.say("This code uses the number", "Dieses Programm benutzt die Zahl", "Questo programma usa il numero"), items), nil
 	}
-	return list(r.lang, r.say("This code uses the numbers", "Dieses Programm benutzt die Zahlen"), items), nil
+	return list(r.lang, r.say("This code uses the numbers", "Dieses Programm benutzt die Zahlen", "Questo programma usa i numeri"), items), nil
 }
 
-// cardinal writes a declarable number: zero, or 1 to 999999999.
+// cardinal writes a declarable number: zero, or 1 to 999999999 (Italian
+// could say more, but the others cannot, and a program reads the same in
+// every language).
 func cardinal(l Lang, n int32) (string, error) {
 	switch {
 	case n == 0 && l == German:
@@ -258,43 +337,55 @@ func cardinal(l Lang, n int32) (string, error) {
 		return "", fail("numbers from 1000000000 on cannot be declared (%d)", n)
 	case l == German:
 		return numbers.GermanCardinal(n)
+	case l == Italian:
+		return numbers.ItalianCardinal(n), nil
 	}
 	return numbers.EnglishCardinal(n)
 }
 
 // --- references ---
 
-// grammatical case of a German reference
+// grammatical case of a German reference, and the preposition an Italian
+// one fuses with its article
 type gcase int
 
 const (
 	nominative gcase = iota
 	accusative
 	dative
+	itDi // "del primo numero"
+	itA  // "al primo numero"
+	itDa // "dal primo numero"
 )
 
 type noun struct {
 	en, de string
 	gender byte // 'f', 'm' or 'n'
+	it     string
+	itFem  bool
 }
 
 var nouns = map[syntax.OperandType]noun{
-	syntax.Number:    {"number", "Zahl", 'f'},
-	syntax.Sum:       {"sum", "Summe", 'f'},
-	syntax.Diff:      {"ordered difference", "geordnete Differenz", 'f'},
-	syntax.Prod:      {"product", "Produkt", 'n'},
-	syntax.Ratio:     {"ratio", "Verhaeltnis", 'n'},
-	syntax.Assign:    {"assignment", "Zuweisung", 'f'},
-	syntax.Jump:      {"jump", "Sprungbefehl", 'm'},
-	syntax.Label:     {"label", "Sprungziel", 'n'},
-	syntax.Condition: {"condition", "Bedingung", 'f'},
-	syntax.Write:     {"output", "Ausgabe", 'f'},
-	syntax.Read:      {"input", "Eingabe", 'f'},                           // Very Sorted! only (the parser decides)
-	syntax.Nand:      {"logical operation", "logische Verknuepfung", 'f'}, // likewise
+	syntax.Number:    {"number", "Zahl", 'f', "numero", false},
+	syntax.Sum:       {"sum", "Summe", 'f', "somma", true},
+	syntax.Diff:      {"ordered difference", "geordnete Differenz", 'f', "differenza ordinata", true},
+	syntax.Prod:      {"product", "Produkt", 'n', "prodotto", false},
+	syntax.Ratio:     {"ratio", "Verhaeltnis", 'n', "rapporto", false},
+	syntax.Assign:    {"assignment", "Zuweisung", 'f', "assegnamento", false},
+	syntax.Jump:      {"jump", "Sprungbefehl", 'm', "salto", false},
+	syntax.Label:     {"label", "Sprungziel", 'n', "etichetta", true},
+	syntax.Condition: {"condition", "Bedingung", 'f', "condizione", true},
+	syntax.Write:     {"output", "Ausgabe", 'f', "uscita", true},
+	syntax.Read:      {"input", "Eingabe", 'f', "ingresso", false},                                   // Very Sorted! only (the parser decides)
+	syntax.Nand:      {"logical operation", "logische Verknuepfung", 'f', "operazione logica", true}, // likewise
 }
 
-// ref writes a reference such as "the third number" or "der dritten Zahl".
+// ref writes a reference such as "the third number", "der dritten Zahl" or
+// "della terza somma".
 func (r *renderer) ref(l Lang, op syntax.Operand, c gcase) (string, error) {
+	if l == Italian {
+		return r.itRef(op, c)
+	}
 	if op.Type&syntax.Indirect != 0 {
 		inner, err := r.ref(l, syntax.Operand{Type: op.Type &^ syntax.Indirect, Index: op.Index}, accusative)
 		if err != nil {
@@ -346,6 +437,49 @@ func (r *renderer) ref(l Lang, op syntax.Operand, c gcase) (string, error) {
 	return article + " " + ord + " " + de, nil
 }
 
+// itRef writes an Italian reference: the article, fused with the preposition
+// c asks for and elided before a vowel ("dell'ottava cella"), the ordinal,
+// which agrees with the noun, and the noun.
+func (r *renderer) itRef(op syntax.Operand, c gcase) (string, error) {
+	if op.Type&syntax.Indirect != 0 {
+		inner, err := r.itRef(syntax.Operand{Type: op.Type &^ syntax.Indirect, Index: op.Index}, itDa)
+		if err != nil {
+			return "", err
+		}
+		return itArticle(c, true, "cella") + "cella indicizzata " + inner, nil
+	}
+	nn, ok := nouns[op.Type]
+	if !ok {
+		return "", fail("there is no way to refer to an operand of type %d", op.Type)
+	}
+	n := op.Index + 1
+	if n < 1 {
+		return "", fail("reference index %d out of range", op.Index)
+	}
+	ord := numbers.ItalianOrdinal(n, nn.itFem)
+	return itArticle(c, nn.itFem, ord) + ord + " " + nn.it, nil
+}
+
+// itArticle is the definite article before word, fused with the preposition
+// of c, with the space that follows it, or none after an apostrophe.
+func itArticle(c gcase, fem bool, word string) string {
+	forms := map[gcase][3]string{
+		itDi: {"del ", "della ", "dell'"},
+		itA:  {"al ", "alla ", "all'"},
+		itDa: {"dal ", "dalla ", "dall'"},
+	}[c]
+	if forms[0] == "" {
+		forms = [3]string{"il ", "la ", "l'"}
+	}
+	switch {
+	case strings.ContainsRune("aeiou", rune(word[0])):
+		return forms[2]
+	case fem:
+		return forms[1]
+	}
+	return forms[0]
+}
+
 // ordinalParses reports whether "<ord> <noun>" reads back as n with the
 // cursor on the noun, trying English first and German second, as the parser
 // does.
@@ -376,19 +510,19 @@ func (r *renderer) pair(l Lang, s syntax.Slide, word string, c gcase) (string, e
 func (r *renderer) jumps() (sentence, error) {
 	js := r.entries(syntax.Jumps)
 	if len(js) == 0 {
-		return list(r.lang, r.say("This code does never go anywhere", "Dieses Programm geht nirgendwo hin"), nil), nil
+		return list(r.lang, r.say("This code does never go anywhere", "Dieses Programm geht nirgendwo hin", "Questo programma non va mai da nessuna parte"), nil), nil
 	}
 	items := make([]string, len(js))
 	for i, j := range js {
 		if j.Ops[0].Type != syntax.Label {
 			return sentence{}, fail("jump %d does not go to a label", i+1)
 		}
-		label, err := r.ref(r.lang, j.Ops[0], accusative)
+		label, err := r.ref(r.lang, j.Ops[0], r.caseOf(accusative, itA))
 		if err != nil {
 			return sentence{}, err
 		}
 		if j.Flags == syntax.UnconditionalJump {
-			items[i] = r.say("always goes to ", "springt immer an ") + label
+			items[i] = r.say("always goes to ", "springt immer an ", "va sempre ") + label
 			continue
 		}
 		if j.Ops[1].Type != syntax.Condition {
@@ -398,9 +532,17 @@ func (r *renderer) jumps() (sentence, error) {
 		if err != nil {
 			return sentence{}, err
 		}
-		items[i] = r.say("sometimes goes to "+label+" if "+cond+" is true", "springt manchmal an "+label+" wenn "+cond+" wahr ist")
+		items[i] = r.say("sometimes goes to "+label+" if "+cond+" is true", "springt manchmal an "+label+" wenn "+cond+" wahr ist", "va talvolta "+label+" se "+cond+" è vera")
 	}
-	return list(r.lang, r.say("This code", "Dieses Programm"), items), nil
+	return list(r.lang, r.say("This code", "Dieses Programm", "Questo programma"), items), nil
+}
+
+// caseOf picks the German case or the Italian preposition.
+func (r *renderer) caseOf(de, it gcase) gcase {
+	if r.lang == Italian {
+		return it
+	}
+	return de
 }
 
 // --- output and input ---
@@ -409,37 +551,38 @@ func (r *renderer) outputs() (sentence, error) {
 	ws := r.entries(syntax.Writes)
 	switch len(ws) {
 	case 0:
-		return list(r.lang, r.say("This code cannot write", "Dieses Programm kann nicht schreiben"), nil), nil
+		return list(r.lang, r.say("This code cannot write", "Dieses Programm kann nicht schreiben", "Questo programma non può scrivere"), nil), nil
 	case 1:
 	default:
 		return sentence{}, fail("a program can declare only one output")
 	}
 	w := ws[0]
 	l := r.lang
-	formats := map[int32][2]string{
-		syntax.FormatCharacter:       {"as a character", "als ein Zeichen"},
-		syntax.FormatEnglishCardinal: {"as a english cardinal", "als ein ein englischer Kardinal"},
-		syntax.FormatEnglishOrdinal:  {"as a english english ordinal", "als ein ein ein englische Ordinalzahl"},
-		syntax.FormatGermanCardinal:  {"as a german cardinal", "als ein ein ein ein deutscher Kardinal"},
-		syntax.FormatGermanOrdinal:   {"as a german german ordinal", "als eine deutsche Ordinalzahl"},
+	formats := map[int32][3]string{
+		syntax.FormatCharacter:       {"as a character", "als ein Zeichen", "come carattere"},
+		syntax.FormatEnglishCardinal: {"as a english cardinal", "als ein ein englischer Kardinal", "come cardinale inglese"},
+		syntax.FormatEnglishOrdinal:  {"as a english english ordinal", "als ein ein ein englische Ordinalzahl", "come ordinale inglese"},
+		syntax.FormatGermanCardinal:  {"as a german cardinal", "als ein ein ein ein deutscher Kardinal", "come cardinale tedesco"},
+		syntax.FormatGermanOrdinal:   {"as a german german ordinal", "als eine deutsche Ordinalzahl", "come ordinale tedesco"},
+		syntax.FormatItalianCardinal: {"as an italian cardinal", "als ein italienischer Kardinal", "come cardinale italiano"},
+		syntax.FormatItalianOrdinal:  {"as an italian ordinal", "als eine italienische Ordinalzahl", "come ordinale italiano"},
 	}
 	phrases, ok := formats[w.Flags]
-	if !ok {
+	if !ok || r.p.Verys < 2 && (w.Flags == syntax.FormatItalianCardinal || w.Flags == syntax.FormatItalianOrdinal) {
 		return sentence{}, fail("output format %d does not exist", w.Flags)
 	}
-	format := phrases[l]
 	what, err := r.ref(l, w.Ops[0], accusative)
 	if err != nil {
 		return sentence{}, err
 	}
-	return list(l, r.say("This code writes", "Dieses Programm schreibt"), []string{what + " " + format}), nil
+	return list(l, r.say("This code writes", "Dieses Programm schreibt", "Questo programma scrive"), []string{what + " " + phrases[l]}), nil
 }
 
 func (r *renderer) inputs() (sentence, error) {
 	rs := r.entries(syntax.Reads)
 	switch len(rs) {
 	case 0:
-		return list(r.lang, r.say("This code cannot read", "Dieses Programm kann nicht lesen"), nil), nil
+		return list(r.lang, r.say("This code cannot read", "Dieses Programm kann nicht lesen", "Questo programma non può leggere"), nil), nil
 	case 1:
 	default:
 		return sentence{}, fail("a program can declare only one input")
@@ -451,76 +594,92 @@ func (r *renderer) inputs() (sentence, error) {
 	if err != nil {
 		return sentence{}, err
 	}
-	return list(r.lang, r.say("This code reads", "Dieses Programm liest"), []string{what + r.say(" as a character", " als ein Zeichen")}), nil
+	return list(r.lang, r.say("This code reads", "Dieses Programm liest", "Questo programma legge"), []string{what + r.say(" as a character", " als ein Zeichen", " come carattere")}), nil
 }
 
 // --- expressions ---
 
 // binary writes the sentence of an expression table. single and plural are
 // the heads for one entry and for a list; prep starts each entry ("of",
-// "between"), word joins its operands ("and", "to").
-func (r *renderer) binary(l Lang, c syntax.Category, none, single, plural, prep, word string) (sentence, error) {
+// "between"), word joins its operands ("and", "to") in case c. The entries
+// are pairs, so an Italian list keeps its comma before "e".
+func (r *renderer) binary(l Lang, c syntax.Category, none, single, plural, prep, word string, gc gcase) (sentence, error) {
 	es := r.entries(c)
 	if len(es) == 0 {
 		return list(l, none, nil), nil
 	}
 	items := make([]string, len(es))
 	for i, e := range es {
-		s, err := r.pair(l, e, word, dative)
+		s, err := r.pair(l, e, word, gc)
 		if err != nil {
 			return sentence{}, err
 		}
-		items[i] = prep + " " + s
+		items[i] = strings.TrimPrefix(prep+" "+s, " ")
 	}
+	s := list(l, plural, items)
 	if len(items) == 1 {
-		return list(l, single, items), nil
+		s.head = single
 	}
-	return list(l, plural, items), nil
+	s.comma = true
+	return s, nil
 }
 
 func (r *renderer) sums() (sentence, error) {
-	if r.lang == German {
-		return r.binary(German, syntax.Sums, "Dieses Programm benutzt keine Summen", "Dieses Programm benutzt die Summe", "Dieses Programm benutzt die Summen", "aus", "und")
+	switch r.lang {
+	case German:
+		return r.binary(German, syntax.Sums, "Dieses Programm benutzt keine Summen", "Dieses Programm benutzt die Summe", "Dieses Programm benutzt die Summen", "aus", "und", dative)
+	case Italian:
+		return r.binary(Italian, syntax.Sums, "Questo programma non usa somme", "Questo programma usa la somma", "Questo programma usa le somme", "", "e", itDi)
 	}
-	return r.binary(English, syntax.Sums, "This code does not use any sums", "This code uses the sum", "This code uses the sums", "of", "and")
+	return r.binary(English, syntax.Sums, "This code does not use any sums", "This code uses the sum", "This code uses the sums", "of", "and", dative)
 }
 
 func (r *renderer) diffs() (sentence, error) {
-	if r.lang == German && len(r.entries(syntax.Diffs)) < 2 {
-		return r.binary(German, syntax.Diffs, "Dieses Programm benutzt keine geordneten Differenzen", "Dieses Programm benutzt die geordnete Differenz", "", "zwischen", "und")
+	switch {
+	case r.lang == German && len(r.entries(syntax.Diffs)) < 2:
+		return r.binary(German, syntax.Diffs, "Dieses Programm benutzt keine geordneten Differenzen", "Dieses Programm benutzt die geordnete Differenz", "", "zwischen", "und", dative)
+	case r.lang == Italian:
+		return r.binary(Italian, syntax.Diffs, "Questo programma non usa differenze ordinate", "Questo programma usa la differenza ordinata", "Questo programma usa le differenze ordinate", "tra", "e", nominative)
 	}
-	return r.binary(English, syntax.Diffs, "This code does not use any ordered differences", "This code uses the ordered difference", "This code uses the ordered differences", "between", "and")
+	return r.binary(English, syntax.Diffs, "This code does not use any ordered differences", "This code uses the ordered difference", "This code uses the ordered differences", "between", "and", dative)
 }
 
 func (r *renderer) prods() (sentence, error) {
-	if r.lang == German {
-		return r.binary(German, syntax.Prods, "Dieses Programm benutzt keine Produkte", "Dieses Programm benutzt das Produkt", "Dieses Programm benutzt die Produkte", "von", "und")
+	switch r.lang {
+	case German:
+		return r.binary(German, syntax.Prods, "Dieses Programm benutzt keine Produkte", "Dieses Programm benutzt das Produkt", "Dieses Programm benutzt die Produkte", "von", "und", dative)
+	case Italian:
+		return r.binary(Italian, syntax.Prods, "Questo programma non usa prodotti", "Questo programma usa il prodotto", "Questo programma usa i prodotti", "", "e", itDi)
 	}
-	return r.binary(English, syntax.Prods, "This code does not use any products", "This code uses the product", "This code uses the products", "of", "and")
+	return r.binary(English, syntax.Prods, "This code does not use any products", "This code uses the product", "This code uses the products", "of", "and", dative)
 }
 
 func (r *renderer) ratios() (sentence, error) {
-	if r.lang == German && len(r.entries(syntax.Ratios)) == 0 {
+	switch {
+	case r.lang == German && len(r.entries(syntax.Ratios)) == 0:
 		return list(German, "Dieses Programm benutzt keine Verhaeltnisse", nil), nil
+	case r.lang == Italian:
+		return r.binary(Italian, syntax.Ratios, "Questo programma non usa rapporti", "Questo programma usa il rapporto", "Questo programma usa i rapporti", "tra", "e", nominative)
 	}
-	return r.binary(English, syntax.Ratios, "This code does not use any ratios", "This code uses the ratio", "This code uses the ratios", "of", "to")
+	return r.binary(English, syntax.Ratios, "This code does not use any ratios", "This code uses the ratio", "This code uses the ratios", "of", "to", dative)
 }
 
 // nands writes the logical operations: the original's NOR ("of not a and not
 // b"), and in Very Sorted! the NAND ("of not both a and b") and German for
-// both (#26).
+// both (#26), and in Very Very Sorted! Italian ("né a né b", "non entrambi
+// a e b").
 func (r *renderer) nands() (sentence, error) {
 	es := r.entries(syntax.Nands)
 	if len(es) == 0 {
-		return list(r.lang, r.say("This code does not use any logical operations", "Dieses Programm ist unlogisch"), nil), nil
+		return list(r.lang, r.say("This code does not use any logical operations", "Dieses Programm ist unlogisch", "Questo programma è illogico"), nil), nil
 	}
 	l := English
-	if r.p.Very {
+	if r.p.Verys > 0 {
 		l = r.lang
 	}
 	items := make([]string, len(es))
 	for i, e := range es {
-		if e.Flags != syntax.LogicalNor && (e.Flags != syntax.LogicalNand || !r.p.Very) {
+		if e.Flags != syntax.LogicalNor && (e.Flags != syntax.LogicalNand || r.p.Verys == 0) {
 			return sentence{}, fail("logical operation %d has flags %d, which only Very Sorted! NAND (1) or NOR (0) has", i, e.Flags)
 		}
 		c := nominative
@@ -535,27 +694,33 @@ func (r *renderer) nands() (sentence, error) {
 		if err != nil {
 			return sentence{}, err
 		}
+		nand := e.Flags == syntax.LogicalNand
 		switch {
-		case l == German && e.Flags == syntax.LogicalNand:
+		case l == German && nand:
 			items[i] = "von nicht beiden, " + a + " und " + b
 		case l == German:
 			items[i] = "von nicht " + a + " und nicht " + b
-		case e.Flags == syntax.LogicalNand:
+		case l == Italian && nand:
+			items[i] = "non entrambi " + a + " e " + b
+		case l == Italian:
+			items[i] = "né " + a + " né " + b
+		case nand:
 			items[i] = "of not both " + a + " and " + b
 		default:
 			items[i] = "of not " + a + " and not " + b
 		}
 	}
-	if l == German {
-		if len(items) == 1 {
-			return list(German, "Dieses Programm benutzt die logische Verknuepfung", items), nil
-		}
-		return list(German, "Dieses Programm benutzt die logischen Verknuepfungen", items), nil
-	}
+	heads := map[Lang][2]string{
+		English: {"This code uses the logical operation", "This code uses the logical operations"},
+		German:  {"Dieses Programm benutzt die logische Verknuepfung", "Dieses Programm benutzt die logischen Verknuepfungen"},
+		Italian: {"Questo programma usa l'operazione logica", "Questo programma usa le operazioni logiche"},
+	}[l]
+	s := list(l, heads[1], items)
 	if len(items) == 1 {
-		return list(English, "This code uses the logical operation", items), nil
+		s.head = heads[0]
 	}
-	return list(English, "This code uses the logical operations", items), nil
+	s.comma = true
+	return s, nil
 }
 
 // --- conditions, labels, assignments, implementation ---
@@ -563,7 +728,7 @@ func (r *renderer) nands() (sentence, error) {
 func (r *renderer) conditions() (sentence, error) {
 	cs := r.entries(syntax.Conditions)
 	if len(cs) == 0 {
-		return list(r.lang, r.say("This code does not use any conditions", "Dieses Programm benutzt keine Bedingungen"), nil), nil
+		return list(r.lang, r.say("This code does not use any conditions", "Dieses Programm benutzt keine Bedingungen", "Questo programma non usa condizioni"), nil), nil
 	}
 	items := make([]string, len(cs))
 	for i, c := range cs {
@@ -571,25 +736,26 @@ func (r *renderer) conditions() (sentence, error) {
 		if err != nil {
 			return sentence{}, err
 		}
-		// "gleich" takes the dative, "kleiner als" the nominative.
-		cmp, bc := r.say("is equal to", "ist gleich"), dative
+		// "gleich" takes the dative, "kleiner als" the nominative; "uguale
+		// a", "minore di".
+		cmp, bc := r.say("is equal to", "ist gleich", "sia uguale"), r.caseOf(dative, itA)
 		if c.Flags != syntax.CompareEqual {
-			cmp, bc = r.say("is less than", "ist kleiner als"), nominative
+			cmp, bc = r.say("is less than", "ist kleiner als", "sia minore"), r.caseOf(nominative, itDi)
 		}
 		b, err := r.ref(r.lang, c.Ops[1], bc)
 		if err != nil {
 			return sentence{}, err
 		}
-		items[i] = r.say("the condition that ", "die Bedingung dass ") + a + " " + cmp + " " + b
+		items[i] = r.say("the condition that ", "die Bedingung dass ", "la condizione che ") + a + " " + cmp + " " + b
 	}
-	return list(r.lang, r.say("This code uses", "Dieses Programm benutzt"), items), nil
+	return list(r.lang, r.say("This code uses", "Dieses Programm benutzt", "Questo programma usa"), items), nil
 }
 
 func (r *renderer) labels() (sentence, error) {
 	n := r.p.LabelsCount
 	switch {
 	case n == 0:
-		return list(r.lang, r.say("This code does not use any labels", "Dieses Programm benutzt keine Sprungziele"), nil), nil
+		return list(r.lang, r.say("This code does not use any labels", "Dieses Programm benutzt keine Sprungziele", "Questo programma non usa etichette"), nil), nil
 	case n < 0:
 		return sentence{}, fail("negative label count %d", n)
 	case n >= 1000000000:
@@ -599,35 +765,35 @@ func (r *renderer) labels() (sentence, error) {
 	var item string
 	switch {
 	case n == 1:
-		item = w + r.say(" label", " Sprungziel")
+		item = r.say(w+" label", w+" Sprungziel", "un'etichetta")
 	default:
-		item = w + r.say(" labels", " Sprungziele")
+		item = w + r.say(" labels", " Sprungziele", " etichette")
 	}
-	return list(r.lang, r.say("This code uses", "Dieses Programm benutzt"), []string{item}), nil
+	return list(r.lang, r.say("This code uses", "Dieses Programm benutzt", "Questo programma usa"), []string{item}), nil
 }
 
 func (r *renderer) assigns() (sentence, error) {
 	as := r.entries(syntax.Assigns)
 	if len(as) == 0 {
-		return list(r.lang, r.say("This code does not use any assignments", "Dieses Programm benutzt keine Zuweisungen"), nil), nil
+		return list(r.lang, r.say("This code does not use any assignments", "Dieses Programm benutzt keine Zuweisungen", "Questo programma non usa assegnamenti"), nil), nil
 	}
 	items := make([]string, len(as))
 	for i, a := range as {
 		// Very Sorted! stores into the cell any value indexes (#27)
-		if t := a.Ops[1].Type; t&0xFF != syntax.Number && !(r.p.Very && t&syntax.Indirect != 0) {
+		if t := a.Ops[1].Type; t&0xFF != syntax.Number && !(r.p.Verys > 0 && t&syntax.Indirect != 0) {
 			return sentence{}, fail("assignment %d does not store into a cell", i+1)
 		}
 		from, err := r.ref(r.lang, a.Ops[0], accusative)
 		if err != nil {
 			return sentence{}, err
 		}
-		to, err := r.ref(r.lang, a.Ops[1], accusative)
+		to, err := r.ref(r.lang, a.Ops[1], r.caseOf(accusative, itA))
 		if err != nil {
 			return sentence{}, err
 		}
-		items[i] = from + r.say(" to ", " an ") + to
+		items[i] = from + r.say(" to ", " an ", " ") + to
 	}
-	return list(r.lang, r.say("This code assigns", "Dieses Programm weisst zu"), items), nil
+	return list(r.lang, r.say("This code assigns", "Dieses Programm weisst zu", "Questo programma assegna"), items), nil
 }
 
 func (r *renderer) implementation() (sentence, error) {
@@ -643,14 +809,17 @@ func (r *renderer) implementation() (sentence, error) {
 		}
 		items[i] = w
 	}
-	return list(r.lang, r.say("This code implements", "Dieses Programm implementiert"), items), nil
+	return list(r.lang, r.say("This code implements", "Dieses Programm implementiert", "Questo programma implementa"), items), nil
 }
 
-// cool writes the last sentence, which also names the dialect: a Very
-// Sorted! program is very cool.
+// cool writes the last sentence, which also names the dialect: the code is
+// as very cool as its dialect has verys ("This code is very very cool.",
+// "Questo programma è molto molto figo."); the original's is just "Cool.".
 func (r *renderer) cool() (sentence, error) {
-	if r.p.Very {
-		return sentence{head: r.say("This code is very cool", "Dieses Programm ist ganz hervorragend")}, nil
+	n := r.p.Verys
+	if n == 0 {
+		return sentence{head: r.say("Cool", "Hervorragend", "")}, nil // Italian is never the original's
 	}
-	return sentence{head: r.say("Cool", "Hervorragend")}, nil
+	return sentence{head: r.say("This code is "+strings.Repeat("very ", n)+"cool", "Dieses Programm ist "+strings.Repeat("ganz ", n)+"hervorragend",
+		"Questo programma è "+strings.Repeat("molto ", n)+"figo")}, nil
 }

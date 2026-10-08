@@ -6,6 +6,8 @@ import (
 	"unicode"
 
 	"golang.org/x/text/cases"
+	"golang.org/x/text/runes"
+	"golang.org/x/text/transform"
 	"golang.org/x/text/unicode/norm"
 )
 
@@ -83,6 +85,25 @@ func FilterVery(raw []byte) string {
 }
 
 var umlauts = strings.NewReplacer("ä", "ae", "ö", "oe", "ü", "ue")
+
+// FilterVeryVery prepares raw source for Very Very Sorted! (#30): as
+// FilterVery, and then without accents, so that "è", "può" and "ventitré"
+// read as "e", "puo" and "ventitre", the way its keywords are spelled
+// (written with or without accents, they mean the same). The German
+// umlauts are written out before (FilterVery), so "fünf" is still "fuenf".
+func FilterVeryVery(raw []byte) string { return Unaccent(FilterVery(raw)) }
+
+// Unaccent strips accents: decompose (NFD), drop the combining marks,
+// recompose (NFC). The voicing marks of kana (U+3099, U+309A) are not
+// accents and stay: ド is not ト.
+func Unaccent(s string) string {
+	t, _, _ := transform.String(unaccent, s)
+	return t
+}
+
+var unaccent = transform.Chain(norm.NFD, runes.Remove(runes.Predicate(isAccent)), norm.NFC)
+
+func isAccent(r rune) bool { return unicode.Is(unicode.Mn, r) && r != '\u3099' && r != '\u309a' }
 
 func isChar(b byte) bool { return 'A' <= b && b <= 'Z' || 'a' <= b && b <= 'z' }
 

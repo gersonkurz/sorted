@@ -8,8 +8,8 @@ the year 2000. Its design criteria, quoting the
 - Thou shalt not have the same cardinal more than once.
 - Each program should contain exactly fourteen statements.
 
-It is also bilingual: every statement can be written in English or in German,
-and a program may mix both.
+It is also multilingual: every statement can be written in English or in
+German, and, since Very Very Sorted!, in Italian, and a program may mix them.
 
 This repository is a Go port of the original C++ interpreter that Gerson Kurz
 wrote in 2000. It is faithful to the original, quirks included: it accepts the
@@ -82,7 +82,7 @@ every number as a character, so `fibo.s` comes out as raw bytes instead of
 "one, one, two, three", and it writes indirect cells one off, so `itoa.s`
 moves its famous NUL. `--to-c` replaces it. `--lang NAME`, or just `--NAME`, prints the program in that
 language instead of running it, so `sorted --deutsch hello.s` sings Hello
-World in German. Sorted! has no favourite language, not even for naming
+World in German, and `sorted --italiano hello.s` in Italian. Sorted! has no favourite language, not even for naming
 languages: NAME may be the language's name in any language Sorted! speaks or
 will, ignoring case and accents (`--english`, `--Englisch`, `--anglais`,
 `--lang inglês`, `--英語`, `--lang en`; `sorted --help` lists them all).
@@ -108,11 +108,11 @@ says which one this `sorted` reads, in its own words:
 
 ```
 $ sorted --version
-This code is very cool.
+This code is very very cool.
 ```
 
 A build that is not a release adds where it comes from, as in `This code is
-very cool. (a105f41-dirty)`. Releases are tagged the same way (`cool`,
+very very cool. (a105f41-dirty)`. Releases are tagged the same way (`cool`,
 `very-cool`, `very-very-cool`, ...), and the first one will be
 `very-very-cool`: nothing is released before Very Very Sorted!.
 
@@ -120,22 +120,22 @@ very cool. (a105f41-dirty)`. Releases are tagged the same way (`cool`,
 
 A program is fourteen sentences, always in this order:
 
-| # | Sentence | English | German |
-|---|---|---|---|
-| 1 | numbers | This code uses the numbers … | Dieses Programm benutzt die Zahlen … |
-| 2 | jumps | This code always goes to … / sometimes goes to … if … is true | Dieses Programm springt immer an … |
-| 3 | output | This code writes … as a character | Dieses Programm schreibt … als ein Zeichen |
-| 4 | input | This code cannot read. | Dieses Programm kann nicht lesen. |
-| 5 | sums | This code uses the sum of … and … | Dieses Programm benutzt die Summe aus … und … |
-| 6 | conditions | This code uses the condition that … is equal to … | … die Bedingung dass … ist gleich … |
-| 7 | labels | This code uses two labels. | Dieses Programm benutzt zwei Sprungziele. |
-| 8 | ordered differences | This code uses the ordered difference between … and … | … die geordnete Differenz zwischen … und … |
-| 9 | assignments | This code assigns … to … | Dieses Programm weisst zu … an … |
-| 10 | products | This code uses the product of … and … | Dieses Programm benutzt das Produkt von … und … |
-| 11 | implementation | This code implements the first assignment, … | Dieses Programm implementiert … |
-| 12 | ratios | This code uses the ratio of … to … | (English only) |
-| 13 | logical operations | This code does not use any logical operations. | Dieses Programm ist unlogisch. |
-| 14 | coolness | Cool. | Hervorragend. |
+| # | Sentence | English | German | Italian (Very Very Sorted!) |
+|---|---|---|---|---|
+| 1 | numbers | This code uses the numbers … | Dieses Programm benutzt die Zahlen … | Questo programma usa i numeri … |
+| 2 | jumps | This code always goes to … / sometimes goes to … if … is true | Dieses Programm springt immer an … | Questo programma va sempre alla … / va talvolta alla … se … è vera |
+| 3 | output | This code writes … as a character | Dieses Programm schreibt … als ein Zeichen | Questo programma scrive … come carattere |
+| 4 | input | This code cannot read. | Dieses Programm kann nicht lesen. | Questo programma non può leggere. |
+| 5 | sums | This code uses the sum of … and … | Dieses Programm benutzt die Summe aus … und … | Questo programma usa la somma del … e del … |
+| 6 | conditions | This code uses the condition that … is equal to … | … die Bedingung dass … ist gleich … | … la condizione che … sia uguale al … |
+| 7 | labels | This code uses two labels. | Dieses Programm benutzt zwei Sprungziele. | Questo programma usa due etichette. |
+| 8 | ordered differences | This code uses the ordered difference between … and … | … die geordnete Differenz zwischen … und … | … la differenza ordinata tra … e … |
+| 9 | assignments | This code assigns … to … | Dieses Programm weisst zu … an … | Questo programma assegna … al … |
+| 10 | products | This code uses the product of … and … | Dieses Programm benutzt das Produkt von … und … | … il prodotto del … e del … |
+| 11 | implementation | This code implements the first assignment, … | Dieses Programm implementiert … | Questo programma implementa il primo assegnamento, … |
+| 12 | ratios | This code uses the ratio of … to … | (English only) | … il rapporto tra … e … |
+| 13 | logical operations | This code does not use any logical operations. | Dieses Programm ist unlogisch. | Questo programma è illogico. |
+| 14 | coolness | Cool. | Hervorragend. | Questo programma è molto molto figo. |
 
 Every sentence except the implementation and "Cool." also has a "none" form
 ("This code does not use any sums."). For more than one entry, use the plural
@@ -220,9 +220,10 @@ sorted fizzbuzz.s
 
 The first song has to be the obvious one. [`examples/99-bottles.c`](examples/99-bottles.c)
 is the standard C version of 99 Bottles of Beer, and next to it sit what the
-compiler makes of it, [in English](examples/99-bottles.s) and
-[in German](examples/99-bottles.de.s): about 630 lines each, all singable,
-every verse printed exactly as the C program prints it.
+compiler makes of it, [in English](examples/99-bottles.s),
+[in German](examples/99-bottles.de.s) and [in Italian](examples/99-bottles.it.s):
+about 630 lines each, all singable, every verse printed exactly as the C
+program prints it.
 
 The second proves a point. [`examples/brainfuck.c`](examples/brainfuck.c) is
 a Brainfuck interpreter, and [`examples/brainfuck.s`](examples/brainfuck.s)
@@ -279,8 +280,12 @@ what the C program prints when compiled with clang.
 
 `--lang en` or `--lang de` also writes an existing Sorted! program back out, so
 translating between English and German comes free. Everything the compiler
-and the translator write uses only forms the 2000 parser knows, so it also
-runs on the original `Sorted.exe`. A few programs that run fine cannot be
+and the translator write in English or German uses only forms the 2000 parser
+knows, so it also runs on the original `Sorted.exe` (unless the program is
+very). Italian is Very Very Sorted! (below), so `--lang it` makes any program
+Very Very Sorted!, and refuses the rare 2000 program that would then do
+something else: one that prints German numbers, which Very Sorted! spells in
+UTF-8, or one whose statements reach past their tables. A few programs that run fine cannot be
 written back: a declaration may add up its parts to a number from 1000000000
 on ("ninehundredmillion onehundredmillion"), and the current renderer cannot
 spell such values.
@@ -318,6 +323,30 @@ and the 2000 spellings "fuenf" and "Verhaeltnisse" still work. German
 numbers are printed that way too, and `--deutsch` writes a very program
 with umlauts. On a Windows console, `chcp 65001` shows them as letters.
 The 2000 dialect still reads bytes, where "fünf" is "f nf".
+
+**Very Very Sorted!** The second dialect of the very Fibonacci sequence
+speaks Italian. A program that ends with "This code is very very cool."
+("Dieses Programm ist ganz ganz hervorragend.", "Questo programma è molto
+molto figo.") has everything Very Sorted! has, and every sentence may be
+Italian, mixed with English and German as those two always mixed:
+
+```
+Questo programma usa i numeri zero, uno, ventitré e un milione.
+Questo programma va sempre alla prima etichetta e va talvolta alla seconda etichetta se la prima condizione è vera.
+Questo programma usa le somme del primo numero e del secondo numero, e dell'ottava cella e della prima somma.
+Questo programma usa la condizione che il primo numero sia uguale al secondo numero.
+Questo programma usa l'operazione logica né il primo numero né il secondo numero.
+```
+
+Italian has a form for everything and no quirks: the articles fuse with
+their prepositions and elide before a vowel ("dell'ottava cella"), the
+ordinals agree with their nouns ("il primo numero", "la prima somma"), a
+NOR is "né … né …" and a NAND "non entrambi … e …", and a program that uses
+no logical operations "è illogico". Its numbers are single words, as on a
+cheque ("unmilioneduecentomila"), written with or without accents, and
+Italian numbers can be printed in any of the three languages ("come
+cardinale italiano", "as an italian ordinal", "als eine italienische
+Ordinalzahl"), for any number at all: "zero", "zeresimo", "meno sette".
 
 **And back to C.** `sorted --from-c prog.c --to-c obfuscated.c` takes a
 program on the full round trip: C → Sorted! → C. The result prints what
@@ -375,7 +404,8 @@ just run legacy/sorted.win32/fibo.s
 ```
 
 The packages follow the original's pipeline: `internal/syntax` (source filter
-and parser), `internal/numbers` (number words), `internal/interp`
+and parser, `italian.go` for Very Very Sorted!), `internal/numbers` (number
+words), `internal/interp`
 (interpreter), `internal/emit` (`/D` dump and C translation), `internal/render`
 (programs back to Sorted! text), and the command in `cmd/sorted`. The C
 compiler adds `internal/cc` (the chibicc-derived front end) and

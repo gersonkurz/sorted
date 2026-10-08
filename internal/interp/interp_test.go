@@ -252,7 +252,7 @@ func TestVeryReadStoresIntoDeclaredCell(t *testing.T) {
 		want   string
 	}{{writeSecond, "Z"}, {writeFirst, "A"}} {
 		p := hand([]int32{'A', 'B'}, map[syntax.Category][]syntax.Slide{syntax.Reads: reads, syntax.Writes: tt.writes}, read, write)
-		p.Very = true
+		p.Verys = 1
 		if got, err := runHand(t, p, "Z"); err != nil || got != tt.want {
 			t.Errorf("got %q, %v; want %q", got, err, tt.want)
 		}
@@ -270,15 +270,15 @@ func TestVeryIndexedStore(t *testing.T) {
 	a, w := syntax.Operand{Type: syntax.Assign}, syntax.Operand{Type: syntax.Write}
 	w1 := syntax.Operand{Type: syntax.Write, Index: 1}
 	for _, tt := range []struct {
-		very bool
-		want string
-		err  bool
-	}{{true, "ZB", false}, {false, "", true}} {
+		verys int
+		want  string
+		err   bool
+	}{{1, "ZB", false}, {2, "ZB", false}, {0, "", true}} {
 		p := hand([]int32{1, 'B', 'C', 'Z'}, map[syntax.Category][]syntax.Slide{syntax.Sums: sums, syntax.Assigns: assigns, syntax.Writes: writes}, a, w, w1)
-		p.Very = tt.very
+		p.Verys = tt.verys
 		got, err := runHand(t, p, "")
 		if got != tt.want || (err != nil) != tt.err {
-			t.Errorf("very %v: %q, %v; want %q", tt.very, got, err, tt.want)
+			t.Errorf("verys %d: %q, %v; want %q", tt.verys, got, err, tt.want)
 		}
 	}
 }
@@ -293,17 +293,37 @@ func TestVeryGermanSpelling(t *testing.T) {
 	}
 	w := func(i int) syntax.Operand { return syntax.Operand{Type: syntax.Write, Index: int32(i)} }
 	for _, tt := range []struct {
-		very bool
-		want string
+		verys int
+		want  string
 	}{
-		{false, "fuenfunddreissig\nzwoelfte\nthirtyfive\n"},
-		{true, "fünfunddreißig\nzwölfte\nthirtyfive\n"},
+		{0, "fuenfunddreissig\nzwoelfte\nthirtyfive\n"},
+		{1, "fünfunddreißig\nzwölfte\nthirtyfive\n"},
+		{2, "fünfunddreißig\nzwölfte\nthirtyfive\n"},
 	} {
 		p := hand([]int32{35, 12}, map[syntax.Category][]syntax.Slide{syntax.Writes: writes}, w(0), w(1), w(2))
-		p.Very = tt.very
+		p.Verys = tt.verys
 		if got, err := runHand(t, p, ""); err != nil || got != tt.want {
-			t.Errorf("very %v: %q, %v; want %q", tt.very, got, err, tt.want)
+			t.Errorf("verys %d: %q, %v; want %q", tt.verys, got, err, tt.want)
 		}
+	}
+}
+
+// Very Very Sorted! writes Italian numbers (#30), any number at all.
+func TestItalianOutput(t *testing.T) {
+	writes := []syntax.Slide{
+		{Ops: [2]syntax.Operand{num(0)}, Flags: syntax.FormatItalianCardinal},
+		{Ops: [2]syntax.Operand{num(0)}, Flags: syntax.FormatItalianOrdinal},
+		{Ops: [2]syntax.Operand{num(1)}, Flags: syntax.FormatItalianCardinal},
+		{Ops: [2]syntax.Operand{num(1)}, Flags: syntax.FormatItalianOrdinal},
+		{Ops: [2]syntax.Operand{num(2)}, Flags: syntax.FormatItalianCardinal},
+		{Ops: [2]syntax.Operand{num(2)}, Flags: syntax.FormatItalianOrdinal},
+	}
+	w := func(i int) syntax.Operand { return syntax.Operand{Type: syntax.Write, Index: int32(i)} }
+	p := hand([]int32{23, 0, -7}, map[syntax.Category][]syntax.Slide{syntax.Writes: writes}, w(0), w(1), w(2), w(3), w(4), w(5))
+	p.Verys = 2
+	want := "ventitré\nventitreesimo\nzero\nzeresimo\nmeno sette\nmeno settimo\n"
+	if got, err := runHand(t, p, ""); err != nil || got != want {
+		t.Errorf("%q, %v; want %q", got, err, want)
 	}
 }
 

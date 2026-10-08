@@ -70,6 +70,9 @@ const (
 	FormatEnglishOrdinal  int32 = 2
 	FormatGermanCardinal  int32 = 3
 	FormatGermanOrdinal   int32 = 4
+	// Very Very Sorted! (#30) also writes Italian numbers.
+	FormatItalianCardinal int32 = 5
+	FormatItalianOrdinal  int32 = 6
 
 	CompareEqual int32 = 0
 	CompareLess  int32 = 1
@@ -105,9 +108,12 @@ type Program struct {
 	Code []Slide
 	// Data holds the declared numbers, in order (Data[:nNumbersUsed]).
 	Data []int32
-	// Very marks a program in the Very Sorted! dialect, which ends with
-	// "This code is very cool." (see Parse).
-	Very bool
+	// Verys is the program's dialect, counted in verys (#39): 0 for the
+	// original's Sorted!, 1 for Very Sorted! ("This code is very cool."),
+	// 2 for Very Very Sorted! ("This code is very very cool."), which also
+	// speaks Italian (see Parse). Each dialect has everything the one
+	// before it has.
+	Verys int
 }
 
 // Entries returns the entries of category c. An empty table may start past

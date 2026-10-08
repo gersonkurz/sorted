@@ -3,14 +3,12 @@ package main
 import (
 	"flag"
 	"strings"
-	"unicode"
 
 	"golang.org/x/text/cases"
-	"golang.org/x/text/runes"
-	"golang.org/x/text/transform"
 	"golang.org/x/text/unicode/norm"
 
 	"github.com/gersonkurz/sorted/internal/render"
+	"github.com/gersonkurz/sorted/internal/syntax"
 )
 
 // language is a language Sorted! speaks, or will: every name it has in every
@@ -20,7 +18,7 @@ type language struct {
 	code   string // ISO 639-1, the neutral name
 	names  []string
 	lang   render.Lang
-	spoken bool // false: named here, but not spoken yet (Very Very Sorted!)
+	spoken bool // false: named here, but not spoken yet
 }
 
 // languages names each language in English, German, French, Italian,
@@ -29,31 +27,23 @@ var languages = []language{
 	{"en", []string{"English", "Englisch", "anglais", "inglese", "inglês", "英語", "eigo", "英语", "yīngyǔ"}, render.English, true},
 	{"de", []string{"German", "Deutsch", "allemand", "tedesco", "alemão", "ドイツ語", "doitsugo", "德语", "déyǔ"}, render.German, true},
 	{"fr", []string{"French", "Französisch", "français", "francese", "francês", "フランス語", "furansugo", "法语", "fǎyǔ", "vaudois", "Waadtländisch"}, 0, false},
-	{"it", []string{"Italian", "Italienisch", "italien", "italiano", "italiano", "イタリア語", "itariago", "意大利语", "yìdàlìyǔ"}, 0, false},
+	{"it", []string{"Italian", "Italienisch", "italien", "italiano", "italiano", "イタリア語", "itariago", "意大利语", "yìdàlìyǔ"}, render.Italian, true},
 	{"pt", []string{"Portuguese", "Portugiesisch", "portugais", "portoghese", "português", "ポルトガル語", "porutogarugo", "葡萄牙语", "pútáoyáyǔ", "brasileiro"}, 0, false},
 	{"ja", []string{"Japanese", "Japanisch", "japonais", "giapponese", "japonês", "日本語", "nihongo", "日语", "rìyǔ"}, 0, false},
 	{"zh", []string{"Mandarin", "Chinese", "Chinesisch", "chinois", "mandarin", "cinese", "mandarino", "chinês", "mandarim", "中国語", "chūgokugo", "汉语", "hànyǔ", "中文", "zhōngwén", "普通话", "pǔtōnghuà"}, 0, false},
 }
 
-// fold folds case the Unicode way (ß becomes ss), and unaccent strips
-// accents: decompose (NFD), drop the combining marks, recompose (NFC). The
-// voicing marks of kana (U+3099, U+309A) are not accents and stay: ド is
-// not ト.
-var (
-	fold     = cases.Fold()
-	unaccent = transform.Chain(norm.NFD, runes.Remove(runes.Predicate(isAccent)), norm.NFC)
-)
-
-func isAccent(r rune) bool { return unicode.Is(unicode.Mn, r) && r != '\u3099' && r != '\u309a' }
+// fold folds case the Unicode way (ß becomes ss); syntax.Unaccent strips
+// accents, as Very Very Sorted! reads its text (kana voicing stays: ド is
+// not ト).
+var fold = cases.Fold()
 
 // keys are the spellings a name matches, ignoring case and accents, however
 // they are encoded: plain, and with an umlaut (a combining diaeresis once
 // decomposed) spelled as its vowel plus e ("franzosisch", "franzoesisch").
 func keys(name string) [2]string {
 	d := norm.NFD.String(fold.String(name))
-	plain, _, _ := transform.String(unaccent, d)
-	ascii, _, _ := transform.String(unaccent, strings.ReplaceAll(d, "\u0308", "e"))
-	return [2]string{plain, ascii}
+	return [2]string{syntax.Unaccent(d), syntax.Unaccent(strings.ReplaceAll(d, "\u0308", "e"))}
 }
 
 // findLanguage looks a language up by any of its names or its code.

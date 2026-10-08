@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -137,6 +138,38 @@ func exactWordsTest(t *testing.T, very bool) {
 	}
 }
 
+// TestExactItalianWords compares the C Italian number words with
+// internal/numbers (#30).
+func TestExactItalianWords(t *testing.T) {
+	values := []int32{math.MinInt32, -1000000, -23, -1, 0, 1000000000, 2000000000, math.MaxInt32}
+	for v := int32(1); v <= 1200; v++ {
+		values = append(values, v)
+	}
+	for v := int64(1201); v <= math.MaxInt32; v = v*7/5 + 3 {
+		values = append(values, int32(v), int32(v/1000*1000), int32(v/1000000*1000000))
+	}
+	var b, want strings.Builder
+	b.WriteString(exactHeader + "static I _[193719];\n" + exactRuntime + words(true) + exactItalian + "int main(void) {\n")
+	for _, v := range values {
+		fmt.Fprintf(&b, "\twi_(5, %d);\n\twi_(6, %d);\n", v, v)
+		want.WriteString(numbers.ItalianCardinal(v) + "\n" + numbers.ItalianOrdinal(v, false) + "\n")
+	}
+	b.WriteString("\treturn 0;\n}\n")
+	got, stderr, code := runC(t, b.String(), "")
+	if code != 0 || stderr != "" {
+		t.Fatalf("exit %d, stderr %q", code, stderr)
+	}
+	gotLines, wantLines := strings.Split(got, "\n"), strings.Split(want.String(), "\n")
+	if len(gotLines) != len(wantLines) {
+		t.Fatalf("%d lines, want %d", len(gotLines), len(wantLines))
+	}
+	for i := range gotLines {
+		if gotLines[i] != wantLines[i] {
+			t.Errorf("line %d: %q, want %q", i, gotLines[i], wantLines[i])
+		}
+	}
+}
+
 // builder lays out tables by hand: each category gets a block of slots.
 type builder struct{ p syntax.Program }
 
@@ -251,7 +284,7 @@ func TestExactQuirks(t *testing.T) {
 		"very input": func(b *builder) {
 			// Very Sorted! reads into the declared cell (here the second);
 			// the original would read into the first.
-			b.p.Very = true
+			b.p.Verys = 1
 			b.p.Data = []int32{'A', 'B'}
 			b.table(syntax.Reads, stmt(N, 1))
 			b.table(syntax.Writes, write(syntax.FormatCharacter, op(N, 1)), write(syntax.FormatCharacter, op(N, 0)))
@@ -260,7 +293,7 @@ func TestExactQuirks(t *testing.T) {
 		"very indexed store": func(b *builder) {
 			// Very Sorted! stores into the cell a sum indexes (#27), Data[2],
 			// and reads Data[1] through it.
-			b.p.Very = true
+			b.p.Verys = 1
 			b.p.Data = []int32{1, 'B', 'C', 'Z'}
 			b.table(syntax.Sums, slide(op(N, 0), op(N, 0), 0))
 			b.table(syntax.Assigns, slide(op(N, 3), op(syntax.Sum|syntax.Indirect, 0), 0))
@@ -271,7 +304,7 @@ func TestExactQuirks(t *testing.T) {
 			// Very Sorted!'s NAND and the original's NOR (#26); the third
 			// reference reads past the table into a condition's slot, whose
 			// flags (CompareLess, 1) make it a NAND.
-			b.p.Very = true
+			b.p.Verys = 1
 			b.p.Data = []int32{12, 10, 100}
 			b.table(syntax.Nands, slide(op(N, 0), op(N, 1), syntax.LogicalNand), slide(op(N, 0), op(N, 1), syntax.LogicalNor))
 			b.table(syntax.Conditions, slide(op(N, 2), op(N, 1), syntax.CompareLess))
@@ -280,10 +313,18 @@ func TestExactQuirks(t *testing.T) {
 		},
 		"very german numbers": func(b *builder) {
 			// Very Sorted! prints German numbers in UTF-8 (#28).
-			b.p.Very = true
+			b.p.Verys = 1
 			b.p.Data = []int32{35, 12, 1005, 30}
 			b.table(syntax.Writes, write(syntax.FormatGermanCardinal, op(N, 0)), write(syntax.FormatGermanOrdinal, op(N, 1)),
 				write(syntax.FormatGermanCardinal, op(N, 2)), write(syntax.FormatGermanOrdinal, op(N, 3)), write(syntax.FormatEnglishCardinal, op(N, 2)))
+			b.table(syntax.Statements, stmt(syntax.Write, 0), stmt(syntax.Write, 1), stmt(syntax.Write, 2), stmt(syntax.Write, 3), stmt(syntax.Write, 4))
+		},
+		"italian numbers": func(b *builder) {
+			// Very Very Sorted! prints Italian numbers (#30), negative ones too.
+			b.p.Verys = 2
+			b.p.Data = []int32{23, 0, -1000000, 1000000}
+			b.table(syntax.Writes, write(syntax.FormatItalianCardinal, op(N, 0)), write(syntax.FormatItalianOrdinal, op(N, 0)),
+				write(syntax.FormatItalianOrdinal, op(N, 1)), write(syntax.FormatItalianCardinal, op(N, 2)), write(syntax.FormatItalianOrdinal, op(N, 3)))
 			b.table(syntax.Statements, stmt(syntax.Write, 0), stmt(syntax.Write, 1), stmt(syntax.Write, 2), stmt(syntax.Write, 3), stmt(syntax.Write, 4))
 		},
 		"a jump below the code": func(b *builder) {

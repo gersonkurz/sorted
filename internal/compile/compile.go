@@ -194,6 +194,7 @@ type compiler struct {
 	out       int   // the output cell's variable index, -1 until needed
 	in        int   // the input cell's variable index, -1 until a getchar needs it
 	very      bool  // the program is Very Sorted! from the start (see compileProgram)
+	verys     int   // its dialect at least, counted in verys
 	idxs      []val // the values vIdx operands index
 
 	addrs     []int            // address numbers, as variable-cell offsets (see program)
@@ -255,9 +256,12 @@ type function struct {
 	frame   []int              // on a cycle: ra, parameters and locals, which a call saves
 }
 
-// Compile lowers a parsed C program into Sorted! tables.
-func Compile(prog *cc.Program) (*syntax.Program, error) {
-	_, p, err := compileProgram(prog, false)
+// Compile lowers a parsed C program into Sorted! tables, in the dialect
+// with verys verys or a newer one: 0 for whatever the program needs, 2 for
+// a program to be written in Italian (render.Lang.Verys), which is Very
+// Very Sorted!.
+func Compile(prog *cc.Program, verys int) (*syntax.Program, error) {
+	_, p, err := compileProgram(prog, verys)
 	return p, err
 }
 
@@ -266,21 +270,22 @@ func Compile(prog *cc.Program) (*syntax.Program, error) {
 // anyway also indexes computed values directly (see indexed); one that is
 // not keeps to what Sorted.exe runs (Gerson, 2026-10-07). Whether it is
 // shows in what the lowering emits, so such a program is compiled a second
-// time, as Very Sorted! from the start. With very set, the program is Very
-// Sorted! even when it need not be (the tests run every program that way
-// too).
-func compileProgram(prog *cc.Program, very bool) (*compiler, *syntax.Program, error) {
-	c, p, err := compileAs(prog, very)
-	if err == nil && !c.very && p.Very {
-		return compileAs(prog, true)
+// time, as Very Sorted! from the start. With verys set, the program is Very
+// Sorted! (or Very Very Sorted!) even when it need not be (the tests run
+// every program that way too).
+func compileProgram(prog *cc.Program, verys int) (*compiler, *syntax.Program, error) {
+	c, p, err := compileAs(prog, verys)
+	if err == nil && !c.very && p.Verys > 0 {
+		return compileAs(prog, p.Verys)
 	}
 	return c, p, err
 }
 
-// compileAs compiles prog, as Very Sorted! from the start when very is set.
-// The first compilation's rewrites of the tree (see bitwise) are done again
-// harmlessly: what they rewrote is no longer an operator they rewrite.
-func compileAs(prog *cc.Program, very bool) (c *compiler, p *syntax.Program, err error) {
+// compileAs compiles prog, as Very Sorted! (or newer) from the start when
+// verys is set. The first compilation's rewrites of the tree (see bitwise)
+// are done again harmlessly: what they rewrote is no longer an operator
+// they rewrite.
+func compileAs(prog *cc.Program, verys int) (c *compiler, p *syntax.Program, err error) {
 	c = &compiler{
 		poolIndex: map[int32]int{},
 		vars:      map[*cc.Obj]int{},
@@ -293,7 +298,8 @@ func compileAs(prog *cc.Program, very bool) (c *compiler, p *syntax.Program, err
 		cases:     map[*cc.Node]int{},
 		funcs:     map[*cc.Function]*function{},
 		exit:      -1,
-		very:      very,
+		very:      verys > 0,
+		verys:     verys,
 	}
 	for _, k := range exprKinds {
 		c.exprs[k] = &table{}
@@ -1586,7 +1592,10 @@ func (c *compiler) program() *syntax.Program {
 		put(syntax.Writes, nil)
 	}
 	// The original cannot refer to a logical operation or an input.
-	p.Very = c.very || len(c.exprs[vNand].entries) > 0 || c.in >= 0
+	p.Verys = c.verys
+	if p.Verys == 0 && (len(c.exprs[vNand].entries) > 0 || c.in >= 0) {
+		p.Verys = 1
+	}
 	if c.in >= 0 {
 		put(syntax.Reads, []syntax.Slide{{Ops: [2]syntax.Operand{operand(val{vVar, c.in})}, Flags: syntax.FormatCharacter}})
 	}

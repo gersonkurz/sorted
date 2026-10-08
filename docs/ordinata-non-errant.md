@@ -156,6 +156,21 @@ Sorted! defines "the cell indexed by the first sum" as the doctrine of
 Caput II teaches it for every cell: it reads the cell before the one it
 writes.
 
+## Caput X. De lingua tertia
+
+*On the third tongue*
+
+The language counts its ages in verys, and in the second, Very Very Sorted!,
+it learned a third tongue. Italian was born after the interpreter had
+spoken, and so it inherited none of its properties: it has a form for every
+sentence, its every form parses as written, and its numbers know zero
+("zeresimo") and the negative ("meno sette"). Let no one take this for a
+correction of the elder tongues. "fiveteen" remains fifteen, "as a english
+english ordinal" remains how one asks for an ordinal, and a program of the
+year 2000 that would sing otherwise in Italian is not translated at all.
+The sorted do not err: neither the old, which keep their ways, nor the new,
+which never strayed. **Questo programma è molto molto figo.**
+
 ---
 
 *Datum ad p-nand-q.com, anno linguae MM, confirmatum anno MMXXVI.*
