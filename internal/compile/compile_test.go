@@ -48,12 +48,18 @@ func runSorted(t *testing.T, text string) string { t.Helper(); return runSortedI
 // runSortedIn runs a Sorted! program with stdin.
 func runSortedIn(t *testing.T, text, stdin string) string {
 	t.Helper()
+	return runSortedSteps(t, text, stdin, 10000000)
+}
+
+// runSortedSteps is runSortedIn, stopping after steps statements.
+func runSortedSteps(t *testing.T, text, stdin string, steps int) string {
+	t.Helper()
 	p, err := syntax.Parse([]byte(text))
 	if err != nil {
 		t.Fatalf("%v in:\n%s", err, text)
 	}
 	var out bytes.Buffer
-	if err := interp.Run(p, strings.NewReader(stdin), &out, 10000000); err != nil {
+	if err := interp.Run(p, strings.NewReader(stdin), &out, steps); err != nil {
 		t.Fatalf("%v; output so far %q", err, out.String())
 	}
 	return out.String()
@@ -1492,5 +1498,132 @@ func TestMemoryLimit(t *testing.T) {
 	_, err := compileC(t, tooBig)
 	if !errors.As(err, &e) || err.Error() != fmt.Sprintf("1:1: the program needs %d memory cells; Sorted! has %d", memory+1, memory) {
 		t.Errorf("one cell too many: %v", err)
+	}
+}
+
+// brainfuckToC translates a Brainfuck program into the C subset, one
+// statement per command (#36). With the compiler that makes every Brainfuck
+// program a Sorted! program: the reduction that shows Sorted! Turing
+// complete, up to its memory. A cell is a byte that wraps around, and ','
+// reads 0 at the end of the input, as in examples/brainfuck.c.
+func brainfuckToC(bf string) string {
+	var b strings.Builder
+	b.WriteString("#include <stdio.h>\nunsigned char t[30000];\nint p;\nint main() {\n\tint c;\n")
+	for _, r := range bf {
+		if s, ok := map[rune]string{
+			'+': "t[p]++;", '-': "t[p]--;", '>': "p++;", '<': "p--;", '.': "putchar(t[p]);",
+			',': "c = getchar(); t[p] = c == -1 ? 0 : c;", '[': "while (t[p]) {", ']': "}",
+		}[r]; ok {
+			b.WriteString("\t" + s + "\n")
+		}
+	}
+	b.WriteString("}\n")
+	return b.String()
+}
+
+// Brainfuck programs run as Sorted! two ways: translated (brainfuckToC) and
+// compiled, and interpreted by examples/brainfuck.c compiled to Sorted!.
+// Both print what that interpreter prints natively.
+func TestBrainfuck(t *testing.T) {
+	interpreter, err := os.ReadFile(filepath.Join("..", "..", "examples", "brainfuck.c"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bfSorted := toSorted(t, string(interpreter), render.English)
+	for name, p := range map[string]struct{ bf, stdin string }{
+		"hello":        {"++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.", ""},
+		"squares":      {"++++[>+++++<-]>[<+++++>-]+<+[>[>+>+<<-]++>>[<<+>>-]>>>[-]++>[-]+>>>+[[-]++++++>>>]<<<[[<++++++++<++>>-]+<.<[>----<-]<]<<[>>>>>[>>>[-]+++++++++<[>-<-]+++++++++>[-[<->-]+[<<<]]<[>+<-]>]<<-]<<-]", ""},
+		"reverse":      {">,[>,]<[.<]", "Ordinata non errant\n"},
+		"wrap":         {"-.+.[-]-[>+<-]>.", ""}, // 255, 0, and 255 again by counting down
+		"end of input": {",.,.,.", "A"},          // A, then 0 and 0: the end of the input reads 0
+	} {
+		t.Run(name, func(t *testing.T) {
+			want := runNativeIn(t, string(interpreter), p.bf+"!"+p.stdin)
+			if got := runSortedSteps(t, bfSorted, p.bf+"!"+p.stdin, 100000000); got != want {
+				t.Errorf("the interpreter in Sorted! printed %q, natively %q", got, want)
+			}
+			if got := runNativeIn(t, brainfuckToC(p.bf), p.stdin); got != want {
+				t.Errorf("the translation printed %q natively, the interpreter %q", got, want)
+			}
+			translated := toSorted(t, brainfuckToC(p.bf), render.English)
+			if got := runSortedSteps(t, translated, p.stdin, 100000000); got != want {
+				t.Errorf("the translation printed %q in Sorted!, the interpreter %q", got, want)
+			}
+			// Without ',' the translation is the original's Sorted!, which
+			// was therefore Turing complete in 2000 already.
+			if very := strings.Contains(translated, "very cool"); very != strings.Contains(p.bf, ",") {
+				t.Errorf("the translation is very: %v", very)
+			}
+		})
+	}
+}
+
+// examples/brainfuck.c rejects what it cannot run, with the same message
+// natively and as Sorted!; the last cell of the tape is still on it.
+func TestBrainfuckErrors(t *testing.T) {
+	interpreter, err := os.ReadFile(filepath.Join("..", "..", "examples", "brainfuck.c"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bfSorted := toSorted(t, string(interpreter), render.English)
+	for name, p := range map[string]struct{ bf, want string }{
+		"program too long":      {strings.Repeat("+", 5001), "program too long\n"},
+		"the longest program":   {strings.Repeat("+", 4999) + ".", "\x87"}, // 4999 % 256
+		"unmatched ]":           {"+]", "unmatched ]\n"},
+		"unmatched [":           {"[+", "unmatched [\n"},
+		"off the right end":     {"+[>+]", "off the right end of the tape\n"}, // marking every cell on the way, the last one too
+		"off the left end":      {"<", "off the left end of the tape\n"},
+		"comments are not code": {"say + then . \n", "\x01"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := runNativeIn(t, string(interpreter), p.bf+"!"); got != p.want {
+				t.Errorf("natively %q, want %q", got, p.want)
+			}
+			if got := runSortedSteps(t, bfSorted, p.bf+"!", 100000000); got != p.want {
+				t.Errorf("in Sorted! %q, want %q", got, p.want)
+			}
+		})
+	} // The ends of the tape exactly, on a tape of 10 cells.
+	small := strings.Replace(string(interpreter), "#define TAPE 30000", "#define TAPE 10", 1)
+	if small == string(interpreter) {
+		t.Fatal("no #define TAPE 30000 in examples/brainfuck.c")
+	}
+	smallSorted := toSorted(t, small, render.English)
+	for _, p := range []struct{ bf, want string }{
+		{strings.Repeat(">", 9) + "+.", "\x01"},
+		{strings.Repeat(">", 10), "off the right end of the tape\n"},
+		{">>+<<<", "off the left end of the tape\n"},
+	} {
+		if got := runNativeIn(t, small, p.bf+"!"); got != p.want {
+			t.Errorf("%s: natively %q, want %q", p.bf, got, p.want)
+		}
+		if got := runSortedIn(t, smallSorted, p.bf+"!"); got != p.want {
+			t.Errorf("%s: in Sorted! %q, want %q", p.bf, got, p.want)
+		}
+	}
+}
+
+// Sorted! reads its input as the Win32 C runtime's text mode does (CRLF
+// arrives as LF, Ctrl-Z ends the input), so Brainfuck programs do too, in
+// either form; natively on macOS they would see the CR and what follows
+// the Ctrl-Z.
+func TestBrainfuckInput(t *testing.T) {
+	interpreter, err := os.ReadFile(filepath.Join("..", "..", "examples", "brainfuck.c"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bfSorted := toSorted(t, string(interpreter), render.English)
+	const bf = ",.,.,."
+	translated := toSorted(t, brainfuckToC(bf), render.English)
+	for _, tt := range []struct{ stdin, want string }{
+		{"A\r\nB", "A\nB"},
+		{"A\x1aBC", "A\x00\x00"},
+	} {
+		if got := runSortedIn(t, translated, tt.stdin); got != tt.want {
+			t.Errorf("translated, %q: %q, want %q", tt.stdin, got, tt.want)
+		}
+		if got := runSortedIn(t, bfSorted, bf+"!"+tt.stdin); got != tt.want {
+			t.Errorf("interpreted, %q: %q, want %q", tt.stdin, got, tt.want)
+		}
 	}
 }

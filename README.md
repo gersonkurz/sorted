@@ -211,6 +211,13 @@ compiler makes of it, [in English](examples/99-bottles.s) and
 [in German](examples/99-bottles.de.s): about 630 lines each, all singable,
 every verse printed exactly as the C program prints it.
 
+The second proves a point. [`examples/brainfuck.c`](examples/brainfuck.c) is
+a Brainfuck interpreter, and [`examples/brainfuck.s`](examples/brainfuck.s)
+is that interpreter in Sorted!: `sorted examples/brainfuck.s <
+examples/brainfuck.in` prints "Hello World!". Brainfuck also translates to
+Sorted! command by command, which makes Sorted! [Turing
+complete](docs/turing-completeness.md), and it already was in 2000.
+
 **What works today.** A growing subset of C: functions with `int`, `char`
 and pointer parameters returning `int`, `char`, a pointer or `void`
 (prototypes and recursion included), `int` and `char` variables (also

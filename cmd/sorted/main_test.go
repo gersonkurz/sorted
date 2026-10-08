@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -125,6 +126,12 @@ func TestUsage(t *testing.T) {
 // prints. It skips the test when there is no C compiler.
 func runC(t *testing.T, file string) string {
 	t.Helper()
+	return runCIn(t, file, "")
+}
+
+// runCIn compiles and runs a C file natively, with stdin.
+func runCIn(t *testing.T, file, stdin string) string {
+	t.Helper()
 	compiler, err := exec.LookPath("cc")
 	if err != nil {
 		t.Skip("no C compiler (cc) on PATH")
@@ -136,7 +143,9 @@ func runC(t *testing.T, file string) string {
 	if out, err := exec.Command(compiler, "-std=c17", "-w", "-o", bin, file).CombinedOutput(); err != nil {
 		t.Fatalf("cc: %v\n%s", err, out)
 	}
-	out, err := exec.Command(bin).Output()
+	cmd := exec.Command(bin)
+	cmd.Stdin = strings.NewReader(stdin)
+	out, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("running %s: %v", file, err)
 	}
@@ -270,6 +279,11 @@ func TestExamples(t *testing.T) {
 	for _, src := range sources {
 		base := strings.TrimSuffix(src, ".c")
 		t.Run(filepath.Base(base), func(t *testing.T) {
+			// An example that reads gets <name>.in as its input.
+			stdin, err := os.ReadFile(base + ".in")
+			if err != nil && !errors.Is(err, fs.ErrNotExist) {
+				t.Fatal(err)
+			}
 			var printed []string
 			for _, v := range []struct{ file, lang string }{{base + ".s", "en"}, {base + ".de.s", "de"}} {
 				committed, err := os.ReadFile(v.file)
@@ -280,7 +294,7 @@ func TestExamples(t *testing.T) {
 				if r.code != 0 || r.stdout != strings.ReplaceAll(string(committed), "\r\n", "\n") {
 					t.Fatalf("%s is not what --from-c writes now (run: just examples): %+v", v.file, r.stderr)
 				}
-				run := runCLI(v.file)
+				run := runCLIIn(string(stdin), v.file)
 				if run.code != 0 {
 					t.Fatalf("running %s: %+v", v.file, run)
 				}
@@ -289,7 +303,7 @@ func TestExamples(t *testing.T) {
 			if printed[0] != printed[1] {
 				t.Errorf("English and German print differently")
 			}
-			if native := runC(t, src); printed[0] != native {
+			if native := runCIn(t, src, string(stdin)); printed[0] != native {
 				t.Errorf("Sorted! printed %q..., C printed %q...", printed[0][:min(80, len(printed[0]))], native[:min(80, len(native))])
 			}
 		})

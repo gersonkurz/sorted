@@ -83,6 +83,8 @@ cross $SORTED_CROSS="1":
 examples:
     go run ./cmd/sorted --from-c {{ex}}99-bottles.c --lang en > {{ex}}99-bottles.s
     go run ./cmd/sorted --from-c {{ex}}99-bottles.c --lang de > {{ex}}99-bottles.de.s
+    go run ./cmd/sorted --from-c {{ex}}brainfuck.c --lang en > {{ex}}brainfuck.s
+    go run ./cmd/sorted --from-c {{ex}}brainfuck.c --lang de > {{ex}}brainfuck.de.s
 
 # Run tests with coverage; writes out/coverage.out and out/coverage.html
 coverage: _out-dir
@@ -140,7 +142,7 @@ package: clean-dist
         mkdir -p "${stage}/examples"
         CGO_ENABLED=0 GOOS=$goos GOARCH=$goarch go build -buildvcs=false -trimpath {{ldflags}} -o "${stage}/sorted${exe}" ./cmd/sorted
         cp README.md LICENSE "${stage}/"
-        cp legacy/sorted.win32/*.s examples/*.c examples/*.s "${stage}/examples/"
+        cp legacy/sorted.win32/*.s examples/*.c examples/*.s examples/*.in "${stage}/examples/"
         if [ "$goos" = "windows" ]; then
             (cd out/stage && zip -qr "../dist/${name}.zip" "${name}")
         else
