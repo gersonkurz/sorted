@@ -93,6 +93,14 @@ will, ignoring case and accents (`--english`, `--Englisch`, `--anglais`,
 `--lang inglês`, `--英語`, `--lang en`; `sorted --help` lists them all).
 The help itself is in a language picked at random, or in the one you name
 (`sorted --help --deutsch`).
+
+**Babel mode.** Name several languages, `--lang zh,fr` or `--中文 --vaudois`,
+and each sentence is written in one of them: at random (`--mix random`, the
+default, or `--mix random:42` for the same mix every time), in turn (`--mix
+alternate`), or whichever says it in the fewest syllables (`--mix
+singable`). That makes Sorted! the only machine translator with 100%
+accuracy, as long as you only ever say one of fourteen things: every mixed
+text still parses back into the same tables.
 `--from-c` compiles a C program into Sorted! instead (see "Young Adult
 Romance" below), and unless you ask for a language, each run picks one at
 random.

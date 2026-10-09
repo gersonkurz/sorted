@@ -86,12 +86,12 @@ func (l Lang) Verys() int {
 	return 0
 }
 
-// inDialect returns p as it is written in lang: p itself, or, for a language
-// of a newer dialect than p's, a copy of p in that dialect. A program of the
-// original's Sorted! may do something else as a Very one (veryCompatible);
-// such a program is refused.
-func inDialect(p *syntax.Program, lang Lang) (*syntax.Program, error) {
-	if p.Verys >= lang.Verys() {
+// inDialect returns p as it is written in b's languages: p itself, or, for
+// a language of a newer dialect than p's, a copy of p in that dialect. A
+// program of the original's Sorted! may do something else as a Very one
+// (veryCompatible); such a program is refused.
+func inDialect(p *syntax.Program, b Babel) (*syntax.Program, error) {
+	if p.Verys >= b.Verys() {
 		return p, nil
 	}
 	if p.Verys == 0 {
@@ -100,7 +100,7 @@ func inDialect(p *syntax.Program, lang Lang) (*syntax.Program, error) {
 		}
 	}
 	q := *p
-	q.Verys = lang.Verys()
+	q.Verys = b.Verys()
 	return &q, nil
 }
 
@@ -136,12 +136,16 @@ func (e *Error) Error() string { return "cannot render: " + e.What }
 func fail(format string, args ...any) error { return &Error{fmt.Sprintf(format, args...)} }
 
 // Render writes p as Sorted! source in lang.
-func Render(p *syntax.Program, lang Lang) (string, error) {
-	p, err := inDialect(p, lang)
+func Render(p *syntax.Program, lang Lang) (string, error) { return RenderBabel(p, One(lang)) }
+
+// RenderBabel writes p as Sorted! source in b's languages, mixed per
+// sentence (#34).
+func RenderBabel(p *syntax.Program, b Babel) (string, error) {
+	p, err := inDialect(p, b)
 	if err != nil {
 		return "", err
 	}
-	text, q, err := write(p, lang)
+	text, q, err := write(p, b)
 	if err != nil {
 		return "", err
 	}
@@ -157,11 +161,16 @@ func Render(p *syntax.Program, lang Lang) (string, error) {
 // parses into the same entries (SameEntries) and returns the program as the
 // parser sees it, with the layout any Sorted! interpreter will use.
 func Compose(p *syntax.Program, lang Lang) (string, *syntax.Program, error) {
-	p, err := inDialect(p, lang)
+	return ComposeBabel(p, One(lang))
+}
+
+// ComposeBabel is Compose in b's languages, mixed per sentence (#34).
+func ComposeBabel(p *syntax.Program, b Babel) (string, *syntax.Program, error) {
+	p, err := inDialect(p, b)
 	if err != nil {
 		return "", nil, err
 	}
-	text, q, err := write(p, lang)
+	text, q, err := write(p, b)
 	if err != nil {
 		return "", nil, err
 	}
@@ -171,30 +180,52 @@ func Compose(p *syntax.Program, lang Lang) (string, *syntax.Program, error) {
 	return text, q, nil
 }
 
-// write renders the sentences and parses the result back.
-func write(p *syntax.Program, lang Lang) (string, *syntax.Program, error) {
+// sentences are the fourteen sentences of p in lang, in order.
+func sentences(p *syntax.Program, lang Lang) []func() (sentence, error) {
 	r := &renderer{p: p, lang: lang}
-	sentences := []func() (sentence, error){
+	switch lang {
+	case Japanese:
+		return r.jpSentences()
+	case Mandarin, Pinyin:
+		return r.zhSentences()
+	}
+	return []func() (sentence, error){
 		r.numbers, r.jumps, r.outputs, r.inputs, r.sums, r.conditions, r.labels,
 		r.diffs, r.assigns, r.prods, r.implementation, r.ratios, r.nands, r.cool,
 	}
-	switch lang {
-	case Japanese:
-		sentences = r.jpSentences()
-	case Mandarin, Pinyin:
-		sentences = r.zhSentences()
-	}
+}
+
+// write renders the sentences, each in the language b picks for it (with
+// its French filler, if any), and parses the result back.
+func write(p *syntax.Program, bab Babel) (string, *syntax.Program, error) {
 	var b strings.Builder
 	f := fillers{}
-	for i, next := range sentences {
-		s, err := next()
-		if err != nil {
-			return "", nil, err
+	rng := bab.rng()
+	for i := range 14 { // the fourteen sentences
+		var best string
+		var bestFillers fillers
+		var first error
+		for _, lang := range bab.candidates(i, rng) {
+			s, err := sentences(p, lang)[i]()
+			if err != nil {
+				if first == nil {
+					first = err
+				}
+				continue
+			}
+			g := f
+			if lang == French && i%3 == 2 {
+				s.head = g.after(s.head)
+			}
+			if text := s.text(); best == "" || Syllables(text) < Syllables(best) {
+				best, bestFillers = text, g
+			}
 		}
-		if lang == French && i%3 == 2 {
-			s.head = f.after(s.head)
+		if best == "" {
+			return "", nil, first
 		}
-		b.WriteString(s.text())
+		f = bestFillers
+		b.WriteString(best)
 		b.WriteString("\n")
 	}
 	text := b.String()

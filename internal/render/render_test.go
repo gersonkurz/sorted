@@ -1051,3 +1051,141 @@ func TestMandarinWidth(t *testing.T) {
 		t.Errorf("zhWidth = %d", zhWidth("一a"))
 	}
 }
+
+// all is every language Sorted! speaks.
+var all = []Lang{English, German, Italian, French, Portuguese, Japanese, Mandarin, Pinyin}
+
+// Babel mode (#34): the samples written in every language at once, each
+// sentence in one of them, read back into the same tables and run as
+// before, whatever the mix.
+func TestBabel(t *testing.T) {
+	for _, name := range samples {
+		for _, b := range []Babel{
+			{Langs: all, Mix: Alternate}, {Langs: all, Mix: Random, Seed: 1}, {Langs: all, Mix: Random, Seed: 2},
+			{Langs: all, Mix: Singable}, {Langs: []Lang{Japanese, Mandarin}, Mix: Alternate}, {Langs: []Lang{German, English}, Mix: Alternate},
+		} {
+			p := parse(t, readFile(t, "legacy", "sorted.win32", name+".s"))
+			text, err := RenderBabel(p, b)
+			if err != nil {
+				t.Fatalf("%s %+v: %v", name, b, err)
+			}
+			q := parse(t, []byte(text))
+			p.Verys = b.Verys()
+			if !Equal(p, q) {
+				t.Errorf("%s %+v: tables differ:\n%s", name, b, text)
+			}
+			var out bytes.Buffer
+			if err := interp.Run(q, strings.NewReader(""), &out, 1000000); err != nil {
+				t.Fatal(err)
+			}
+			want := strings.TrimSuffix(strings.ReplaceAll(string(readFile(t, "testdata", "golden", name+".out")), "\r\n", "\n"), "\n")
+			if got := strings.TrimSuffix(out.String(), "\n"); got != want {
+				t.Errorf("%s %+v: output %q, want %q", name, b, got, want)
+			}
+		}
+	}
+	p := parse(t, readFile(t, "legacy", "sorted.win32", "hello.s"))
+	// Alternating takes the languages in turn, sentence by sentence.
+	text, err := RenderBabel(p, Babel{Langs: []Lang{Japanese, Mandarin, Italian}, Mix: Alternate})
+	if err != nil {
+		t.Fatal(err)
+	}
+	heads := []string{"Kono puroguramu wa", "这个程序", "Questo programma"}
+	n := 0
+	for _, line := range strings.Split(text, "\n") {
+		if line == "" || strings.HasPrefix(line, "\t") {
+			continue
+		}
+		if !strings.HasPrefix(line, heads[n%3]) {
+			t.Errorf("sentence %d: %q, want %s", n+1, line, heads[n%3])
+		}
+		n++
+	}
+	if n != 14 {
+		t.Errorf("%d sentences", n)
+	}
+	// English and German alone stay the original's Sorted!; one newer
+	// language makes the program Very Very Sorted!.
+	if q := parse(t, []byte(mustBabel(t, p, Babel{Langs: []Lang{English, German}, Mix: Random, Seed: 7}))); q.Verys != 0 {
+		t.Errorf("English and German: verys %d", q.Verys)
+	}
+	if q := parse(t, []byte(mustBabel(t, p, Babel{Langs: []Lang{English, French}, Mix: Random, Seed: 7}))); q.Verys != 2 {
+		t.Errorf("English and French: verys %d", q.Verys)
+	}
+	// The same seed gives the same mix, another seed another one.
+	a, b, c := mustBabel(t, p, Babel{Langs: all, Seed: 42}), mustBabel(t, p, Babel{Langs: all, Seed: 42}), mustBabel(t, p, Babel{Langs: all, Seed: 43})
+	if a != b || a == c {
+		t.Error("seeds do not decide the mix")
+	}
+	// The most singable sentence has the fewest syllables as it is written,
+	// French fillers included: with French and German, the "no ratios"
+	// sentence ties before its filler, so German must win it.
+	frde := Babel{Langs: []Lang{French, German}, Mix: Singable}
+	text = mustBabel(t, p, frde)
+	got := sentenceTexts(text)
+	p, err = inDialect(p, frde)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := fillers{}
+	for i := range 14 {
+		fr, err := sentences(p, French)[i]()
+		if err != nil {
+			t.Fatal(err)
+		}
+		g := f
+		if i%3 == 2 {
+			fr.head = g.after(fr.head)
+		}
+		de, err := sentences(p, German)[i]()
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := fr.text()
+		if Syllables(de.text()) < Syllables(want) {
+			want = de.text()
+		} else {
+			f = g
+		}
+		if want = verySpelling(want); got[i] != want {
+			t.Errorf("sentence %d: %q, want %q", i+1, got[i], want)
+		}
+	}
+	if !strings.HasPrefix(got[11], "Dieses Programm benutzt keine Verh") {
+		t.Errorf("the no-ratios sentence: %q", got[11])
+	}
+}
+
+// sentenceTexts splits a rendered program into its sentences: a line that
+// does not start with a tab starts one.
+func sentenceTexts(text string) []string {
+	var ss []string
+	for _, line := range strings.Split(strings.TrimSuffix(text, "\n"), "\n") {
+		if strings.HasPrefix(line, "\t") && len(ss) > 0 {
+			ss[len(ss)-1] += "\n" + line
+			continue
+		}
+		ss = append(ss, line)
+	}
+	return ss
+}
+
+func mustBabel(t *testing.T, p *syntax.Program, b Babel) string {
+	t.Helper()
+	text, err := RenderBabel(p, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return text
+}
+
+func TestSyllables(t *testing.T) {
+	for _, tt := range []struct {
+		s string
+		n int
+	}{{"cool", 1}, {"chouette", 2}, {"ichi", 2}, {"shùzì", 2}, {"这个程序", 4}, {"fünf", 1}, {"", 0}, {"Zhège chéngxù.", 4}} {
+		if got := Syllables(tt.s); got != tt.n {
+			t.Errorf("Syllables(%q) = %d, want %d", tt.s, got, tt.n)
+		}
+	}
+}

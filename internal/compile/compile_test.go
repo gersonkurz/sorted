@@ -43,6 +43,27 @@ func toSortedAs(t *testing.T, src string, lang render.Lang, verys int) string {
 	return text
 }
 
+// allLangs is every language Sorted! speaks.
+var allLangs = []render.Lang{render.English, render.German, render.Italian, render.French, render.Portuguese, render.Japanese, render.Mandarin, render.Pinyin}
+
+// toBabel compiles C into Sorted! in b's languages, mixed (#34).
+func toBabel(t *testing.T, src string, b render.Babel) string {
+	t.Helper()
+	prog, err := cc.Parse(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, p, err := compileProgram(prog, b.Verys())
+	if err != nil {
+		t.Fatal(err)
+	}
+	text, _, err := render.ComposeBabel(p, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return text
+}
+
 // runSorted runs Sorted! text the way the CLI does: parse, then interpret.
 func runSorted(t *testing.T, text string) string { t.Helper(); return runSortedIn(t, text, "") }
 
@@ -1187,6 +1208,10 @@ func TestDifferential(t *testing.T) {
 				if got := runSorted(t, text); got != want {
 					t.Errorf("lang %d: Sorted! printed %q, C printed %q\n%s", lang, got, want, text)
 				}
+			}
+			// and in Babel mode (#34), every language at once, mixed at random
+			if got := runSorted(t, toBabel(t, src, render.Babel{Langs: allLangs, Mix: render.Random, Seed: uint64(len(src))})); got != want {
+				t.Errorf("Babel: Sorted! printed %q, C printed %q", got, want)
 			}
 			// and back to C (M5): the exact translation prints the same,
 			// of the original's dialect and of Very Very Sorted! (Italian, French, Portuguese, Japanese, Mandarin)

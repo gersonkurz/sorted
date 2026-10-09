@@ -69,10 +69,11 @@ func findLanguage(name string) (language, bool) {
 // languageFlags takes the --NAME flags (--deutsch, --anglais, --英語) out of
 // args, where the flag package would see a flag: not as the value of a
 // flag that takes one (--dump --english writes to "--english"), and not
-// after the first argument that is no flag, or after "--". It also
-// returns the values of --lang, for a help that --help asks for before the
-// flag package reaches them.
-func languageFlags(fs *flag.FlagSet, args []string) (rest, names, langs []string) {
+// after the first argument that is no flag, or after "--". The names it
+// returns include the values of --lang, in the order they all stand (the
+// order of a Babel mix, #34), which also gives a help that --help asks for
+// before the flag package reaches --lang its language.
+func languageFlags(fs *flag.FlagSet, args []string) (rest, names []string) {
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		name, isFlag := strings.CutPrefix(a, "--")
@@ -80,7 +81,7 @@ func languageFlags(fs *flag.FlagSet, args []string) (rest, names, langs []string
 			name, isFlag = strings.CutPrefix(a, "-")
 		}
 		if !isFlag || name == "" || strings.HasPrefix(name, "-") { // an argument, or "--"
-			return append(rest, args[i:]...), names, langs
+			return append(rest, args[i:]...), names
 		}
 		key, value, hasValue := strings.Cut(name, "=")
 		if f := fs.Lookup(key); f != nil {
@@ -91,7 +92,7 @@ func languageFlags(fs *flag.FlagSet, args []string) (rest, names, langs []string
 				value, hasValue = args[i], true
 			}
 			if key == "lang" && hasValue {
-				langs = append(langs, value)
+				names = append(names, value)
 			}
 			continue
 		}
@@ -101,7 +102,7 @@ func languageFlags(fs *flag.FlagSet, args []string) (rest, names, langs []string
 		}
 		rest = append(rest, a) // an unknown flag: the flag package reports it
 	}
-	return rest, names, langs
+	return rest, names
 }
 
 // languageTable lists every name of every language, for the help (which

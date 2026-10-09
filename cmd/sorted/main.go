@@ -30,6 +30,9 @@ import (
 	"io"
 	"math/rand/v2"
 	"os"
+	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/gersonkurz/sorted/internal/cc"
 	"github.com/gersonkurz/sorted/internal/compile"
@@ -81,11 +84,12 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	showVersion := fs.Bool("version", false, "print the version and exit")
 	dumpFile := fs.String("dump", "", "write the parsed tables to `FILE` (legacy /D)")
 	cFile := fs.String("to-c", "", "write a C program that behaves like this one to `FILE`")
-	lang := fs.String("lang", "", "print the program in the language `NAME` (see below) instead of running it")
+	fs.String("lang", "", "print the program in the language `NAME` (see below) instead of running it") // its values, in order among the --NAME flags: languageFlags
 	fromC := fs.String("from-c", "", "compile the C program `FILE` into Sorted! and print it")
-	var named, langs []string
-	fs.Usage = func() { usage(stderr, append(append([]string{}, named...), langs...)) }
-	args, named, langs = languageFlags(fs, args)
+	mix := fs.String("mix", "random", "how several languages mix: alternate, random[:SEED] or singable")
+	var named []string
+	fs.Usage = func() { usage(stderr, named) }
+	args, named = languageFlags(fs, args)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -97,13 +101,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if *fromC != "" {
 		positional = 0
 	}
-	if *lang != "" {
-		named = append(named, *lang)
-	}
-	var chosen *language // at most one choice, of a language Sorted! speaks
-	for _, name := range named {
+	var chosen []render.Lang // the languages asked for, each once, in order: several make Babel (#34)
+	for _, name := range slices.Concat(splitNames(named)...) {
 		l, ok := findLanguage(name)
-		if !ok || chosen != nil && chosen.code != l.code {
+		if !ok {
 			fs.Usage()
 			return 2
 		}
@@ -111,18 +112,20 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "sorted: Sorted! does not speak %s yet\n", name)
 			return 2
 		}
-		chosen = &l
+		if !slices.Contains(chosen, l.lang) {
+			chosen = append(chosen, l.lang)
+		}
 	}
-	if fs.NArg() != positional {
+	babel, ok := parseMix(*mix, chosen)
+	if !ok || fs.NArg() != positional {
 		fs.Usage()
 		return 2
 	}
 	if *fromC != "" {
-		l := pickLang()
-		if chosen != nil {
-			l = chosen.lang
+		if len(chosen) == 0 {
+			babel = render.One(pickLang())
 		}
-		return translate(*fromC, l, outputs{*cFile, *dumpFile}, stdout, stderr)
+		return translate(*fromC, babel, outputs{*cFile, *dumpFile}, stdout, stderr)
 	}
 	name := fs.Arg(0)
 
@@ -142,8 +145,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	// Like the original: the C translation first, then the dump, then run.
 	code := writeFiles(p, outputs{*cFile, *dumpFile}, stderr)
-	if chosen != nil {
-		text, err := render.Render(p, chosen.lang)
+	if len(chosen) > 0 {
+		text, err := render.RenderBabel(p, babel)
 		if err != nil {
 			fmt.Fprintf(stderr, "sorted: %v\n", err)
 			return 1
@@ -159,6 +162,42 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return code
+}
+
+// splitNames splits each name at its commas (--lang zh,fr).
+func splitNames(names []string) [][]string {
+	var parts [][]string
+	for _, n := range names {
+		parts = append(parts, strings.Split(n, ","))
+	}
+	return parts
+}
+
+// parseMix reads --mix for the languages chosen: "alternate", "singable",
+// "random" or "random:SEED" (Babel mode, #34). Without a seed, the mix is
+// different every time. A single language is just that language.
+func parseMix(mix string, langs []render.Lang) (render.Babel, bool) {
+	b := render.Babel{Langs: langs, Seed: rand.Uint64()}
+	switch kind, seed, seeded := strings.Cut(mix, ":"); {
+	case kind == "alternate" && !seeded:
+		b.Mix = render.Alternate
+	case kind == "singable" && !seeded:
+		b.Mix = render.Singable
+	case kind == "random" && !seeded:
+		b.Mix = render.Random
+	case kind == "random":
+		n, err := strconv.ParseUint(seed, 10, 64)
+		if err != nil {
+			return b, false
+		}
+		b.Mix, b.Seed = render.Random, n
+	default:
+		return b, false
+	}
+	if len(langs) == 1 {
+		return render.One(langs[0]), true
+	}
+	return b, true
 }
 
 // outputs are the files a run writes besides the program's output.
@@ -187,7 +226,7 @@ func writeFiles(p *syntax.Program, files outputs, stderr io.Writer) int {
 
 // translate compiles a C program into Sorted! and prints it. --dump and
 // --to-c describe the compiled program as any Sorted! interpreter sees it.
-func translate(name string, lang render.Lang, files outputs, stdout, stderr io.Writer) int {
+func translate(name string, babel render.Babel, files outputs, stdout, stderr io.Writer) int {
 	src, err := os.ReadFile(name)
 	if err != nil {
 		fmt.Fprintf(stderr, "sorted: %v\n", err)
@@ -198,12 +237,12 @@ func translate(name string, lang render.Lang, files outputs, stdout, stderr io.W
 		fmt.Fprintf(stderr, "sorted: %s:%v\n", name, err)
 		return 1
 	}
-	compiled, err := compile.Compile(prog, lang.Verys())
+	compiled, err := compile.Compile(prog, babel.Verys())
 	if err != nil {
 		fmt.Fprintf(stderr, "sorted: %s:%v\n", name, err)
 		return 1
 	}
-	text, p, err := render.Compose(compiled, lang)
+	text, p, err := render.ComposeBabel(compiled, babel)
 	if err != nil {
 		fmt.Fprintf(stderr, "sorted: %s: %v\n", name, err)
 		return 1

@@ -370,7 +370,9 @@ func TestLanguageNames(t *testing.T) {
 			t.Errorf("%v: %+v", tt.args, r)
 		}
 	}
-	if r := runCLI("--deutsch", "--anglais", hello); r.code != 2 || !strings.Contains(r.stderr, "usage: sorted") {
+	// Two languages are Babel (#34): sentence by sentence, here in turn.
+	if r := runCLI("--deutsch", "--anglais", "--mix", "alternate", hello); r.code != 0 || !strings.HasPrefix(r.stdout, de) ||
+		!strings.Contains(r.stdout, "\nThis code\n") || !strings.Contains(r.stdout, "\nDieses Programm schreibt") {
 		t.Errorf("two languages: %+v", r)
 	}
 	if r := runCLI("--lang", "Deutsch", "--", "--english"); r.code != 1 || !strings.Contains(r.stdout, "--english is not intelligible") {
@@ -470,8 +472,17 @@ func TestLang(t *testing.T) {
 			t.Errorf("%s: %+v", flag, r)
 		}
 	}
-	if r := runCLI("--english", "--lang", "de", hello); r.code != 2 || !strings.Contains(r.stderr, "usage: sorted") {
+	if r := runCLI("--english", "--lang", "de", "--mix", "alternate", hello); r.code != 0 || !strings.HasPrefix(r.stdout, "This code uses") {
 		t.Errorf("two choices: %+v", r)
+	}
+	// The languages mix in the order they stand, --lang or --NAME (#34).
+	if r := runCLI("--lang", "en", "--deutsch", "--mix", "alternate", hello); r.code != 0 || !strings.HasPrefix(r.stdout, "This code uses") ||
+		!strings.Contains(r.stdout, "\nDieses Programm") {
+		t.Errorf("--lang before a name: %+v", r)
+	}
+	if r := runCLI("--deutsch", "--lang=it,en", "--mix", "alternate", hello); r.code != 0 || !strings.HasPrefix(r.stdout, "Dieses Programm") ||
+		!strings.Contains(r.stdout, "\nQuesto programma") {
+		t.Errorf("a name before --lang: %+v", r)
 	}
 	if r := runCLI("--lang", "klingon", "hello.s"); r.code != 2 || !strings.Contains(r.stderr, "usage: sorted") {
 		t.Errorf("unknown language: %+v", r)
@@ -538,11 +549,31 @@ func TestFromC(t *testing.T) {
 		t.Errorf("languages picked: %v", seen)
 	}
 	pickLang = func() render.Lang { return render.English }
-	// One choice at most; the help names neither (a random one, English
-	// here).
-	for _, flags := range [][]string{{"--english", "--german"}, {"--lang", "en", "--german"}, {"--lang", "de", "--english"}} {
-		if r := runCLI(append([]string{"--from-c", cFile}, flags...)...); r.code != 2 || !strings.Contains(r.stderr, "usage: sorted") {
-			t.Errorf("%v: %+v", flags, r)
+	// Several languages are Babel (#34), mixed as --mix says; the program
+	// runs the same however it is mixed.
+	for _, flags := range [][]string{
+		{"--english", "--german"}, {"--lang", "en,de,ja", "--mix", "alternate"}, {"--lang", "zh,fr", "--mix", "random:7"},
+		{"--中文", "--vaudois", "--pinyin", "--mix", "singable"}, {"--lang", "it", "--mix", "random:3"},
+	} {
+		r := runCLI(append([]string{"--from-c", cFile}, flags...)...)
+		if r.code != 0 {
+			t.Fatalf("%v: %+v", flags, r)
+		}
+		if run := runCLI(writeProgram(t, r.stdout)); run.code != 0 || run.stdout != "HIJ\n" {
+			t.Errorf("%v: running the compiled program: %+v", flags, run)
+		}
+	}
+	if r := runCLI("--from-c", cFile, "--lang", "en,de,ja", "--mix", "alternate"); !strings.HasPrefix(r.stdout, en) || !strings.Contains(r.stdout, "\nDieses Programm") ||
+		!strings.Contains(r.stdout, "\nKono puroguramu wa") {
+		t.Errorf("alternate: %+v", r)
+	}
+	a, b := runCLI("--from-c", cFile, "--lang", "zh,fr,ja,pt", "--mix", "random:7"), runCLI("--from-c", cFile, "--lang", "zh,fr,ja,pt", "--mix", "random:7")
+	if a.stdout != b.stdout {
+		t.Error("the same seed mixes differently")
+	}
+	for _, mix := range []string{"sometimes", "random:", "random:x", "alternate:1", "singable:2"} {
+		if r := runCLI("--from-c", cFile, "--lang", "en,de", "--mix", mix); r.code != 2 || !strings.Contains(r.stderr, "usage: sorted") {
+			t.Errorf("--mix %s: %+v", mix, r)
 		}
 	}
 	// --dump and --to-c describe the compiled program as any Sorted!
@@ -621,12 +652,12 @@ func TestHelpLanguages(t *testing.T) {
 			t.Errorf("no help in %s", l.code)
 			continue
 		}
-		for _, flag := range []string{"--dump", "--from-c", "--lang", "--to-c", "--version", " sorted "} {
+		for _, flag := range []string{"--dump", "--from-c", "--lang", "--mix", "--to-c", "--version", " sorted "} {
 			if !strings.Contains(h, flag) {
 				t.Errorf("%s: no %s", l.code, flag)
 			}
 		}
-		if lines := strings.Count(h, "\n"); lines != 8 {
+		if lines := strings.Count(h, "\n"); lines != 9 {
 			t.Errorf("%s: %d lines", l.code, lines)
 		}
 		r := runCLI("--help", "--lang", l.code)
