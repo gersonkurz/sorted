@@ -16,7 +16,7 @@ Legacy CLI: `Sorted /S<source> [/D<dumpfile>] [/C<c-output>]`. It interprets the
 
 ## Commands
 
-Everything goes through the `justfile` (`just` with no arguments lists the recipes). It follows the maintainer's cross-platform style: Go commands sit under "Shared", and the few recipes that need a shell have native `[unix]` (sh) and `[windows]` (cmd) variants. **Keep double quotes out of Windows recipe lines.** They don't reliably survive the hand-off from just to cmd.exe, so linker flags use `-ldflags=-X=main.version=…`. The main package is `./cmd/sorted`; staticcheck is pinned as a `tool` in `go.mod`.
+Everything goes through the `justfile` (`just` with no arguments lists the recipes). It follows the maintainer's cross-platform style: Go commands sit under "Shared", and the few recipes that need a shell have native `[unix]` (sh) and `[windows]` (cmd) variants. **Keep double quotes out of Windows recipe lines.** They don't reliably survive the hand-off from just to cmd.exe, so linker flags use `-ldflags=-X=main.version=…`. The main package is `./cmd/sorted`; staticcheck is pinned as a `tool` in `go.mod`. When a Go release outpaces it ("export data version N is greater than maximum supported"), raise its `golang.org/x/tools` dependency rather than unpinning: the latest staticcheck release may lag too (#44: Go 1.27 needs x/tools v0.51.0).
 
 ```sh
 just build                 # → out/build/sorted (sorted.exe on Windows)
