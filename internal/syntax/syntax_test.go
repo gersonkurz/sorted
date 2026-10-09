@@ -101,6 +101,57 @@ func TestVerySorted(t *testing.T) {
 	}
 }
 
+// Very Sorted! German has ratios, "von A zu B", and lists of ordered
+// differences under the plural "die geordneten Differenzen" (#46); the
+// original's grammar is unchanged.
+func TestVeryGerman(t *testing.T) {
+	n0, n1 := Operand{Number, 0}, Operand{Number, 1}
+	for _, tt := range []struct {
+		name, old, new string
+		table          Category
+		want           []Slide
+		what           string
+	}{
+		{"ratio", "This code does not use any ratios.", "Dieses Programm benutzt das Verhältnis von der ersten Zahl zu der zweiten Zahl.",
+			Ratios, []Slide{{Ops: [2]Operand{n0, n1}}}, "declaration of ratios"},
+		{"ratios", "This code does not use any ratios.", "Dieses Programm benutzt die Verhaeltnisse von der ersten Zahl zu der zweiten Zahl, von der zweiten Zahl zu der ersten Zahl, und von der ersten Summe zu der ersten Zahl.",
+			Ratios, []Slide{{Ops: [2]Operand{n0, n1}}, {Ops: [2]Operand{n1, n0}}, {Ops: [2]Operand{{Sum, 0}, n0}}}, "declaration of ratios"},
+		{"ordered differences", "This code does not use any ordered differences.", "Dieses Programm benutzt die geordneten Differenzen zwischen der ersten Zahl und der zweiten Zahl, und zwischen der zweiten Zahl und der ersten Zahl.",
+			Diffs, []Slide{{Ops: [2]Operand{n0, n1}}, {Ops: [2]Operand{n1, n0}}}, "declaration of ordered differences"},
+	} {
+		src := strings.Replace(minimal, tt.old, tt.new, 1)
+		if _, err := parse(src); err == nil || err.Error() != "ERROR, missing or invalid "+tt.what {
+			t.Errorf("%s in the original's Sorted!: %v", tt.name, err)
+		}
+		for _, end := range []string{"This code is very cool.", "Ganz ganz hervorragend."} {
+			p, err := parse(strings.Replace(src, "Cool.", end, 1))
+			if err != nil {
+				t.Errorf("%s, %s: %v", tt.name, end, err)
+				continue
+			}
+			if got := p.Entries(tt.table); !slices.Equal(got, tt.want) {
+				t.Errorf("%s, %s: %v, want %v", tt.name, end, got, tt.want)
+			}
+		}
+	}
+	// The original's list, introduced by the singular, stays withdrawn at
+	// its comma, and a single difference still takes the singular.
+	single := strings.Replace(minimal, "Cool.", "This code is very cool.", 1)
+	for decl, what := range map[string]string{
+		"Dieses Programm benutzt die geordnete Differenz zwischen der ersten Zahl und der zweiten Zahl, und zwischen der zweiten Zahl und der ersten Zahl.": "declaration of ordered differences",
+		"Dieses Programm benutzt die geordneten Differenzen zwischen der ersten Zahl und der zweiten Zahl.":                                                 "declaration of ordered differences",
+		"Dieses Programm benutzt die Verhältnisse von der ersten Zahl zu der zweiten Zahl.":                                                                 "declaration of ratios",
+	} {
+		old := "This code does not use any ordered differences."
+		if strings.Contains(what, "ratios") {
+			old = "This code does not use any ratios."
+		}
+		if _, err := parse(strings.Replace(single, old, decl, 1)); err == nil || err.Error() != "ERROR, missing or invalid "+what {
+			t.Errorf("%s: %v", decl, err)
+		}
+	}
+}
+
 // Very Sorted! names logical operations and has a real NAND (#26), "of not
 // both X and Y", with German for it and for the original's NOR.
 func TestVeryNand(t *testing.T) {

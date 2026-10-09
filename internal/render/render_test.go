@@ -404,6 +404,43 @@ func TestVeryNand(t *testing.T) {
 	}
 }
 
+// Very Sorted! writes German ratios and lists of ordered differences (#46);
+// in the original's Sorted! those sentences fall back to English.
+func TestVeryGerman(t *testing.T) {
+	src := strings.Replace(skeleton, "STATEMENT", "the first ratio", 1)
+	src = strings.Replace(src, "This code does not use any numbers.", "This code uses the numbers twelve, and ten.", 1)
+	src = strings.Replace(src, "This code does not use any ordered differences.", "This code uses the ordered differences between the first number and the second number, and between the second number and the first number.", 1)
+	src = strings.Replace(src, "This code does not use any ratios.", "This code uses the ratios of the first number to the second number, and of the second number to the first ratio.", 1)
+	for _, tt := range []struct {
+		end  string
+		want []string
+	}{
+		{"This code is very cool.", []string{
+			"Dieses Programm benutzt die geordneten Differenzen zwischen der ersten Zahl und der zweiten Zahl, und zwischen der zweiten Zahl und der ersten Zahl.",
+			// No "dem": the parser does not know it ("von das erste Produkt").
+			"Dieses Programm benutzt die Verhältnisse von der ersten Zahl zu der zweiten Zahl, und von der zweiten Zahl zu das erste Verhältnis.",
+		}},
+		{"Cool.", []string{
+			"This code uses the ordered differences between the first number and the second number, and between the second number and the first number.",
+			"This code uses the ratios of the first number to the second number, and of the second number to the first ratio.",
+		}},
+	} {
+		p, err := syntax.Parse([]byte(strings.Replace(src, "Cool.", tt.end, 1)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		text, err := Render(p, German)
+		if err != nil {
+			t.Fatalf("%s: %v", tt.end, err)
+		}
+		for _, w := range tt.want {
+			if !strings.Contains(strings.Join(strings.Fields(text), " "), w) {
+				t.Errorf("%s: no %q in\n%s", tt.end, w, text)
+			}
+		}
+	}
+}
+
 // Very Sorted! writes stores into the cell a value indexes (#27).
 func TestVeryIndexedStore(t *testing.T) {
 	src := strings.Replace(skeleton, "STATEMENT", "the first assignment", 1)

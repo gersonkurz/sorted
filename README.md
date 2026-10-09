@@ -104,8 +104,9 @@ definitions evaluated afresh whenever something refers to them, and the
 implementation is the program proper: the order in which its assignments,
 outputs, jumps and labels run.
 
-Every sentence can be written in every language Sorted! speaks, and a program
-may switch language from one sentence to the next. Name several languages
+Every sentence can be written in every language Sorted! speaks (the German
+of 2000 lacks three, which Very Sorted! supplies), and a program may switch
+language from one sentence to the next. Name several languages
 and `sorted` does the switching for you, at random, in turn, or by the
 fewest syllables. [docs/languages.md](docs/languages.md) has every sentence
 in every language.

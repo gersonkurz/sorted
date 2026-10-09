@@ -519,6 +519,12 @@ func (ps *parser) usesDiffs() bool {
 		}
 	}
 	ps.p = save
+	// Very Sorted! German can list ordered differences (#46); the 2000
+	// list, introduced by the singular, stays withdrawn at its comma.
+	if ps.very() && ps.seq("dieses", "programm", "benutzt", "die", "geordneten", "differenzen") && ps.sequence(ps.diffSpec) {
+		return true
+	}
+	ps.p = save
 	return ps.veryVery() && (ps.itUses(ps.diffSpec, "la differenza ordinata", "le differenze ordinate") || ps.frUses(ps.diffSpec, "la difference ordonnee", "les differences ordonnees") ||
 		ps.ptUses(ps.diffSpec, "a diferenca ordenada", "as diferencas ordenadas") || ps.jpUses("", ps.diffSpec) || ps.zhUses(zp{"使用", "shiyong"}, ps.diffSpec))
 }
@@ -632,7 +638,7 @@ func (ps *parser) prodDeclaration() bool {
 	return false
 }
 
-// --- ratios (English only) ---
+// --- ratios (English only until Very Sorted!, #46) ---
 
 func (ps *parser) ratioSpec() bool {
 	save := ps.p
@@ -648,6 +654,13 @@ func (ps *parser) ratioSpec() bool {
 		}
 	}
 	ps.p = save
+	if ps.very() && ps.kw("von") {
+		if ps.identifier(&cell.Ops[0]) && ps.kw("zu") && ps.identifier(&cell.Ops[1]) {
+			ps.accept(Ratios)
+			return true
+		}
+		ps.p = save
+	}
 	if ps.veryVery() && (ps.itBetween(cell) || ps.frRatio(cell) || ps.ptBetween(cell) || ps.jpPair(cell, "hi") || ps.zhPair(cell, zp{"比", "bi"})) {
 		ps.accept(Ratios)
 		return true
@@ -669,6 +682,16 @@ func (ps *parser) usesRatios() bool {
 	save := ps.p
 	if ps.seq("this", "code", "uses", "the") {
 		if ps.singleRatio() || ps.ratioSequence() {
+			return true
+		}
+	}
+	ps.p = save
+	// Very Sorted! German has ratios, "von A zu B" (#46).
+	if ps.very() && ps.seq("dieses", "programm", "benutzt") {
+		if ps.seq("das", "verhaeltnis") && ps.ratioSpec() {
+			return true
+		}
+		if ps.seq("die", "verhaeltnisse") && ps.sequence(ps.ratioSpec) {
 			return true
 		}
 	}

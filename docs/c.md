@@ -142,10 +142,11 @@ Every program the compiler writes in English or German has to get past the
   yourself: "as a english english ordinal". The parser's alternatives share
   one cursor, and each failed one eats a word. German needs up to four:
   "als ein ein ein ein deutscher Kardinal".
-- **Code-switching.** German has no ratios, no logical operations and no lists
-  of ordered differences, so in a German program those sentences are written
-  in English. Sorted! has always allowed switching language from one sentence
-  to the next.
+- **Code-switching.** The German of 2000 has no ratios, no logical operations
+  and no lists of ordered differences, so in a German program those sentences
+  are written in English. Sorted! has always allowed switching language from
+  one sentence to the next. A program that is Very Sorted! anyway (one that
+  calls `getchar` or needs a NAND) is German throughout.
 - **Some tables cannot be written.** A program whose internal table layout
   could not have come from Sorted! text is refused rather than silently
   changed. That only happens with hand-crafted tables.

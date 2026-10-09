@@ -5,10 +5,10 @@
 // What it writes is exactly what the parser accepts. Some things have no
 // form in one language, or none at all:
 //
-//   - German has no ratios and no lists of ordered differences, and the
-//     original's German has no logical operations (Very Sorted!'s has), so
-//     those sentences fall back to English. Sorted! allows mixing languages
-//     per sentence.
+//   - The original's German has no ratios, no lists of ordered differences
+//     and no logical operations (Very Sorted!'s has all three, #26, #46), so
+//     in a 2000 program those sentences fall back to English. Sorted! allows
+//     mixing languages per sentence.
 //   - Output formats are written the only way the parser accepts them. Its
 //     alternatives share an unrestored cursor, so each failed alternative eats
 //     a word: "as a english english ordinal", "as a german german ordinal",
@@ -874,8 +874,8 @@ func (r *renderer) sums() (sentence, error) {
 
 func (r *renderer) diffs() (sentence, error) {
 	switch {
-	case r.lang == German && len(r.entries(syntax.Diffs)) < 2:
-		return r.binary(German, syntax.Diffs, "Dieses Programm benutzt keine geordneten Differenzen", "Dieses Programm benutzt die geordnete Differenz", "", "zwischen", "und", dative)
+	case r.lang == German && (len(r.entries(syntax.Diffs)) < 2 || r.p.Verys > 0):
+		return r.binary(German, syntax.Diffs, "Dieses Programm benutzt keine geordneten Differenzen", "Dieses Programm benutzt die geordnete Differenz", "Dieses Programm benutzt die geordneten Differenzen", "zwischen", "und", dative)
 	case r.lang == Italian:
 		return r.binary(Italian, syntax.Diffs, "Questo programma non usa differenze ordinate", "Questo programma usa la differenza ordinata", "Questo programma usa le differenze ordinate", "tra", "e", nominative)
 	case r.lang == French:
@@ -902,8 +902,8 @@ func (r *renderer) prods() (sentence, error) {
 
 func (r *renderer) ratios() (sentence, error) {
 	switch {
-	case r.lang == German && len(r.entries(syntax.Ratios)) == 0:
-		return list(German, "Dieses Programm benutzt keine Verhaeltnisse", nil), nil
+	case r.lang == German && (len(r.entries(syntax.Ratios)) == 0 || r.p.Verys > 0):
+		return r.binary(German, syntax.Ratios, "Dieses Programm benutzt keine Verhaeltnisse", "Dieses Programm benutzt das Verhaeltnis", "Dieses Programm benutzt die Verhaeltnisse", "von", "zu", dative)
 	case r.lang == Italian:
 		return r.binary(Italian, syntax.Ratios, "Questo programma non usa rapporti", "Questo programma usa il rapporto", "Questo programma usa i rapporti", "tra", "e", nominative)
 	case r.lang == French:

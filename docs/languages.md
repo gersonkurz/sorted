@@ -8,7 +8,9 @@ behind them is the papal bull* Ordinata non errant
 
 A program is fourteen sentences, always in this order. Each sentence can be
 written in any of the languages, and a program may switch language from one
-sentence to the next.
+sentence to the next. The one gap is the German of 2000, which has no ratios,
+no lists of ordered differences and no logical operations: a 2000 program
+says those in English, and Very Sorted! has German for all three.
 
 | # | Sentence | English | German | Italian (Very Very Sorted!) | French (Very Very Sorted!) | Portuguese (Very Very Sorted!) | Japanese (Very Very Sorted!) | Mandarin (Very Very Sorted!) |
 |---|---|---|---|---|---|---|---|---|
@@ -23,7 +25,7 @@ sentence to the next.
 | 9 | assignments | This code assigns … to … | Dieses Programm weisst zu … an … | Questo programma assegna … al … | Ce programme affecte … au … | Este programa atribui … ao … | Kono puroguramu wa … o … ni dainyū shimasu | 这个程序把……赋给…… |
 | 10 | products | This code uses the product of … and … | Dieses Programm benutzt das Produkt von … und … | … il prodotto del … e del … | … le produit du … et du … | … o produto do … e do … | … to … no seki … | ……和……的积 |
 | 11 | implementation | This code implements the first assignment, … | Dieses Programm implementiert … | Questo programma implementa il primo assegnamento, … | Ce programme implémente la première affectation, … | Este programa implementa a primeira atribuição, … | Kono puroguramu wa dai-ichi no dainyū, … o jissō shimasu | 这个程序实现第一个赋值、…… |
-| 12 | ratios | This code uses the ratio of … to … | (English only) | … il rapporto tra … e … | … le rapport du … au … | … a razão entre … e … | … to … no hi … | ……和……的比 |
+| 12 | ratios | This code uses the ratio of … to … | Dieses Programm benutzt das Verhältnis von … zu … (Very Sorted!) | … il rapporto tra … e … | … le rapport du … au … | … a razão entre … e … | … to … no hi … | ……和……的比 |
 | 13 | logical operations | This code does not use any logical operations. | Dieses Programm ist unlogisch. | Questo programma è illogico. | Ce programme est illogique. | Este programa é ilógico. | Kono puroguramu wa hironriteki desu. | 这个程序不合逻辑。 |
 | 14 | coolness | Cool. | Hervorragend. | Questo programma è molto molto figo. | Ce programme est très très chouette. | Este programa é muito muito legal. | Kono puroguramu wa totemo totemo kakkoii desu. | 这个程序非常非常酷。 |
 
@@ -68,6 +70,9 @@ declares them doctrine:
   takes four of them: "als ein ein ein ein deutscher Kardinal".
 - German grammar is approximate: a reference to a difference must read
   "der ersten geordnete Differenz", because "geordneten" is not recognised.
+  A list of differences, introduced like a single one ("die geordnete
+  Differenz zwischen …, und zwischen …"), stops at its first comma, so
+  German can declare only one.
 - Reading a cell indirectly counts from 1, writing one indirectly counts from
   0. This is why `itoa.s` prints a NUL byte before its digits.
 - A jump to a label that was declared but never placed lands just after the
@@ -105,6 +110,13 @@ expressions can name it ("the first logical operation", "die erste logische
 Verknüpfung"). The original's "of not X and not Y" stays what it always
 was, a NOR, and now has German too ("von nicht X und nicht Y"). The
 compiler builds `&`, `|` and `^` from two, three and four NANDs.
+
+German gets what 2000 left out. Very Sorted! German has ratios, "das
+Verhältnis von der ersten Zahl zu der zweiten Zahl" and "die Verhältnisse
+von … zu …, und von … zu …", and lists of ordered differences, "die
+geordneten Differenzen zwischen … und …, und zwischen … und …", so a very
+program can be German from start to finish. A 2000 program still says those
+sentences in English, to keep running on `Sorted.exe`.
 
 And Very Sorted! defines what 2000 left undefined: "the cell indexed by the
 first sum" reads and writes the way indexing by a cell always has, the read

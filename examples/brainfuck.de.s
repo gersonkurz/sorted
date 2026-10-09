@@ -170,22 +170,22 @@ Dieses Programm benutzt
 	die Bedingung dass die fünfundvierzigtausendeinhundertfünfundfünfzigste Zahl ist gleich der dreiunddreißigste Zahl,
 	und die Bedingung dass die fünfundvierzigtausendeinhundertfünfundfünfzigste Zahl ist gleich der fünfunddreißigste Zahl.
 Dieses Programm benutzt neununddreißig Sprungziele.
-This code uses the ordered differences
-	between the twentyfirst number and the twentysecond number,
-	between the fourtyfivethousandonehundredfiftysixth number and the twentysecond number,
-	between the third sum and the first product,
-	between the fourth sum and the second product,
-	between the fourth ordered difference and the thirtyfirst number,
-	between the fourtyfivethousandonehundredfiftyseventh number and the twentysecond number,
-	between the fiveteenth sum and the third product,
-	between the sixteenth sum and the fourth product,
-	between the cell indexed by the fourteenth sum and the twentysecond number,
-	between the nineth ordered difference and the fifth product,
-	between the seventeenth sum and the sixth product,
-	between the fourtyfivethousandonehundredsixtyfourth number and the twentysecond number,
-	between the fourtyfivethousandonehundredsixtyeight number and the seventh product,
-	between the twentieth sum and the eight product,
-	and between the fourtyfivethousandonehundredsixtyfirst number and the twentysecond number.
+Dieses Programm benutzt die geordneten Differenzen
+	zwischen der einundzwanzigste Zahl und der zweiundzwanzigste Zahl,
+	zwischen der fünfundvierzigtausendeinhundertsechsundfünfzigste Zahl und der zweiundzwanzigste Zahl,
+	zwischen der dritten Summe und das erste Produkt,
+	zwischen der vierten Summe und das zweite Produkt,
+	zwischen der vierten geordnete Differenz und der einunddreißigste Zahl,
+	zwischen der fünfundvierzigtausendeinhundertsiebenundfünfzigste Zahl und der zweiundzwanzigste Zahl,
+	zwischen der fünfzehnten Summe und das dritte Produkt,
+	zwischen der sechzehnten Summe und das vierte Produkt,
+	zwischen diejenige Zelle die indiziert wird durch die vierzehnte Summe und der zweiundzwanzigste Zahl,
+	zwischen der neunten geordnete Differenz und das fünfte Produkt,
+	zwischen der siebzehnten Summe und das sechste Produkt,
+	zwischen der fünfundvierzigtausendeinhundertvierundsechzigste Zahl und der zweiundzwanzigste Zahl,
+	zwischen der fünfundvierzigtausendeinhundertachtundsechzigste Zahl und das siebente Produkt,
+	zwischen der zwanzigste Summe und das achte Produkt,
+	und zwischen der fünfundvierzigtausendeinhunderteinundsechzigste Zahl und der zweiundzwanzigste Zahl.
 Dieses Programm weisst zu
 	die erste Zahl an die fünfundvierzigtausendfünfzigste Zahl,
 	die zweite Zahl an die fünfundvierzigtausendeinundfünfzigste Zahl,
@@ -586,14 +586,14 @@ Dieses Programm implementiert
 	den fünfundvierzigste Sprungbefehl,
 	den sechsundvierzigste Sprungbefehl,
 	und das neunte Sprungziel.
-This code uses the ratios
-	of the third sum to the thirtysecond number,
-	of the fourth sum to the thirtysecond number,
-	of the fiveteenth sum to the thirtysecond number,
-	of the sixteenth sum to the thirtysecond number,
-	of the nineth ordered difference to the thirtysecond number,
-	of the seventeenth sum to the thirtysecond number,
-	of the fourtyfivethousandonehundredsixtyeight number to the thirtysecond number,
-	and of the twentieth sum to the thirtysecond number.
+Dieses Programm benutzt die Verhältnisse
+	von der dritten Summe zu der zweiunddreißigste Zahl,
+	von der vierten Summe zu der zweiunddreißigste Zahl,
+	von der fünfzehnten Summe zu der zweiunddreißigste Zahl,
+	von der sechzehnten Summe zu der zweiunddreißigste Zahl,
+	von der neunten geordnete Differenz zu der zweiunddreißigste Zahl,
+	von der siebzehnten Summe zu der zweiunddreißigste Zahl,
+	von der fünfundvierzigtausendeinhundertachtundsechzigste Zahl zu der zweiunddreißigste Zahl,
+	und von der zwanzigste Summe zu der zweiunddreißigste Zahl.
 Dieses Programm ist unlogisch.
 Dieses Programm ist ganz hervorragend.
