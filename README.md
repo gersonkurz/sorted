@@ -91,6 +91,8 @@ hello.s` in French, `sorted --brasileiro hello.s` in Portuguese, `sorted
 languages: NAME may be the language's name in any language Sorted! speaks or
 will, ignoring case and accents (`--english`, `--Englisch`, `--anglais`,
 `--lang inglês`, `--英語`, `--lang en`; `sorted --help` lists them all).
+The help itself is in a language picked at random, or in the one you name
+(`sorted --help --deutsch`).
 `--from-c` compiles a C program into Sorted! instead (see "Young Adult
 Romance" below), and unless you ask for a language, each run picks one at
 random.

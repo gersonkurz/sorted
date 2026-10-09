@@ -83,13 +83,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	cFile := fs.String("to-c", "", "write a C program that behaves like this one to `FILE`")
 	lang := fs.String("lang", "", "print the program in the language `NAME` (see below) instead of running it")
 	fromC := fs.String("from-c", "", "compile the C program `FILE` into Sorted! and print it")
-	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: sorted [--dump FILE] [--to-c FILE] [--lang NAME | --NAME] [--version] PROGRAM.s")
-		fmt.Fprintln(stderr, "       sorted --from-c PROGRAM.c [--lang NAME | --NAME] [--dump FILE] [--to-c FILE]")
-		fs.PrintDefaults()
-		fmt.Fprint(stderr, languageHelp())
-	}
-	args, named := languageFlags(fs, args)
+	var named, langs []string
+	fs.Usage = func() { usage(stderr, append(append([]string{}, named...), langs...)) }
+	args, named, langs = languageFlags(fs, args)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}

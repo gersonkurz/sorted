@@ -69,8 +69,10 @@ func findLanguage(name string) (language, bool) {
 // languageFlags takes the --NAME flags (--deutsch, --anglais, --英語) out of
 // args, where the flag package would see a flag: not as the value of a
 // flag that takes one (--dump --english writes to "--english"), and not
-// after the first argument that is no flag, or after "--".
-func languageFlags(fs *flag.FlagSet, args []string) (rest, names []string) {
+// after the first argument that is no flag, or after "--". It also
+// returns the values of --lang, for a help that --help asks for before the
+// flag package reaches them.
+func languageFlags(fs *flag.FlagSet, args []string) (rest, names, langs []string) {
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		name, isFlag := strings.CutPrefix(a, "--")
@@ -78,14 +80,18 @@ func languageFlags(fs *flag.FlagSet, args []string) (rest, names []string) {
 			name, isFlag = strings.CutPrefix(a, "-")
 		}
 		if !isFlag || name == "" || strings.HasPrefix(name, "-") { // an argument, or "--"
-			return append(rest, args[i:]...), names
+			return append(rest, args[i:]...), names, langs
 		}
-		key, _, hasValue := strings.Cut(name, "=")
+		key, value, hasValue := strings.Cut(name, "=")
 		if f := fs.Lookup(key); f != nil {
 			rest = append(rest, a)
 			if b, ok := f.Value.(interface{ IsBoolFlag() bool }); !hasValue && !(ok && b.IsBoolFlag()) && i+1 < len(args) {
 				i++
 				rest = append(rest, args[i])
+				value, hasValue = args[i], true
+			}
+			if key == "lang" && hasValue {
+				langs = append(langs, value)
 			}
 			continue
 		}
@@ -95,13 +101,13 @@ func languageFlags(fs *flag.FlagSet, args []string) (rest, names []string) {
 		}
 		rest = append(rest, a) // an unknown flag: the flag package reports it
 	}
-	return rest, names
+	return rest, names, langs
 }
 
-// languageHelp lists every name of every language, for the usage text.
-func languageHelp() string {
+// languageTable lists every name of every language, for the help (which
+// introduces it in its own language, help.go).
+func languageTable() string {
 	var b strings.Builder
-	b.WriteString("NAME is any language Sorted! speaks, named in any language it speaks or will:\n")
 	for _, l := range languages {
 		state := ""
 		if !l.spoken {

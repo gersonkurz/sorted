@@ -21,6 +21,14 @@ type result struct {
 
 func runCLI(args ...string) result { return runCLIIn("", args...) }
 
+// The tests pick English wherever Sorted! would pick a language at random
+// (the help, --from-c without --lang); the tests of the random pick put it
+// back.
+func TestMain(m *testing.M) {
+	pickLang = func() render.Lang { return render.English }
+	os.Exit(m.Run())
+}
+
 // runCLIIn runs the command line with stdin.
 func runCLIIn(stdin string, args ...string) result {
 	var stdout, stderr bytes.Buffer
@@ -417,6 +425,15 @@ func TestLanguageNames(t *testing.T) {
 	if r := runCLI("--version", "--deutsch", "prog.s"); r.code != 0 || r.stdout != versionLine(version)+"\n" {
 		t.Errorf("a bool flag before a name: %+v", r)
 	}
+	if r := runCLI("--help", "--deutsch"); !strings.HasPrefix(r.stderr, "Aufruf: sorted [--dump DATEI]") || !strings.Contains(r.stderr, "NAME ist jede Sprache") {
+		t.Errorf("help in German: %q", r.stderr)
+	}
+	if r := runCLI("--lang", "fr", "--help"); !strings.HasPrefix(r.stderr, "usage : sorted [--dump FICHIER]") || !strings.Contains(r.stderr, "voilà") {
+		t.Errorf("help in French: %q", r.stderr)
+	}
+	if r := runCLI("--中文", "--bogus"); !strings.Contains(r.stderr, "用法：sorted") {
+		t.Errorf("usage error in Mandarin: %q", r.stderr)
+	}
 	if r := runCLI("--help"); !strings.Contains(r.stderr, "en: English, Englisch, anglais") || !strings.Contains(r.stderr, "zh: Mandarin") || !strings.Contains(r.stderr, "zh-latn: Pinyin") || strings.Contains(r.stderr, "not yet") {
 		t.Errorf("help: %q", r.stderr)
 	}
@@ -520,7 +537,9 @@ func TestFromC(t *testing.T) {
 	if len(seen) != 8 {
 		t.Errorf("languages picked: %v", seen)
 	}
-	// One choice at most.
+	pickLang = func() render.Lang { return render.English }
+	// One choice at most; the help names neither (a random one, English
+	// here).
 	for _, flags := range [][]string{{"--english", "--german"}, {"--lang", "en", "--german"}, {"--lang", "de", "--english"}} {
 		if r := runCLI(append([]string{"--from-c", cFile}, flags...)...); r.code != 2 || !strings.Contains(r.stderr, "usage: sorted") {
 			t.Errorf("%v: %+v", flags, r)
@@ -590,5 +609,39 @@ func TestFromCErrors(t *testing.T) {
 	}
 	if r := runCLI("--from-c", bad, "extra.s"); r.code != 2 || !strings.Contains(r.stderr, "sorted --from-c PROGRAM.c") {
 		t.Errorf("extra argument: %+v", r)
+	}
+}
+
+// The help is in every language Sorted! speaks, each with every flag and
+// the table of names, and in one picked at random unless one is named.
+func TestHelpLanguages(t *testing.T) {
+	for _, l := range languages {
+		h, ok := helps[l.lang]
+		if !ok {
+			t.Errorf("no help in %s", l.code)
+			continue
+		}
+		for _, flag := range []string{"--dump", "--from-c", "--lang", "--to-c", "--version", " sorted "} {
+			if !strings.Contains(h, flag) {
+				t.Errorf("%s: no %s", l.code, flag)
+			}
+		}
+		if lines := strings.Count(h, "\n"); lines != 8 {
+			t.Errorf("%s: %d lines", l.code, lines)
+		}
+		r := runCLI("--help", "--lang", l.code)
+		if r.code != 2 || !strings.HasPrefix(r.stderr, h) || !strings.HasSuffix(r.stderr, languageTable()) {
+			t.Errorf("%s: %+v", l.code, r)
+		}
+	}
+	defer func(pick func() render.Lang) { pickLang = pick }(pickLang)
+	pickLang = defaultPick
+	seen := map[string]bool{}
+	for range 300 {
+		r := runCLI("--help")
+		seen[r.stderr[:strings.Index(r.stderr, "\n")]] = true
+	}
+	if len(seen) != len(helps) {
+		t.Errorf("help languages picked: %d of %d", len(seen), len(helps))
 	}
 }
