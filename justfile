@@ -137,8 +137,9 @@ test-one $pattern:
 test-race:
     go test -count 1 -race ./...
 
-# One archive per platform with the binary, README, LICENSE, the legacy
-# sample programs and the examples, plus SHA256SUMS.
+# One archive per platform with the binary, README, LICENSE, the docs the
+# README links to, the legacy sample programs and the examples, plus
+# SHA256SUMS.
 #
 # Cross-compile all platforms into out/dist
 [unix]
@@ -154,9 +155,10 @@ package: clean-dist
         exe=""
         [ "$goos" = "windows" ] && exe=".exe"
         echo "Building ${name}..."
-        mkdir -p "${stage}/examples"
+        mkdir -p "${stage}/examples" "${stage}/docs"
         CGO_ENABLED=0 GOOS=$goos GOARCH=$goarch go build -buildvcs=false -trimpath {{ldflags}} -o "${stage}/sorted${exe}" ./cmd/sorted
         cp README.md LICENSE "${stage}/"
+        cp docs/*.md "${stage}/docs/"
         cp legacy/sorted.win32/*.s examples/*.c examples/*.s examples/*.in "${stage}/examples/"
         if [ "$goos" = "windows" ]; then
             (cd out/stage && zip -qr "../dist/${name}.zip" "${name}")

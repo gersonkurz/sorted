@@ -187,6 +187,50 @@ characters alike. **Questo programma è molto molto figo. Ce programme est
 très très chouette. Este programa é muito muito legal. Kono puroguramu wa
 totemo totemo kakkoii desu. 这个程序非常非常酷。**
 
+## Caput XI. De matrimonio cum C
+
+*On the marriage with C*
+
+Sorted! and C have kept company since the year 2000. Their first
+engagement was the translation of Caput VIII, which promised the bride a
+faithful likeness and gave her another's face; it was set aside, as a
+promise not kept must be. In the year 2026 the union was made in earnest,
+and in both directions, as a marriage is: C comes to Sorted! (`--from-c`),
+and Sorted! goes back to C (`--to-c`), and the one who makes the round trip
+returns unchanged in deed, however changed in appearance. This is the vow,
+and the tests witness it: every C program that is compiled is sung, run,
+translated back, compiled again, and must say exactly what it said before.
+
+The bride brings her law, and the groom keeps it. Every constant of C
+becomes a declared number, each declared once, for **thou shalt not have
+the same cardinal more than once**. The pointers of C honour the doctrine
+of Caput II: a pointer that reads holds the cell's number and one more, a
+pointer that writes the number itself, that the cell put down is not
+sought in the same place. A function exists once, as all things in Sorted!
+exist once, and returns by asking, at every place it was called from,
+whether this is the place. What C leaves undefined it may not bring into
+the house: a shift by a constant beyond the width of a word is refused at
+the door, as Caput IX teaches.
+
+Let none say that C was converted, or that Sorted! became C. Each keeps its
+nature. C goes on compiling with its compilers, and Sorted! goes on singing.
+What they share is what they do.
+
+## Caput XII. De Pentecoste
+
+*On Pentecost*
+
+At Babel the tongues were confounded, that no one might understand the
+other. In Sorted! it is the other way round: a program may be written in all
+its tongues at once, each sentence in one of them, and it means one thing in
+all of them, as on the day when each heard the apostles in their own language.
+The tables are the meaning; the words are its garments. Whatever the mix,
+at random, in turn, or by the fewest syllables, the text must read back
+into the same tables, or it is not written. Hence the saying of the
+faithful, which is no boast: **Sorted! is the only machine translator with
+a hundred percent accuracy, as long as you only ever say one of fourteen
+things.**
+
 ---
 
 *Datum ad p-nand-q.com, anno linguae MM, confirmatum anno MMXXVI.*

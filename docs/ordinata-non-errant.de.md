@@ -203,6 +203,54 @@ ohne Leerzeichen, weil er sie kennt, und die alten Zeichen wie die neuen.
 Este programa é muito muito legal. Kono puroguramu wa totemo totemo kakkoii
 desu. 这个程序非常非常酷。**
 
+## Caput XI. De matrimonio cum C
+
+*Von der Ehe mit C*
+
+Sorted! und C gehen seit dem Jahr 2000 miteinander. Ihre erste Verlobung
+war die Übersetzung von Caput VIII, die der Braut ein getreues Abbild
+versprach und ihr ein fremdes Gesicht gab; sie wurde aufgelöst, wie ein
+nicht gehaltenes Versprechen aufgelöst werden muss. Im Jahr 2026 wurde der
+Bund im Ernst geschlossen, und in beide Richtungen, wie eine Ehe es ist: C
+kommt zu Sorted! (`--from-c`), und Sorted! geht zurück zu C (`--to-c`), und
+wer den Weg hin und zurück geht, kehrt im Tun unverändert wieder, wie sehr
+auch im Aussehen verwandelt. Dies ist das Gelübde, und die Tests bezeugen
+es: Jedes C-Programm, das übersetzt wird, wird gesungen, ausgeführt,
+zurückübersetzt, wieder übersetzt und muss genau sagen, was es vorher
+sagte.
+
+Die Braut bringt ihr Gesetz mit, und der Bräutigam hält es. Jede Konstante
+von C wird eine deklarierte Zahl, jede nur einmal deklariert, denn **du
+sollst nicht dieselbe Kardinalzahl mehr als einmal haben**. Die Zeiger von
+C ehren die Lehre von Caput II: Ein Zeiger, der liest, hält die Nummer der
+Zelle und eins mehr, ein Zeiger, der schreibt, die Nummer selbst, auf dass
+die abgelegte Zelle nicht am selben Ort gesucht werde. Eine Funktion gibt
+es nur einmal, wie es alle Dinge in Sorted! nur einmal gibt, und sie kehrt
+zurück, indem sie an jedem Ort, von dem aus sie gerufen wurde, fragt, ob es
+dieser Ort ist. Was C undefiniert lässt, darf es nicht ins Haus bringen:
+Eine Verschiebung um eine Konstante über die Breite eines Wortes hinaus
+wird an der Tür abgewiesen, wie Caput IX lehrt.
+
+Niemand sage, C sei bekehrt worden oder Sorted! sei zu C geworden. Jedes
+behält sein Wesen. C wird weiter von seinen Compilern übersetzt, und Sorted!
+singt weiter. Was sie teilen, ist, was sie tun.
+
+## Caput XII. De Pentecoste
+
+*Von Pfingsten*
+
+Zu Babel wurden die Zungen verwirrt, auf dass keiner den anderen verstehe.
+In Sorted! ist es umgekehrt: Ein Programm darf in allen seinen Zungen
+zugleich geschrieben werden, jeder Satz in einer von ihnen, und es bedeutet
+in allen dasselbe, wie an dem Tag, an dem jeder die Apostel in seiner
+eigenen Sprache hörte. Die Tabellen sind die Bedeutung, die Worte ihre
+Gewänder. Wie auch immer gemischt wird, zufällig, der Reihe nach oder nach
+den wenigsten Silben, der Text muss in dieselben Tabellen zurückgelesen
+werden, oder er wird nicht geschrieben. Daher das Wort der Gläubigen, das
+keine Prahlerei ist: **Sorted! ist der einzige maschinelle Übersetzer mit
+hundert Prozent Genauigkeit, solange man immer nur eines von vierzehn
+Dingen sagt.**
+
 ---
 
 *Datum ad p-nand-q.com, anno linguae MM, confirmatum anno MMXXVI.*
