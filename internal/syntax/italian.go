@@ -133,9 +133,10 @@ func (ps *parser) itCardinal() (int32, bool) {
 // "..., e ..."). A single item is a list too.
 func (ps *parser) itList(spec func() bool) bool { return ps.listOf(spec, "e", "ed") }
 
-// listOf parses a list of Very Very Sorted!'s Italian or French: items
-// separated by commas, the last after one of the conjunctions, with or
-// without a comma before it. A single item is a list too.
+// listOf parses a list of Very Very Sorted!'s Italian, French or
+// Portuguese: items separated by commas, the last after one of the
+// conjunctions, with or without a comma before it. A single item is a list
+// too.
 func (ps *parser) listOf(spec func() bool, conjs ...string) bool {
 	conj := func() bool {
 		for _, c := range conjs {
@@ -288,11 +289,12 @@ func (ps *parser) itJump(cell *Slide) bool {
 }
 
 // veryVeryFormat parses the output formats Very Very Sorted! adds: all of
-// them in Italian ("come carattere", "come cardinale italiano") and French
-// ("comme caractère", "comme ordinal vaudois"), and the Italian and Vaudois
-// numbers in the other languages ("as an italian ordinal", "als ein
-// waadtländischer Kardinal", "come cardinale vodese"). Unlike the original's formats, each is parsed
-// whole or not at all.
+// them in Italian ("come carattere", "come cardinale italiano"), French
+// ("comme caractère", "comme ordinal vaudois") and Portuguese ("como
+// caractere", "como cardinal brasileiro"), and the Italian, Vaudois and
+// Brazilian numbers in the other languages ("as an italian ordinal", "als
+// ein waadtländischer Kardinal", "come cardinale brasiliano"). Unlike the
+// original's formats, each is parsed whole or not at all.
 func (ps *parser) veryVeryFormat(cell *Slide) bool {
 	for _, f := range []struct {
 		words  string
@@ -328,6 +330,26 @@ func (ps *parser) veryVeryFormat(cell *Slide) bool {
 		{"as a vaudois ordinal", FormatVaudoisOrdinal},
 		{"als ein waadtlaendischer kardinal", FormatVaudoisCardinal},
 		{"als eine waadtlaendische ordinalzahl", FormatVaudoisOrdinal},
+		{"como caractere", FormatCharacter},
+		{"como um caractere", FormatCharacter},
+		{"como cardinal ingles", FormatEnglishCardinal},
+		{"como ordinal ingles", FormatEnglishOrdinal},
+		{"como cardinal alemao", FormatGermanCardinal},
+		{"como ordinal alemao", FormatGermanOrdinal},
+		{"como cardinal italiano", FormatItalianCardinal},
+		{"como ordinal italiano", FormatItalianOrdinal},
+		{"como cardinal valdense", FormatVaudoisCardinal},
+		{"como ordinal valdense", FormatVaudoisOrdinal},
+		{"como cardinal brasileiro", FormatBrazilianCardinal},
+		{"como ordinal brasileiro", FormatBrazilianOrdinal},
+		{"as a brazilian cardinal", FormatBrazilianCardinal},
+		{"as a brazilian ordinal", FormatBrazilianOrdinal},
+		{"als ein brasilianischer kardinal", FormatBrazilianCardinal},
+		{"als eine brasilianische ordinalzahl", FormatBrazilianOrdinal},
+		{"come cardinale brasiliano", FormatBrazilianCardinal},
+		{"come ordinale brasiliano", FormatBrazilianOrdinal},
+		{"comme cardinal bresilien", FormatBrazilianCardinal},
+		{"comme ordinal bresilien", FormatBrazilianOrdinal},
 	} {
 		if ps.seq(strings.Fields(f.words)...) {
 			cell.Flags = f.format

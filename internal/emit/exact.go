@@ -39,6 +39,7 @@ type exact struct {
 	words   bool // a write prints a cardinal or an ordinal
 	italian bool // ... in Italian
 	vaudois bool // ... in Vaudois French
+	brazil  bool // ... in Brazilian Portuguese
 	input   bool // a read can run
 	dynamic bool // a jump target is not a label, so pc can be anything
 }
@@ -184,6 +185,9 @@ func (x *exact) statement(i int) string {
 		case syntax.FormatVaudoisCardinal, syntax.FormatVaudoisOrdinal:
 			x.vaudois = true
 			return fmt.Sprintf("wf_(%d, %s);", e.Flags, v)
+		case syntax.FormatBrazilianCardinal, syntax.FormatBrazilianOrdinal:
+			x.brazil = true
+			return fmt.Sprintf("wp_(%d, %s);", e.Flags, v)
 		}
 		return fmt.Sprintf("putchar((unsigned char)%s);", v)
 	}
@@ -251,6 +255,9 @@ func (x *exact) render() string {
 	}
 	if x.vaudois {
 		b.WriteString(exactVaudois)
+	}
+	if x.brazil {
+		b.WriteString(exactBrazilian)
 	}
 	if x.input {
 		b.WriteString(exactInput)
@@ -503,6 +510,59 @@ static void wf_(I format, I v) {
 		else if (last[n - 1] == 'e') last[n - 1] = 0;
 		strcat(w, "i\303\250me");
 	}
+	fputs(b, stdout);
+	putchar('\n');
+}
+`
+
+// exactBrazilian is the Brazilian Portuguese number formatting of
+// internal/numbers (Very Very Sorted!, #31): any number has its words, in
+// UTF-8, masculine as the output formats write them.
+const exactBrazilian = `static const char *const ptU[20] = {"", "um", "dois", "tr\303\252s", "quatro", "cinco", "seis", "sete", "oito", "nove", "dez", "onze", "doze", "treze", "catorze", "quinze", "dezesseis", "dezessete", "dezoito", "dezenove"};
+static const char *const ptD[10] = {"", "", "vinte", "trinta", "quarenta", "cinquenta", "sessenta", "setenta", "oitenta", "noventa"};
+static const char *const ptH[10] = {"", "cento", "duzentos", "trezentos", "quatrocentos", "quinhentos", "seiscentos", "setecentos", "oitocentos", "novecentos"};
+static const char *const ptOU[10] = {"", "primeiro", "segundo", "terceiro", "quarto", "quinto", "sexto", "s\303\251timo", "oitavo", "nono"};
+static const char *const ptOD[10] = {"", "d\303\251cimo", "vig\303\251simo", "trig\303\251simo", "quadrag\303\251simo", "quinquag\303\251simo", "sexag\303\251simo", "septuag\303\251simo", "octog\303\251simo", "nonag\303\251simo"};
+static const char *const ptOH[10] = {"", "cent\303\251simo", "ducent\303\251simo", "tricent\303\251simo", "quadringent\303\251simo", "quingent\303\251simo", "sexcent\303\251simo", "septingent\303\251simo", "octingent\303\251simo", "noningent\303\251simo"};
+static void pt3_(char *b, U n) {
+	U h = n / 100, r = n % 100;
+	if (n == 100) { strcat(b, "cem"); return; }
+	if (h > 0) { strcat(b, ptH[h]); if (r > 0) strcat(b, " e "); }
+	if (r >= 20) {
+		strcat(b, ptD[r / 10]);
+		if (r % 10 > 0) { strcat(b, " e "); strcat(b, ptU[r % 10]); }
+	} else if (r > 0) strcat(b, ptU[r]);
+}
+static void ptc_(char *b, U n);
+static void ptr_(char *b, U r) {
+	if (r == 0) return;
+	strcat(b, r < 100 || r % 100 == 0 ? " e " : " ");
+	ptc_(b, r);
+}
+static void ptc_(char *b, U n) {
+	if (n >= 1000000000) { pt3_(b, n / 1000000000); strcat(b, n / 1000000000 == 1 ? " bilh\303\243o" : " bilh\303\265es"); ptr_(b, n % 1000000000); }
+	else if (n >= 1000000) { pt3_(b, n / 1000000); strcat(b, n / 1000000 == 1 ? " milh\303\243o" : " milh\303\265es"); ptr_(b, n % 1000000); }
+	else if (n >= 1000) { if (n / 1000 > 1) { pt3_(b, n / 1000); strcat(b, " "); } strcat(b, "mil"); ptr_(b, n % 1000); }
+	else pt3_(b, n);
+}
+static void pto_(char *b, U n) {
+	if (n >= 1000) {
+		U s = n >= 1000000000 ? 1000000000 : n >= 1000000 ? 1000000 : 1000;
+		if (s > 1000 || n / s > 1) { ptc_(b, n / s); strcat(b, " "); }
+		strcat(b, s == 1000000000 ? "bilion\303\251simo" : s == 1000000 ? "milion\303\251simo" : "mil\303\251simo");
+		n %= s;
+	} else if (n >= 100) { strcat(b, ptOH[n / 100]); n %= 100; }
+	else if (n >= 10) { strcat(b, ptOD[n / 10]); n %= 10; }
+	else { strcat(b, ptOU[n]); n = 0; }
+	if (n > 0) { strcat(b, " "); pto_(b, n); }
+}
+static void wp_(I format, I v) {
+	char b[512];
+	U m = v < 0 ? 0u - (U)v : (U)v;
+	strcpy(b, v < 0 ? "menos " : "");
+	if (m == 0) strcat(b, format == 9 ? "zero" : "zer\303\251simo");
+	else if (format == 9) ptc_(b, m);
+	else pto_(b, m);
 	fputs(b, stdout);
 	putchar('\n');
 }

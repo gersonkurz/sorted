@@ -344,6 +344,23 @@ func TestVaudoisOutput(t *testing.T) {
 	}
 }
 
+// ... and Brazilian Portuguese numbers (#31).
+func TestBrazilianOutput(t *testing.T) {
+	var writes []syntax.Slide
+	var stmts []syntax.Operand
+	for i := range 3 {
+		writes = append(writes, syntax.Slide{Ops: [2]syntax.Operand{num(int32(i))}, Flags: syntax.FormatBrazilianCardinal},
+			syntax.Slide{Ops: [2]syntax.Operand{num(int32(i))}, Flags: syntax.FormatBrazilianOrdinal})
+		stmts = append(stmts, syntax.Operand{Type: syntax.Write, Index: int32(2 * i)}, syntax.Operand{Type: syntax.Write, Index: int32(2*i + 1)})
+	}
+	p := hand([]int32{23, 0, -3}, map[syntax.Category][]syntax.Slide{syntax.Writes: writes}, stmts...)
+	p.Verys = 2
+	want := "vinte e três\nvigésimo terceiro\nzero\nzerésimo\nmenos três\nmenos terceiro\n"
+	if got, err := runHand(t, p, ""); err != nil || got != want {
+		t.Errorf("%q, %v; want %q", got, err, want)
+	}
+}
+
 // "Logical operations" compute ~a & ~b (NOR); Very Sorted!'s NAND (#26)
 // computes ~(a & b).
 func TestLogicalOperation(t *testing.T) {

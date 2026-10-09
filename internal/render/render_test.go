@@ -42,7 +42,7 @@ func parse(t *testing.T, src []byte) *syntax.Program {
 // tables.
 func TestSamplesRoundTrip(t *testing.T) {
 	for _, name := range samples {
-		for _, lang := range []Lang{English, German, Italian, French} {
+		for _, lang := range []Lang{English, German, Italian, French, Portuguese} {
 			t.Run(fmt.Sprintf("%s/%d", name, lang), func(t *testing.T) {
 				p := parse(t, readFile(t, "legacy", "sorted.win32", name+".s"))
 				text, err := Render(p, lang)
@@ -75,13 +75,15 @@ func TestSamplesRoundTrip(t *testing.T) {
 // Italian (#30): every preposition its article fuses with.
 func TestReferencesRoundTrip(t *testing.T) {
 	r := &renderer{}
-	for _, lang := range []Lang{English, German, Italian, French} {
+	for _, lang := range []Lang{English, German, Italian, French, Portuguese} {
 		cases := []gcase{nominative, accusative, dative}
 		switch lang {
 		case Italian:
 			cases = []gcase{nominative, itDi, itA, itDa}
 		case French:
 			cases = []gcase{nominative, frA, frDe}
+		case Portuguese:
+			cases = []gcase{nominative, ptDe, ptA, ptPor}
 		}
 		for typ := range nouns {
 			for _, indirect := range []syntax.OperandType{0, syntax.Indirect} {
@@ -137,7 +139,7 @@ Cool.`
 // Numbers from zero to 999999999 are declarable in both languages.
 func TestNumbersRoundTrip(t *testing.T) {
 	values := []int32{0, 1, 2, 15, 99, 100, 101, 999, 1000, 1001, 65536, 999999, 1000000, 41281927, 123456789, 999999999}
-	for _, lang := range []Lang{English, German, Italian, French} {
+	for _, lang := range []Lang{English, German, Italian, French, Portuguese} {
 		p := parse(t, []byte(strings.Replace(skeleton, "STATEMENT", "the first number", 1)))
 		p.Data = values // the data does not affect the layout
 		if _, err := Render(p, lang); err != nil {
@@ -479,18 +481,20 @@ func TestLogicalOperationList(t *testing.T) {
 // all three languages; an older program in Italian becomes one.
 func TestOutputFormats(t *testing.T) {
 	want := map[int32]string{
-		syntax.FormatCharacter:       "\x15",
-		syntax.FormatEnglishCardinal: "twentyone\n",
-		syntax.FormatEnglishOrdinal:  "twentyfirst\n",
-		syntax.FormatGermanCardinal:  "einundzwanzig\n",
-		syntax.FormatGermanOrdinal:   "einundzwanzigste\n",
-		syntax.FormatItalianCardinal: "ventuno\n",
-		syntax.FormatItalianOrdinal:  "ventunesimo\n",
-		syntax.FormatVaudoisCardinal: "vingt-et-un\n",
-		syntax.FormatVaudoisOrdinal:  "vingt-et-unième\n",
+		syntax.FormatCharacter:         "\x15",
+		syntax.FormatEnglishCardinal:   "twentyone\n",
+		syntax.FormatEnglishOrdinal:    "twentyfirst\n",
+		syntax.FormatGermanCardinal:    "einundzwanzig\n",
+		syntax.FormatGermanOrdinal:     "einundzwanzigste\n",
+		syntax.FormatItalianCardinal:   "ventuno\n",
+		syntax.FormatItalianOrdinal:    "ventunesimo\n",
+		syntax.FormatVaudoisCardinal:   "vingt-et-un\n",
+		syntax.FormatVaudoisOrdinal:    "vingt-et-unième\n",
+		syntax.FormatBrazilianCardinal: "vinte e um\n",
+		syntax.FormatBrazilianOrdinal:  "vigésimo primeiro\n",
 	}
 	for format, output := range want {
-		for _, lang := range []Lang{English, German, Italian, French} {
+		for _, lang := range []Lang{English, German, Italian, French, Portuguese} {
 			p := parse(t, []byte(strings.Replace(strings.Replace(strings.Replace(skeleton, "STATEMENT", "the first output", 1),
 				"This code does not use any numbers.", "This code uses the number twentyone.", 1),
 				"This code cannot write.", "This code writes the first number as a character.", 1)))
@@ -734,5 +738,115 @@ This code is very very cool.`
 	g := parse(t, []byte(strings.Replace(strings.Replace(skeleton, "STATEMENT", "the first output", 1), "This code cannot write.", "This code writes the first number as a german german ordinal.", 1)))
 	if _, err := Render(g, French); err == nil {
 		t.Error("German numbers rendered in French")
+	}
+}
+
+// Portuguese (#31): articles fused with de, a and por, ordinals agreeing
+// with their nouns, Brazil's numbers, with a comma before the "e" of a list
+// only where two numbers would otherwise read back as one; a program in
+// Portuguese is Very Very Sorted!.
+func TestPortuguese(t *testing.T) {
+	src := `This code uses the numbers twentythree, twenty, one, and onehundred.
+This code always goes to the first label, and sometimes goes to the second label if the eleventh condition is true.
+This code writes the first sum as a brazilian ordinal.
+This code reads the first number as a character.
+This code uses the sums of the first number and the second number, and of the eight number and the cell indexed by the first sum.
+This code uses the condition that the first sum is equal to the eight number, and the condition that the first number is less than the first ratio.
+This code uses twentyone labels.
+This code uses the ordered difference between the eleventh number and the second number.
+This code assigns the first sum to the third number, the first input to the eight number, and the first product to the cell indexed by the first sum.
+This code uses the products of the first number and the second number, and of the first sum and the first ordered difference.
+This code implements the first assignment, the first label, the first jump, the second assignment, the first input, the first output, and the eleventh label.
+This code uses the ratios of the first number to the second number, and of the second number to the first number.
+This code uses the logical operations of not the first number and not the eight number, and of not both the first logical operation and the second number.
+This code is very very cool.`
+	p := parse(t, []byte(src))
+	text, err := Render(p, Portuguese)
+	if err != nil {
+		t.Fatal(err)
+	}
+	flat := strings.Join(strings.Fields(text), " ")
+	for _, want := range []string{
+		"Este programa usa os números vinte e três, vinte, um e cem.",
+		"Este programa sempre vai para o primeiro rótulo e às vezes vai para o segundo rótulo se a décima primeira condição for verdadeira.",
+		"Este programa escreve a primeira soma como ordinal brasileiro.",
+		"Este programa lê o primeiro número como caractere.",
+		"as somas do primeiro número e do segundo número, e do oitavo número e da célula indexada pela primeira soma.",
+		"Este programa usa a condição de que a primeira soma seja igual ao oitavo número e a condição de que o primeiro número seja menor que a primeira razão.",
+		"Este programa usa vinte e um rótulos.",
+		"Este programa usa a diferença ordenada entre o décimo primeiro número e o segundo número.",
+		"Este programa atribui a primeira soma ao terceiro número, a primeira entrada ao oitavo número e o primeiro produto à célula indexada pela primeira soma.",
+		"os produtos do primeiro número e do segundo número, e da primeira soma e da primeira diferença ordenada.",
+		"implementa a primeira atribuição, o primeiro rótulo, o primeiro salto, a segunda atribuição, a primeira entrada, a primeira saída e o décimo primeiro rótulo.",
+		"Este programa usa as razões entre o primeiro número e o segundo número, e entre o segundo número e o primeiro número.",
+		"as operações lógicas nem o primeiro número nem o oitavo número, e não ambos a primeira operação lógica e o segundo número.",
+		"Este programa é muito muito legal.",
+	} {
+		if !strings.Contains(flat, want) {
+			t.Errorf("no %q in\n%s", want, text)
+		}
+	}
+	if q := parse(t, []byte(text)); !Equal(p, q) {
+		t.Errorf("tables differ:\n%s", text)
+	}
+	for lang, want := range map[Lang]string{English: "as a brazilian ordinal", German: "als eine brasilianische Ordinalzahl", Italian: "come ordinale brasiliano", French: "comme ordinal brésilien"} {
+		if text, err := Render(p, lang); err != nil || !strings.Contains(text, want) {
+			t.Errorf("lang %d: %v, no %q in\n%s", lang, err, want, text)
+		}
+	}
+	// Lists of numbers that would read back as one get a comma; a long
+	// list keeps it in its verse.
+	for _, tt := range []struct {
+		data []int32
+		want string
+	}{
+		{[]int32{20, 1}, "os números vinte, e um."},
+		{[]int32{2, 3}, "os números dois e três."},
+		{[]int32{100, 1}, "os números cem e um."},
+		{[]int32{1000, 100}, "os números mil, e cem."},
+		{[]int32{200, 30}, "os números duzentos, e trinta."},
+		{[]int32{1, 21, 2}, "os números um, vinte e um e dois."},
+		{[]int32{999999999, 888888888, 777777777, 1}, "setecentos e setenta e sete e um."},
+		{[]int32{999999999, 888888888, 777777000, 1}, "setecentos e setenta e sete mil, e um."},
+		{[]int32{999999999, 888888888, 777777777, 2000000}, "e setenta e sete mil setecentos e setenta e sete e dois milhões."},
+		{[]int32{999999999, 888888888, 777777000, 2000}, "setecentos e setenta e sete mil, e dois mil."},
+	} {
+		q := parse(t, []byte(strings.Replace(skeleton, "STATEMENT", "the first number", 1)))
+		q.Data = tt.data
+		text, err := Render(q, Portuguese)
+		if err != nil {
+			t.Errorf("%v: %v", tt.data, err)
+			continue
+		}
+		if flat := strings.Join(strings.Fields(text), " "); !strings.Contains(flat, tt.want) {
+			t.Errorf("%v: no %q in\n%s", tt.data, tt.want, text)
+		}
+	}
+	none := parse(t, []byte(strings.Replace(skeleton, "STATEMENT", "the first number", 1)))
+	text, err = Render(none, Portuguese)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Este programa não usa nenhum número.", "Este programa não vai a lugar nenhum.", "Este programa não pode escrever.",
+		"Este programa não pode ler.", "Este programa não usa nenhuma soma.", "Este programa não usa nenhuma condição.",
+		"Este programa não usa nenhum rótulo.", "Este programa não usa nenhuma diferença ordenada.",
+		"Este programa não faz nenhuma atribuição.", "Este programa não usa nenhum produto.",
+		"Este programa implementa o primeiro número.", "Este programa não usa nenhuma razão.",
+		"Este programa é ilógico.", "Este programa é muito muito legal."} {
+		if !strings.Contains(text, want) {
+			t.Errorf("no %q in\n%s", want, text)
+		}
+	}
+	if q := parse(t, []byte(text)); q.Verys != 2 {
+		t.Errorf("verys %d", q.Verys)
+	}
+	one := parse(t, []byte(strings.Replace(strings.Replace(skeleton, "STATEMENT", "the first number", 1), "This code does not use any labels.", "This code uses one label.", 1)))
+	if text, err := Render(one, Portuguese); err != nil || !strings.Contains(text, "Este programa usa um rótulo.") {
+		t.Errorf("one label: %v\n%s", err, text)
+	}
+	// German numbers would change in Very Very Sorted!, as in Italian.
+	g := parse(t, []byte(strings.Replace(strings.Replace(skeleton, "STATEMENT", "the first output", 1), "This code cannot write.", "This code writes the first number as a german german ordinal.", 1)))
+	if _, err := Render(g, Portuguese); err == nil {
+		t.Error("German numbers rendered in Portuguese")
 	}
 }

@@ -187,8 +187,12 @@ die ihre Wege behalten, noch die neue, die nie abwich. Im selben Zeitalter
 lernte die Sprache eine vierte Zunge, das Französisch der Waadt, das in
 Zehnern zählt, wie die Gläubigen es sich vom Französischen immer erhofft
 hatten, und "eh" und "voilà" sagt, wo andere innehalten; der Parser hört
-darin die Stille, die sie sind. **Questo programma è molto molto figo. Ce
-programme est très très chouette.**
+darin die Stille, die sie sind. Und eine fünfte, das Portugiesisch
+Brasiliens, das seine Zahlen mit demselben "e" verbindet wie seine Listen;
+der Parser nimmt jede Zahl so weit, wie sie reicht, und wo zwei zu einer
+würden, setzt der Renderer ein Komma zwischen sie, auf dass jede sie selbst
+bleibe. **Questo programma è molto molto figo. Ce programme est très très
+chouette. Este programa é muito muito legal.**
 
 ---
 

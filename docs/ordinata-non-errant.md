@@ -172,8 +172,12 @@ The sorted do not err: neither the old, which keep their ways, nor the new,
 which never strayed. In the same age the language learned a fourth tongue,
 the French of Vaud, which counts in tens as the faithful always hoped
 French would, and says "eh" and "voilà" where others pause; the parser
-hears those as the silence they are. **Questo programma è molto molto
-figo. Ce programme est très très chouette.**
+hears those as the silence they are. And a fifth, the Portuguese of
+Brazil, which joins its numbers with the same "e" that joins its lists;
+the parser takes each number as far as it will go, and where two would
+become one, the renderer sets a comma between them, that each may stay
+itself. **Questo programma è molto molto figo. Ce programme est très très
+chouette. Este programa é muito muito legal.**
 
 ---
 

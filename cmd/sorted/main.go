@@ -10,7 +10,7 @@
 // (--from-c with --to-c) turns a C program into an equivalent, thoroughly
 // obfuscated one. --lang NAME, or just --NAME, prints the program in that
 // language instead of running it, and NAME may name it in any language
-// Sorted! speaks (--english, --deutsch, --italiano, --vaudois, --lang anglais, --英語; see
+// Sorted! speaks (--english, --deutsch, --italiano, --vaudois, --brasileiro, --lang anglais, --英語; see
 // langs.go). --from-c compiles a C program into Sorted! and prints it;
 // Sorted! does not prefer any language, so unless one is asked for, each
 // run picks one at random.

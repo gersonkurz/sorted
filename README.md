@@ -9,8 +9,8 @@ the year 2000. Its design criteria, quoting the
 - Each program should contain exactly fourteen statements.
 
 It is also multilingual: every statement can be written in English or in
-German, and, since Very Very Sorted!, in Italian or the French of Vaud, and a
-program may mix them.
+German, and, since Very Very Sorted!, in Italian, the French of Vaud or
+Brazilian Portuguese, and a program may mix them.
 
 This repository is a Go port of the original C++ interpreter that Gerson Kurz
 wrote in 2000. It is faithful to the original, quirks included: it accepts the
@@ -83,8 +83,8 @@ every number as a character, so `fibo.s` comes out as raw bytes instead of
 "one, one, two, three", and it writes indirect cells one off, so `itoa.s`
 moves its famous NUL. `--to-c` replaces it. `--lang NAME`, or just `--NAME`, prints the program in that
 language instead of running it, so `sorted --deutsch hello.s` sings Hello
-World in German, `sorted --italiano hello.s` in Italian and `sorted --vaudois
-hello.s` in French. Sorted! has no favourite language, not even for naming
+World in German, `sorted --italiano hello.s` in Italian, `sorted --vaudois
+hello.s` in French and `sorted --brasileiro hello.s` in Portuguese. Sorted! has no favourite language, not even for naming
 languages: NAME may be the language's name in any language Sorted! speaks or
 will, ignoring case and accents (`--english`, `--Englisch`, `--anglais`,
 `--lang inglês`, `--英語`, `--lang en`; `sorted --help` lists them all).
@@ -122,22 +122,22 @@ very very cool. (a105f41-dirty)`. Releases are tagged the same way (`cool`,
 
 A program is fourteen sentences, always in this order:
 
-| # | Sentence | English | German | Italian (Very Very Sorted!) | French (Very Very Sorted!) |
-|---|---|---|---|---|---|
-| 1 | numbers | This code uses the numbers … | Dieses Programm benutzt die Zahlen … | Questo programma usa i numeri … | Ce programme utilise les nombres … |
-| 2 | jumps | This code always goes to … / sometimes goes to … if … is true | Dieses Programm springt immer an … | Questo programma va sempre alla … / va talvolta alla … se … è vera | Ce programme va toujours à la … / va parfois à la … si … est vraie |
-| 3 | output | This code writes … as a character | Dieses Programm schreibt … als ein Zeichen | Questo programma scrive … come carattere | Ce programme écrit … comme caractère |
-| 4 | input | This code cannot read. | Dieses Programm kann nicht lesen. | Questo programma non può leggere. | Ce programme ne peut pas lire. |
-| 5 | sums | This code uses the sum of … and … | Dieses Programm benutzt die Summe aus … und … | Questo programma usa la somma del … e del … | Ce programme utilise la somme du … et du … |
-| 6 | conditions | This code uses the condition that … is equal to … | … die Bedingung dass … ist gleich … | … la condizione che … sia uguale al … | … la condition que … soit égal au … |
-| 7 | labels | This code uses two labels. | Dieses Programm benutzt zwei Sprungziele. | Questo programma usa due etichette. | Ce programme utilise deux étiquettes. |
-| 8 | ordered differences | This code uses the ordered difference between … and … | … die geordnete Differenz zwischen … und … | … la differenza ordinata tra … e … | … la différence ordonnée entre … et … |
-| 9 | assignments | This code assigns … to … | Dieses Programm weisst zu … an … | Questo programma assegna … al … | Ce programme affecte … au … |
-| 10 | products | This code uses the product of … and … | Dieses Programm benutzt das Produkt von … und … | … il prodotto del … e del … | … le produit du … et du … |
-| 11 | implementation | This code implements the first assignment, … | Dieses Programm implementiert … | Questo programma implementa il primo assegnamento, … | Ce programme implémente la première affectation, … |
-| 12 | ratios | This code uses the ratio of … to … | (English only) | … il rapporto tra … e … | … le rapport du … au … |
-| 13 | logical operations | This code does not use any logical operations. | Dieses Programm ist unlogisch. | Questo programma è illogico. | Ce programme est illogique. |
-| 14 | coolness | Cool. | Hervorragend. | Questo programma è molto molto figo. | Ce programme est très très chouette. |
+| # | Sentence | English | German | Italian (Very Very Sorted!) | French (Very Very Sorted!) | Portuguese (Very Very Sorted!) |
+|---|---|---|---|---|---|---|
+| 1 | numbers | This code uses the numbers … | Dieses Programm benutzt die Zahlen … | Questo programma usa i numeri … | Ce programme utilise les nombres … | Este programa usa os números … |
+| 2 | jumps | This code always goes to … / sometimes goes to … if … is true | Dieses Programm springt immer an … | Questo programma va sempre alla … / va talvolta alla … se … è vera | Ce programme va toujours à la … / va parfois à la … si … est vraie | Este programa sempre vai para o … / às vezes vai para o … se … for verdadeira |
+| 3 | output | This code writes … as a character | Dieses Programm schreibt … als ein Zeichen | Questo programma scrive … come carattere | Ce programme écrit … comme caractère | Este programa escreve … como caractere |
+| 4 | input | This code cannot read. | Dieses Programm kann nicht lesen. | Questo programma non può leggere. | Ce programme ne peut pas lire. | Este programa não pode ler. |
+| 5 | sums | This code uses the sum of … and … | Dieses Programm benutzt die Summe aus … und … | Questo programma usa la somma del … e del … | Ce programme utilise la somme du … et du … | Este programa usa a soma do … e do … |
+| 6 | conditions | This code uses the condition that … is equal to … | … die Bedingung dass … ist gleich … | … la condizione che … sia uguale al … | … la condition que … soit égal au … | … a condição de que … seja igual ao … |
+| 7 | labels | This code uses two labels. | Dieses Programm benutzt zwei Sprungziele. | Questo programma usa due etichette. | Ce programme utilise deux étiquettes. | Este programa usa dois rótulos. |
+| 8 | ordered differences | This code uses the ordered difference between … and … | … die geordnete Differenz zwischen … und … | … la differenza ordinata tra … e … | … la différence ordonnée entre … et … | … a diferença ordenada entre … e … |
+| 9 | assignments | This code assigns … to … | Dieses Programm weisst zu … an … | Questo programma assegna … al … | Ce programme affecte … au … | Este programa atribui … ao … |
+| 10 | products | This code uses the product of … and … | Dieses Programm benutzt das Produkt von … und … | … il prodotto del … e del … | … le produit du … et du … | … o produto do … e do … |
+| 11 | implementation | This code implements the first assignment, … | Dieses Programm implementiert … | Questo programma implementa il primo assegnamento, … | Ce programme implémente la première affectation, … | Este programa implementa a primeira atribuição, … |
+| 12 | ratios | This code uses the ratio of … to … | (English only) | … il rapporto tra … e … | … le rapport du … au … | … a razão entre … e … |
+| 13 | logical operations | This code does not use any logical operations. | Dieses Programm ist unlogisch. | Questo programma è illogico. | Ce programme est illogique. | Este programa é ilógico. |
+| 14 | coolness | Cool. | Hervorragend. | Questo programma è molto molto figo. | Ce programme est très très chouette. | Este programa é muito muito legal. |
 
 Every sentence except the implementation and "Cool." also has a "none" form
 ("This code does not use any sums."). For more than one entry, use the plural
@@ -223,8 +223,8 @@ sorted fizzbuzz.s
 The first song has to be the obvious one. [`examples/99-bottles.c`](examples/99-bottles.c)
 is the standard C version of 99 Bottles of Beer, and next to it sit what the
 compiler makes of it, [in English](examples/99-bottles.s),
-[in German](examples/99-bottles.de.s), [in Italian](examples/99-bottles.it.s)
-and [in French](examples/99-bottles.fr.s):
+[in German](examples/99-bottles.de.s), [in Italian](examples/99-bottles.it.s),
+[in French](examples/99-bottles.fr.s) and [in Portuguese](examples/99-bottles.pt.s):
 about 630 lines each, all singable, every verse printed exactly as the C
 program prints it.
 
@@ -285,8 +285,9 @@ what the C program prints when compiled with clang.
 translating between English and German comes free. Everything the compiler
 and the translator write in English or German uses only forms the 2000 parser
 knows, so it also runs on the original `Sorted.exe` (unless the program is
-very). Italian and French are Very Very Sorted! (below), so `--lang it` or
-`--lang fr` makes any program Very Very Sorted!, and refuses the rare 2000 program that would then do
+very). Italian, French and Portuguese are Very Very Sorted! (below), so
+`--lang it`, `--lang fr` or `--lang pt` makes any program Very Very Sorted!,
+and refuses the rare 2000 program that would then do
 something else: one that prints German numbers, which Very Sorted! spells in
 UTF-8, or one whose statements reach past their tables. A few programs that run fine cannot be
 written back: a declaration may add up its parts to a number from 1000000000
@@ -372,6 +373,27 @@ ends the implementation with ", voilà". Vaudois numbers print in every
 language too ("as a vaudois cardinal", "come ordinale vodese"), "zéroième"
 and "moins sept" included.
 
+And it speaks Brazilian Portuguese, Brazilian by name, because Brazil counts
+*dezesseis, dezessete, dezenove* where Portugal says *dezasseis, dezassete,
+dezanove*, and a billion is a *bilhão*. A program may end "Este programa é
+muito muito legal.":
+
+```
+Este programa usa os números vinte e três, vinte, e um.
+Este programa sempre vai para o primeiro rótulo.
+Este programa escreve a vigésima terceira célula como ordinal brasileiro.
+Este programa usa a condição de que a primeira soma seja menor que o terceiro número.
+Este programa atribui a primeira soma à célula indexada pelo segundo número.
+```
+
+Numbers are several words joined by "e", as Brazilians write them ("duzentos
+e trinta e quatro"), and so is the end of a list, so the parser reads a
+number as far as it goes: "vinte e um" is 21, and the list of 20 and 1 is
+written "vinte, e um". Ordinals agree with their nouns ("o vigésimo terceiro
+número", "a vigésima terceira soma"), and Brazilian numbers print in every
+language ("as a brazilian cardinal", "comme ordinal brésilien"), "zerésimo"
+and "menos sete" included.
+
 **And back to C.** `sorted --from-c prog.c --to-c obfuscated.c` takes a
 program on the full round trip: C → Sorted! → C. The result prints what
 `prog.c` prints, and nothing in it resembles the original. Every sum,
@@ -428,7 +450,8 @@ just run legacy/sorted.win32/fibo.s
 ```
 
 The packages follow the original's pipeline: `internal/syntax` (source filter
-and parser, `italian.go` and `french.go` for Very Very Sorted!), `internal/numbers` (number
+and parser, `italian.go`, `french.go` and `portuguese.go` for Very Very
+Sorted!), `internal/numbers` (number
 words), `internal/interp`
 (interpreter), `internal/emit` (`/D` dump and C translation), `internal/render`
 (programs back to Sorted! text), and the command in `cmd/sorted`. The C
