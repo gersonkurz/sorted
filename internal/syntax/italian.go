@@ -350,6 +350,16 @@ func (ps *parser) veryVeryFormat(cell *Slide) bool {
 		{"come ordinale brasiliano", FormatBrazilianOrdinal},
 		{"comme cardinal bresilien", FormatBrazilianCardinal},
 		{"comme ordinal bresilien", FormatBrazilianOrdinal},
+		{"as a japanese cardinal", FormatJapaneseCardinal},
+		{"as a japanese ordinal", FormatJapaneseOrdinal},
+		{"als ein japanischer kardinal", FormatJapaneseCardinal},
+		{"als eine japanische ordinalzahl", FormatJapaneseOrdinal},
+		{"come cardinale giapponese", FormatJapaneseCardinal},
+		{"come ordinale giapponese", FormatJapaneseOrdinal},
+		{"comme cardinal japonais", FormatJapaneseCardinal},
+		{"comme ordinal japonais", FormatJapaneseOrdinal},
+		{"como cardinal japones", FormatJapaneseCardinal},
+		{"como ordinal japones", FormatJapaneseOrdinal},
 	} {
 		if ps.seq(strings.Fields(f.words)...) {
 			cell.Flags = f.format

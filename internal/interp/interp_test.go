@@ -361,6 +361,23 @@ func TestBrazilianOutput(t *testing.T) {
 	}
 }
 
+// ... and Japanese numbers (#32).
+func TestJapaneseOutput(t *testing.T) {
+	var writes []syntax.Slide
+	var stmts []syntax.Operand
+	for i := range 3 {
+		writes = append(writes, syntax.Slide{Ops: [2]syntax.Operand{num(int32(i))}, Flags: syntax.FormatJapaneseCardinal},
+			syntax.Slide{Ops: [2]syntax.Operand{num(int32(i))}, Flags: syntax.FormatJapaneseOrdinal})
+		stmts = append(stmts, syntax.Operand{Type: syntax.Write, Index: int32(2 * i)}, syntax.Operand{Type: syntax.Write, Index: int32(2*i + 1)})
+	}
+	p := hand([]int32{23, 0, -9}, map[syntax.Category][]syntax.Slide{syntax.Writes: writes}, stmts...)
+	p.Verys = 2
+	want := "nijūsan\ndai-nijūsan\nzero\ndai-zero\nmainasu kyū\nmainasu dai-kyū\n"
+	if got, err := runHand(t, p, ""); err != nil || got != want {
+		t.Errorf("%q, %v; want %q", got, err, want)
+	}
+}
+
 // "Logical operations" compute ~a & ~b (NOR); Very Sorted!'s NAND (#26)
 // computes ~(a & b).
 func TestLogicalOperation(t *testing.T) {

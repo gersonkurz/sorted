@@ -316,9 +316,9 @@ func (m *machine) run(maxSteps int) error {
 
 // write prints v in the given format: a character (putchar), or a cardinal or
 // ordinal followed by a newline. Very Sorted! spells German numbers in UTF-8.
-// Italian, Vaudois French and Brazilian Portuguese numbers (Very Very
-// Sorted!) are always UTF-8, and any number has them ("meno sette",
-// "zéroième", "menos três").
+// Italian, Vaudois French, Brazilian Portuguese and Japanese numbers (Very
+// Very Sorted!) are always UTF-8, and any number has them ("meno sette",
+// "zéroième", "menos três", "mainasu kyū").
 func (m *machine) write(format int32, v int32) error {
 	var s string
 	var err error
@@ -343,6 +343,10 @@ func (m *machine) write(format int32, v int32) error {
 		s = numbers.BrazilianCardinal(v)
 	case syntax.FormatBrazilianOrdinal:
 		s = numbers.BrazilianOrdinal(v, false)
+	case syntax.FormatJapaneseCardinal:
+		s = numbers.JapaneseCardinal(v)
+	case syntax.FormatJapaneseOrdinal:
+		s = numbers.JapaneseOrdinal(v)
 	default:
 		return m.out.WriteByte(byte(v))
 	}

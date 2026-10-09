@@ -29,7 +29,7 @@ var languages = []language{
 	{"fr", []string{"French", "Französisch", "français", "francese", "francês", "フランス語", "furansugo", "法语", "fǎyǔ", "vaudois", "Waadtländisch"}, render.French, true},
 	{"it", []string{"Italian", "Italienisch", "italien", "italiano", "italiano", "イタリア語", "itariago", "意大利语", "yìdàlìyǔ"}, render.Italian, true},
 	{"pt", []string{"Portuguese", "Portugiesisch", "portugais", "portoghese", "português", "ポルトガル語", "porutogarugo", "葡萄牙语", "pútáoyáyǔ", "brasileiro", "Brazilian", "Brasilianisch"}, render.Portuguese, true},
-	{"ja", []string{"Japanese", "Japanisch", "japonais", "giapponese", "japonês", "日本語", "nihongo", "日语", "rìyǔ"}, 0, false},
+	{"ja", []string{"Japanese", "Japanisch", "japonais", "giapponese", "japonês", "日本語", "nihongo", "日语", "rìyǔ"}, render.Japanese, true},
 	{"zh", []string{"Mandarin", "Chinese", "Chinesisch", "chinois", "mandarin", "cinese", "mandarino", "chinês", "mandarim", "中国語", "chūgokugo", "汉语", "hànyǔ", "中文", "zhōngwén", "普通话", "pǔtōnghuà"}, 0, false},
 }
 

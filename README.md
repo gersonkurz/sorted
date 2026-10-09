@@ -9,8 +9,8 @@ the year 2000. Its design criteria, quoting the
 - Each program should contain exactly fourteen statements.
 
 It is also multilingual: every statement can be written in English or in
-German, and, since Very Very Sorted!, in Italian, the French of Vaud or
-Brazilian Portuguese, and a program may mix them.
+German, and, since Very Very Sorted!, in Italian, the French of Vaud,
+Brazilian Portuguese or Japanese (in romaji), and a program may mix them.
 
 This repository is a Go port of the original C++ interpreter that Gerson Kurz
 wrote in 2000. It is faithful to the original, quirks included: it accepts the
@@ -84,7 +84,8 @@ every number as a character, so `fibo.s` comes out as raw bytes instead of
 moves its famous NUL. `--to-c` replaces it. `--lang NAME`, or just `--NAME`, prints the program in that
 language instead of running it, so `sorted --deutsch hello.s` sings Hello
 World in German, `sorted --italiano hello.s` in Italian, `sorted --vaudois
-hello.s` in French and `sorted --brasileiro hello.s` in Portuguese. Sorted! has no favourite language, not even for naming
+hello.s` in French, `sorted --brasileiro hello.s` in Portuguese and `sorted
+--nihongo hello.s` in Japanese. Sorted! has no favourite language, not even for naming
 languages: NAME may be the language's name in any language Sorted! speaks or
 will, ignoring case and accents (`--english`, `--Englisch`, `--anglais`,
 `--lang inglês`, `--英語`, `--lang en`; `sorted --help` lists them all).
@@ -122,22 +123,22 @@ very very cool. (a105f41-dirty)`. Releases are tagged the same way (`cool`,
 
 A program is fourteen sentences, always in this order:
 
-| # | Sentence | English | German | Italian (Very Very Sorted!) | French (Very Very Sorted!) | Portuguese (Very Very Sorted!) |
-|---|---|---|---|---|---|---|
-| 1 | numbers | This code uses the numbers … | Dieses Programm benutzt die Zahlen … | Questo programma usa i numeri … | Ce programme utilise les nombres … | Este programa usa os números … |
-| 2 | jumps | This code always goes to … / sometimes goes to … if … is true | Dieses Programm springt immer an … | Questo programma va sempre alla … / va talvolta alla … se … è vera | Ce programme va toujours à la … / va parfois à la … si … est vraie | Este programa sempre vai para o … / às vezes vai para o … se … for verdadeira |
-| 3 | output | This code writes … as a character | Dieses Programm schreibt … als ein Zeichen | Questo programma scrive … come carattere | Ce programme écrit … comme caractère | Este programa escreve … como caractere |
-| 4 | input | This code cannot read. | Dieses Programm kann nicht lesen. | Questo programma non può leggere. | Ce programme ne peut pas lire. | Este programa não pode ler. |
-| 5 | sums | This code uses the sum of … and … | Dieses Programm benutzt die Summe aus … und … | Questo programma usa la somma del … e del … | Ce programme utilise la somme du … et du … | Este programa usa a soma do … e do … |
-| 6 | conditions | This code uses the condition that … is equal to … | … die Bedingung dass … ist gleich … | … la condizione che … sia uguale al … | … la condition que … soit égal au … | … a condição de que … seja igual ao … |
-| 7 | labels | This code uses two labels. | Dieses Programm benutzt zwei Sprungziele. | Questo programma usa due etichette. | Ce programme utilise deux étiquettes. | Este programa usa dois rótulos. |
-| 8 | ordered differences | This code uses the ordered difference between … and … | … die geordnete Differenz zwischen … und … | … la differenza ordinata tra … e … | … la différence ordonnée entre … et … | … a diferença ordenada entre … e … |
-| 9 | assignments | This code assigns … to … | Dieses Programm weisst zu … an … | Questo programma assegna … al … | Ce programme affecte … au … | Este programa atribui … ao … |
-| 10 | products | This code uses the product of … and … | Dieses Programm benutzt das Produkt von … und … | … il prodotto del … e del … | … le produit du … et du … | … o produto do … e do … |
-| 11 | implementation | This code implements the first assignment, … | Dieses Programm implementiert … | Questo programma implementa il primo assegnamento, … | Ce programme implémente la première affectation, … | Este programa implementa a primeira atribuição, … |
-| 12 | ratios | This code uses the ratio of … to … | (English only) | … il rapporto tra … e … | … le rapport du … au … | … a razão entre … e … |
-| 13 | logical operations | This code does not use any logical operations. | Dieses Programm ist unlogisch. | Questo programma è illogico. | Ce programme est illogique. | Este programa é ilógico. |
-| 14 | coolness | Cool. | Hervorragend. | Questo programma è molto molto figo. | Ce programme est très très chouette. | Este programa é muito muito legal. |
+| # | Sentence | English | German | Italian (Very Very Sorted!) | French (Very Very Sorted!) | Portuguese (Very Very Sorted!) | Japanese (Very Very Sorted!) |
+|---|---|---|---|---|---|---|---|
+| 1 | numbers | This code uses the numbers … | Dieses Programm benutzt die Zahlen … | Questo programma usa i numeri … | Ce programme utilise les nombres … | Este programa usa os números … | Kono puroguramu wa kazu … o tsukaimasu |
+| 2 | jumps | This code always goes to … / sometimes goes to … if … is true | Dieses Programm springt immer an … | Questo programma va sempre alla … / va talvolta alla … se … è vera | Ce programme va toujours à la … / va parfois à la … si … est vraie | Este programa sempre vai para o … / às vezes vai para o … se … for verdadeira | Kono puroguramu wa itsumo … ni tobi, … ga shin nara … ni tobimasu |
+| 3 | output | This code writes … as a character | Dieses Programm schreibt … als ein Zeichen | Questo programma scrive … come carattere | Ce programme écrit … comme caractère | Este programa escreve … como caractere | Kono puroguramu wa … o moji to shite kakimasu |
+| 4 | input | This code cannot read. | Dieses Programm kann nicht lesen. | Questo programma non può leggere. | Ce programme ne peut pas lire. | Este programa não pode ler. | Kono puroguramu wa yomemasen. |
+| 5 | sums | This code uses the sum of … and … | Dieses Programm benutzt die Summe aus … und … | Questo programma usa la somma del … e del … | Ce programme utilise la somme du … et du … | Este programa usa a soma do … e do … | Kono puroguramu wa … to … no wa o tsukaimasu |
+| 6 | conditions | This code uses the condition that … is equal to … | … die Bedingung dass … ist gleich … | … la condizione che … sia uguale al … | … la condition que … soit égal au … | … a condição de que … seja igual ao … | … ga … to hitoshii to iu jōken … |
+| 7 | labels | This code uses two labels. | Dieses Programm benutzt zwei Sprungziele. | Questo programma usa due etichette. | Ce programme utilise deux étiquettes. | Este programa usa dois rótulos. | Kono puroguramu wa raberu o niko tsukaimasu. |
+| 8 | ordered differences | This code uses the ordered difference between … and … | … die geordnete Differenz zwischen … und … | … la differenza ordinata tra … e … | … la différence ordonnée entre … et … | … a diferença ordenada entre … e … | … to … no sa … |
+| 9 | assignments | This code assigns … to … | Dieses Programm weisst zu … an … | Questo programma assegna … al … | Ce programme affecte … au … | Este programa atribui … ao … | Kono puroguramu wa … o … ni dainyū shimasu |
+| 10 | products | This code uses the product of … and … | Dieses Programm benutzt das Produkt von … und … | … il prodotto del … e del … | … le produit du … et du … | … o produto do … e do … | … to … no seki … |
+| 11 | implementation | This code implements the first assignment, … | Dieses Programm implementiert … | Questo programma implementa il primo assegnamento, … | Ce programme implémente la première affectation, … | Este programa implementa a primeira atribuição, … | Kono puroguramu wa dai-ichi no dainyū, … o jissō shimasu |
+| 12 | ratios | This code uses the ratio of … to … | (English only) | … il rapporto tra … e … | … le rapport du … au … | … a razão entre … e … | … to … no hi … |
+| 13 | logical operations | This code does not use any logical operations. | Dieses Programm ist unlogisch. | Questo programma è illogico. | Ce programme est illogique. | Este programa é ilógico. | Kono puroguramu wa hironriteki desu. |
+| 14 | coolness | Cool. | Hervorragend. | Questo programma è molto molto figo. | Ce programme est très très chouette. | Este programa é muito muito legal. | Kono puroguramu wa totemo totemo kakkoii desu. |
 
 Every sentence except the implementation and "Cool." also has a "none" form
 ("This code does not use any sums."). For more than one entry, use the plural
@@ -224,7 +225,8 @@ The first song has to be the obvious one. [`examples/99-bottles.c`](examples/99-
 is the standard C version of 99 Bottles of Beer, and next to it sit what the
 compiler makes of it, [in English](examples/99-bottles.s),
 [in German](examples/99-bottles.de.s), [in Italian](examples/99-bottles.it.s),
-[in French](examples/99-bottles.fr.s) and [in Portuguese](examples/99-bottles.pt.s):
+[in French](examples/99-bottles.fr.s), [in Portuguese](examples/99-bottles.pt.s)
+and [in Japanese](examples/99-bottles.ja.s):
 about 630 lines each, all singable, every verse printed exactly as the C
 program prints it.
 
@@ -285,8 +287,9 @@ what the C program prints when compiled with clang.
 translating between English and German comes free. Everything the compiler
 and the translator write in English or German uses only forms the 2000 parser
 knows, so it also runs on the original `Sorted.exe` (unless the program is
-very). Italian, French and Portuguese are Very Very Sorted! (below), so
-`--lang it`, `--lang fr` or `--lang pt` makes any program Very Very Sorted!,
+very). Italian, French, Portuguese and Japanese are Very Very Sorted!
+(below), so `--lang it`, `--lang fr`, `--lang pt` or `--lang ja` makes any
+program Very Very Sorted!,
 and refuses the rare 2000 program that would then do
 something else: one that prints German numbers, which Very Sorted! spells in
 UTF-8, or one whose statements reach past their tables. A few programs that run fine cannot be
@@ -394,6 +397,27 @@ número", "a vigésima terceira soma"), and Brazilian numbers print in every
 language ("as a brazilian cardinal", "comme ordinal brésilien"), "zerésimo"
 and "menos sete" included.
 
+And it speaks Japanese, in romaji, which puts its verbs last. A list of
+things ends with what the program does with them, a list of actions chains
+the verb, and ordinals are a prefix, *dai-*:
+
+```
+Kono puroguramu wa kazu nijūsan, ichiman to roppyaku o tsukaimasu.
+Kono puroguramu wa itsumo dai-ichi no raberu ni tobi, dai-ichi no jōken ga shin nara dai-ni no raberu ni tobimasu.
+Kono puroguramu wa dai-ichi no wa o nihongo no josū to shite kakimasu.
+Kono puroguramu wa raberu o niko tsukaimasu.
+Kono puroguramu wa totemo totemo kakkoii desu.
+```
+
+A sum is *wa*, which is also the topic particle, so "Kono puroguramu wa wa o
+tsukaimasen" says that the program uses no sums. Numbers are one word,
+grouped by ten thousand (*man*) and a hundred million (*oku*), with their
+sound changes (sanbyaku, roppyaku, happyaku, sanzen, hassen), labels are
+counted with *-ko* (ikko, niko, rokko), and long vowels may be written
+"jū", "juu" or "ju". Japanese numbers print in every language ("as a
+japanese ordinal", "come cardinale giapponese"), "dai-zero" and "mainasu
+nana" included.
+
 **And back to C.** `sorted --from-c prog.c --to-c obfuscated.c` takes a
 program on the full round trip: C → Sorted! → C. The result prints what
 `prog.c` prints, and nothing in it resembles the original. Every sum,
@@ -450,8 +474,8 @@ just run legacy/sorted.win32/fibo.s
 ```
 
 The packages follow the original's pipeline: `internal/syntax` (source filter
-and parser, `italian.go`, `french.go` and `portuguese.go` for Very Very
-Sorted!), `internal/numbers` (number
+and parser, `italian.go`, `french.go`, `portuguese.go` and `japanese.go` for
+Very Very Sorted!), `internal/numbers` (number
 words), `internal/interp`
 (interpreter), `internal/emit` (`/D` dump and C translation), `internal/render`
 (programs back to Sorted! text), and the command in `cmd/sorted`. The C

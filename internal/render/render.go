@@ -1,6 +1,6 @@
 // Package render writes a program's tables as Sorted! source: the inverse of
-// the parser, in English, German, Italian, French or Portuguese, laid out to
-// be sung.
+// the parser, in English, German, Italian, French, Portuguese or Japanese,
+// laid out to be sung.
 //
 // What it writes is exactly what the parser accepts. Some things have no
 // form in one language, or none at all:
@@ -37,6 +37,11 @@
 //     legal."), with Brazil's numbers ("vinte e três", "como ordinal
 //     brasileiro"); a list of numbers that would read back as one ("vinte e
 //     um" for 20 and 1) gets a comma before its "e" (merges).
+//   - So is Japanese in romaji (#32, "Kono puroguramu wa totemo totemo
+//     kakkoii desu."), which is verb-final and has sentence writers of its
+//     own (japanese.go), with one-word numbers grouped by man and oku
+//     ("nijūsan", "nihongo no josū to shite") and prefixed ordinals
+//     ("dai-san no kazu").
 //
 // Render checks its own work: it parses the text it produced and fails unless
 // the result is the same program in every observable respect, table layout
@@ -62,10 +67,12 @@ const (
 	Italian
 	French
 	Portuguese
+	Japanese
 )
 
 // Verys is the dialect a program written in l needs, counted in verys:
-// Italian (#30), French (#29) and Portuguese (#31) are Very Very Sorted!.
+// Italian (#30), French (#29), Portuguese (#31) and Japanese (#32) are Very
+// Very Sorted!.
 func (l Lang) Verys() int {
 	if l >= Italian {
 		return 2
@@ -165,6 +172,9 @@ func write(p *syntax.Program, lang Lang) (string, *syntax.Program, error) {
 		r.numbers, r.jumps, r.outputs, r.inputs, r.sums, r.conditions, r.labels,
 		r.diffs, r.assigns, r.prods, r.implementation, r.ratios, r.nands, r.cool,
 	}
+	if lang == Japanese {
+		sentences = r.jpSentences()
+	}
 	var b strings.Builder
 	f := fillers{}
 	for i, next := range sentences {
@@ -256,12 +266,15 @@ func slot(p *syntax.Program, i int) syntax.Slide {
 // "et", then a period. Those three keep the comma before the conjunction
 // only where the items are pairs that contain one themselves, or Portuguese
 // numbers that would merge (comma). A French sentence may end with a filler
-// (tail).
+// (tail). Japanese (japanese.go) ends with its verb (tail), puts the comma
+// of a list of pairs after the "to" (after), and chains actions with
+// commas alone (no conj).
 type sentence struct {
 	head  string
 	items []string
 	conj  string
 	comma bool
+	after bool
 	tail  string
 }
 
@@ -273,11 +286,15 @@ const width = 78
 func (s sentence) text() string {
 	n := len(s.items)
 	var line string
-	switch n {
-	case 0:
+	switch {
+	case n == 0:
 		return s.head + s.tail + "."
-	case 1:
+	case n == 1:
 		line = s.head + " " + s.items[0] + s.tail + "."
+	case s.conj == "":
+		line = s.head + " " + strings.Join(s.items, ", ") + s.tail + "."
+	case s.after:
+		line = s.head + " " + strings.Join(s.items[:n-1], ", ") + " " + s.conj + ", " + s.items[n-1] + s.tail + "."
 	default:
 		sep := " "
 		if s.comma {
@@ -293,9 +310,11 @@ func (s sentence) text() string {
 	for i, item := range s.items {
 		b.WriteString("\n\t")
 		switch {
-		case n == 1:
+		case n == 1 || i == n-1 && (s.conj == "" || s.after):
 			b.WriteString(item + s.tail + ".")
-		case i == n-2 && !s.comma:
+		case i == n-2 && s.after:
+			b.WriteString(item + " " + s.conj + ",")
+		case i == n-2 && !s.comma && s.conj != "":
 			b.WriteString(item)
 		case i < n-1:
 			b.WriteString(item + ",")
@@ -398,6 +417,8 @@ func cardinal(l Lang, n int32) (string, error) {
 		return numbers.VaudoisCardinal(n), nil
 	case l == Portuguese:
 		return numbers.BrazilianCardinal(n), nil
+	case l == Japanese:
+		return numbers.JapaneseCardinal(n), nil
 	}
 	return numbers.EnglishCardinal(n)
 }
@@ -458,6 +479,8 @@ func (r *renderer) ref(l Lang, op syntax.Operand, c gcase) (string, error) {
 		return r.frRef(op, c)
 	case Portuguese:
 		return r.ptRef(op, c)
+	case Japanese:
+		return r.jpRef(op)
 	}
 	if op.Type&syntax.Indirect != 0 {
 		inner, err := r.ref(l, syntax.Operand{Type: op.Type &^ syntax.Indirect, Index: op.Index}, accusative)
@@ -726,6 +749,8 @@ func (r *renderer) outputs() (sentence, error) {
 		syntax.FormatVaudoisOrdinal:    {"as a vaudois ordinal", "als eine waadtländische Ordinalzahl", "come ordinale vodese", "comme ordinal vaudois", "como ordinal valdense"},
 		syntax.FormatBrazilianCardinal: {"as a brazilian cardinal", "als ein brasilianischer Kardinal", "come cardinale brasiliano", "comme cardinal brésilien", "como cardinal brasileiro"},
 		syntax.FormatBrazilianOrdinal:  {"as a brazilian ordinal", "als eine brasilianische Ordinalzahl", "come ordinale brasiliano", "comme ordinal brésilien", "como ordinal brasileiro"},
+		syntax.FormatJapaneseCardinal:  {"as a japanese cardinal", "als ein japanischer Kardinal", "come cardinale giapponese", "comme cardinal japonais", "como cardinal japonês"},
+		syntax.FormatJapaneseOrdinal:   {"as a japanese ordinal", "als eine japanische Ordinalzahl", "come ordinale giapponese", "comme ordinal japonais", "como ordinal japonês"},
 	}
 	phrases, ok := formats[w.Flags]
 	if !ok || r.p.Verys < 2 && w.Flags >= syntax.FormatItalianCardinal {

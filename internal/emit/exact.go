@@ -40,6 +40,7 @@ type exact struct {
 	italian bool // ... in Italian
 	vaudois bool // ... in Vaudois French
 	brazil  bool // ... in Brazilian Portuguese
+	japan   bool // ... in Japanese
 	input   bool // a read can run
 	dynamic bool // a jump target is not a label, so pc can be anything
 }
@@ -188,6 +189,9 @@ func (x *exact) statement(i int) string {
 		case syntax.FormatBrazilianCardinal, syntax.FormatBrazilianOrdinal:
 			x.brazil = true
 			return fmt.Sprintf("wp_(%d, %s);", e.Flags, v)
+		case syntax.FormatJapaneseCardinal, syntax.FormatJapaneseOrdinal:
+			x.japan = true
+			return fmt.Sprintf("wj_(%d, %s);", e.Flags, v)
 		}
 		return fmt.Sprintf("putchar((unsigned char)%s);", v)
 	}
@@ -258,6 +262,9 @@ func (x *exact) render() string {
 	}
 	if x.brazil {
 		b.WriteString(exactBrazilian)
+	}
+	if x.japan {
+		b.WriteString(exactJapanese)
 	}
 	if x.input {
 		b.WriteString(exactInput)
@@ -563,6 +570,36 @@ static void wp_(I format, I v) {
 	if (m == 0) strcat(b, format == 9 ? "zero" : "zer\303\251simo");
 	else if (format == 9) ptc_(b, m);
 	else pto_(b, m);
+	fputs(b, stdout);
+	putchar('\n');
+}
+`
+
+// exactJapanese is the Japanese number formatting of internal/numbers (Very
+// Very Sorted!, #32): any number has its words, romaji in UTF-8 (the macron
+// of "jū" and "kyū").
+const exactJapanese = `static const char *const jaD[10] = {"", "ichi", "ni", "san", "yon", "go", "roku", "nana", "hachi", "ky\305\253"};
+static const char *const jaH[10] = {"", "hyaku", "nihyaku", "sanbyaku", "yonhyaku", "gohyaku", "roppyaku", "nanahyaku", "happyaku", "ky\305\253hyaku"};
+static const char *const jaT[10] = {"", "sen", "nisen", "sanzen", "yonsen", "gosen", "rokusen", "nanasen", "hassen", "ky\305\253sen"};
+static void ja4_(char *b, U n, int before) {
+	if (n == 1000 && before) strcat(b, "issen");
+	else if (n >= 1000) strcat(b, jaT[n / 1000]);
+	strcat(b, jaH[n / 100 % 10]);
+	if (n / 10 % 10 > 0) {
+		if (n / 10 % 10 > 1) strcat(b, jaD[n / 10 % 10]);
+		strcat(b, "j\305\253");
+	}
+	strcat(b, jaD[n % 10]);
+}
+static void wj_(I format, I v) {
+	char b[512];
+	U m = v < 0 ? 0u - (U)v : (U)v;
+	strcpy(b, v < 0 ? "mainasu " : "");
+	if (format == 12) strcat(b, "dai-");
+	if (m == 0) strcat(b, "zero");
+	if (m / 100000000 > 0) { ja4_(b, m / 100000000, 1); strcat(b, "oku"); }
+	if (m / 10000 % 10000 > 0) { ja4_(b, m / 10000 % 10000, 1); strcat(b, "man"); }
+	if (m % 10000 > 0) ja4_(b, m % 10000, 0);
 	fputs(b, stdout);
 	putchar('\n');
 }

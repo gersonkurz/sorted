@@ -236,6 +236,39 @@ func TestExactBrazilianWords(t *testing.T) {
 	}
 }
 
+// TestExactJapaneseWords compares the C Japanese number words with
+// internal/numbers (#32).
+func TestExactJapaneseWords(t *testing.T) {
+	values := []int32{math.MinInt32, -1000000, -91, -1, 0, 1000000000, 2000000000, math.MaxInt32,
+		1000, 10000, 10001, 10000000, 11000000, 100000000, 500000000, 1000010000}
+	for v := int32(1); v <= 12000; v++ {
+		values = append(values, v)
+	}
+	for v := int64(12001); v <= math.MaxInt32; v = v*7/5 + 3 {
+		values = append(values, int32(v), int32(v/10000*10000), int32(v/100000000*100000000+v%10000))
+	}
+	var b, want strings.Builder
+	b.WriteString(exactHeader + "static I _[193719];\n" + exactRuntime + exactJapanese + "int main(void) {\n")
+	for _, v := range values {
+		fmt.Fprintf(&b, "\twj_(11, %d);\n\twj_(12, %d);\n", v, v)
+		want.WriteString(numbers.JapaneseCardinal(v) + "\n" + numbers.JapaneseOrdinal(v) + "\n")
+	}
+	b.WriteString("\treturn 0;\n}\n")
+	got, stderr, code := runC(t, b.String(), "")
+	if code != 0 || stderr != "" {
+		t.Fatalf("exit %d, stderr %q", code, stderr)
+	}
+	gotLines, wantLines := strings.Split(got, "\n"), strings.Split(want.String(), "\n")
+	if len(gotLines) != len(wantLines) {
+		t.Fatalf("%d lines, want %d", len(gotLines), len(wantLines))
+	}
+	for i := range gotLines {
+		if gotLines[i] != wantLines[i] {
+			t.Errorf("line %d: %q, want %q", i, gotLines[i], wantLines[i])
+		}
+	}
+}
+
 // builder lays out tables by hand: each category gets a block of slots.
 type builder struct{ p syntax.Program }
 
@@ -407,6 +440,14 @@ func TestExactQuirks(t *testing.T) {
 			b.p.Data = []int32{23, 0, -1234567, 1000000}
 			b.table(syntax.Writes, write(syntax.FormatBrazilianCardinal, op(N, 0)), write(syntax.FormatBrazilianOrdinal, op(N, 0)),
 				write(syntax.FormatBrazilianOrdinal, op(N, 1)), write(syntax.FormatBrazilianCardinal, op(N, 2)), write(syntax.FormatBrazilianOrdinal, op(N, 3)))
+			b.table(syntax.Statements, stmt(syntax.Write, 0), stmt(syntax.Write, 1), stmt(syntax.Write, 2), stmt(syntax.Write, 3), stmt(syntax.Write, 4))
+		},
+		"japanese numbers": func(b *builder) {
+			// Very Very Sorted! prints Japanese numbers (#32).
+			b.p.Verys = 2
+			b.p.Data = []int32{23, 0, -10000000, 1000000000}
+			b.table(syntax.Writes, write(syntax.FormatJapaneseCardinal, op(N, 0)), write(syntax.FormatJapaneseOrdinal, op(N, 0)),
+				write(syntax.FormatJapaneseOrdinal, op(N, 1)), write(syntax.FormatJapaneseCardinal, op(N, 2)), write(syntax.FormatJapaneseOrdinal, op(N, 3)))
 			b.table(syntax.Statements, stmt(syntax.Write, 0), stmt(syntax.Write, 1), stmt(syntax.Write, 2), stmt(syntax.Write, 3), stmt(syntax.Write, 4))
 		},
 		"a jump below the code": func(b *builder) {

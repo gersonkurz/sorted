@@ -176,8 +176,12 @@ hears those as the silence they are. And a fifth, the Portuguese of
 Brazil, which joins its numbers with the same "e" that joins its lists;
 the parser takes each number as far as it will go, and where two would
 become one, the renderer sets a comma between them, that each may stay
-itself. **Questo programma è molto molto figo. Ce programme est très très
-chouette. Este programa é muito muito legal.**
+itself. And a sixth, the Japanese of the Latin letters, which says what it
+does only at the end, as the patient do, and counts in tens of thousands;
+in it the sum and the subject are one word, *wa*, and the parser tells
+them apart by where they stand. **Questo programma è molto molto figo. Ce
+programme est très très chouette. Este programa é muito muito legal. Kono
+puroguramu wa totemo totemo kakkoii desu.**
 
 ---
 

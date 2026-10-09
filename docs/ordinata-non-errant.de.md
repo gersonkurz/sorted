@@ -191,8 +191,12 @@ darin die Stille, die sie sind. Und eine fünfte, das Portugiesisch
 Brasiliens, das seine Zahlen mit demselben "e" verbindet wie seine Listen;
 der Parser nimmt jede Zahl so weit, wie sie reicht, und wo zwei zu einer
 würden, setzt der Renderer ein Komma zwischen sie, auf dass jede sie selbst
-bleibe. **Questo programma è molto molto figo. Ce programme est très très
-chouette. Este programa é muito muito legal.**
+bleibe. Und eine sechste, das Japanisch der lateinischen Buchstaben, das
+erst am Ende sagt, was es tut, wie es die Geduldigen tun, und in
+Zehntausenden zählt; in ihm sind die Summe und das Thema ein Wort, *wa*,
+und der Parser unterscheidet sie danach, wo sie stehen. **Questo programma
+è molto molto figo. Ce programme est très très chouette. Este programa é
+muito muito legal. Kono puroguramu wa totemo totemo kakkoii desu.**
 
 ---
 

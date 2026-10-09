@@ -42,7 +42,7 @@ func parse(t *testing.T, src []byte) *syntax.Program {
 // tables.
 func TestSamplesRoundTrip(t *testing.T) {
 	for _, name := range samples {
-		for _, lang := range []Lang{English, German, Italian, French, Portuguese} {
+		for _, lang := range []Lang{English, German, Italian, French, Portuguese, Japanese} {
 			t.Run(fmt.Sprintf("%s/%d", name, lang), func(t *testing.T) {
 				p := parse(t, readFile(t, "legacy", "sorted.win32", name+".s"))
 				text, err := Render(p, lang)
@@ -75,7 +75,7 @@ func TestSamplesRoundTrip(t *testing.T) {
 // Italian (#30): every preposition its article fuses with.
 func TestReferencesRoundTrip(t *testing.T) {
 	r := &renderer{}
-	for _, lang := range []Lang{English, German, Italian, French, Portuguese} {
+	for _, lang := range []Lang{English, German, Italian, French, Portuguese, Japanese} {
 		cases := []gcase{nominative, accusative, dative}
 		switch lang {
 		case Italian:
@@ -84,6 +84,8 @@ func TestReferencesRoundTrip(t *testing.T) {
 			cases = []gcase{nominative, frA, frDe}
 		case Portuguese:
 			cases = []gcase{nominative, ptDe, ptA, ptPor}
+		case Japanese:
+			cases = []gcase{nominative}
 		}
 		for typ := range nouns {
 			for _, indirect := range []syntax.OperandType{0, syntax.Indirect} {
@@ -139,7 +141,7 @@ Cool.`
 // Numbers from zero to 999999999 are declarable in both languages.
 func TestNumbersRoundTrip(t *testing.T) {
 	values := []int32{0, 1, 2, 15, 99, 100, 101, 999, 1000, 1001, 65536, 999999, 1000000, 41281927, 123456789, 999999999}
-	for _, lang := range []Lang{English, German, Italian, French, Portuguese} {
+	for _, lang := range []Lang{English, German, Italian, French, Portuguese, Japanese} {
 		p := parse(t, []byte(strings.Replace(skeleton, "STATEMENT", "the first number", 1)))
 		p.Data = values // the data does not affect the layout
 		if _, err := Render(p, lang); err != nil {
@@ -492,9 +494,11 @@ func TestOutputFormats(t *testing.T) {
 		syntax.FormatVaudoisOrdinal:    "vingt-et-unième\n",
 		syntax.FormatBrazilianCardinal: "vinte e um\n",
 		syntax.FormatBrazilianOrdinal:  "vigésimo primeiro\n",
+		syntax.FormatJapaneseCardinal:  "nijūichi\n",
+		syntax.FormatJapaneseOrdinal:   "dai-nijūichi\n",
 	}
 	for format, output := range want {
-		for _, lang := range []Lang{English, German, Italian, French, Portuguese} {
+		for _, lang := range []Lang{English, German, Italian, French, Portuguese, Japanese} {
 			p := parse(t, []byte(strings.Replace(strings.Replace(strings.Replace(skeleton, "STATEMENT", "the first output", 1),
 				"This code does not use any numbers.", "This code uses the number twentyone.", 1),
 				"This code cannot write.", "This code writes the first number as a character.", 1)))
@@ -848,5 +852,94 @@ This code is very very cool.`
 	g := parse(t, []byte(strings.Replace(strings.Replace(skeleton, "STATEMENT", "the first output", 1), "This code cannot write.", "This code writes the first number as a german german ordinal.", 1)))
 	if _, err := Render(g, Portuguese); err == nil {
 		t.Error("German numbers rendered in Portuguese")
+	}
+}
+
+// Japanese (#32): verb-final sentences, lists of things ending with their
+// verb, actions chained, the comma of a list of pairs after "to", prefixed
+// ordinals and one-word numbers; a program in Japanese is Very Very
+// Sorted!.
+func TestJapanese(t *testing.T) {
+	src := `This code uses the numbers twentythree, tenthousand, sixhundred, and onehundred.
+This code always goes to the first label, and sometimes goes to the second label if the eleventh condition is true.
+This code writes the first sum as a japanese ordinal.
+This code reads the first number as a character.
+This code uses the sums of the first number and the second number, and of the eight number and the cell indexed by the first sum.
+This code uses the condition that the first sum is equal to the eight number, and the condition that the first number is less than the first ratio.
+This code uses twentyone labels.
+This code uses the ordered difference between the eleventh number and the second number.
+This code assigns the first sum to the third number, the first input to the eight number, and the first product to the cell indexed by the first sum.
+This code uses the products of the first number and the second number, and of the first sum and the first ordered difference.
+This code implements the first assignment, the first label, the first jump, the second assignment, the first input, the first output, and the eleventh label.
+This code uses the ratios of the first number to the second number, and of the second number to the first number.
+This code uses the logical operations of not the first number and not the eight number, and of not both the first logical operation and the second number.
+This code is very very cool.`
+	p := parse(t, []byte(src))
+	text, err := Render(p, Japanese)
+	if err != nil {
+		t.Fatal(err)
+	}
+	flat := strings.Join(strings.Fields(text), " ")
+	for _, want := range []string{
+		"Kono puroguramu wa kazu nijūsan, ichiman, roppyaku to hyaku o tsukaimasu.",
+		"Kono puroguramu wa itsumo dai-ichi no raberu ni tobi, dai-jūichi no jōken ga shin nara dai-ni no raberu ni tobimasu.",
+		"Kono puroguramu wa dai-ichi no wa o nihongo no josū to shite kakimasu.",
+		"Kono puroguramu wa dai-ichi no kazu o moji to shite yomimasu.",
+		"dai-ichi no kazu to dai-ni no kazu no wa to, dai-hachi no kazu to dai-ichi no wa ga sasu seru no wa o tsukaimasu.",
+		"dai-ichi no wa ga dai-hachi no kazu to hitoshii to iu jōken to, dai-ichi no kazu ga dai-ichi no hi yori chiisai to iu jōken o tsukaimasu.",
+		"Kono puroguramu wa raberu o nijūikko tsukaimasu.",
+		"Kono puroguramu wa dai-jūichi no kazu to dai-ni no kazu no sa o tsukaimasu.",
+		"dai-ichi no wa o dai-san no kazu ni dainyū shi, dai-ichi no nyūryoku o dai-hachi no kazu ni dainyū shi, dai-ichi no seki o dai-ichi no wa ga sasu seru ni dainyū shimasu.",
+		"dai-ichi no kazu to dai-ni no kazu no seki to, dai-ichi no wa to dai-ichi no sa no seki o tsukaimasu.",
+		"dai-ichi no dainyū, dai-ichi no raberu, dai-ichi no janpu, dai-ni no dainyū, dai-ichi no nyūryoku, dai-ichi no shutsuryoku to dai-jūichi no raberu o jissō shimasu.",
+		"dai-ichi no kazu to dai-ni no kazu no hi to, dai-ni no kazu to dai-ichi no kazu no hi o tsukaimasu.",
+		"dai-ichi no kazu demo dai-hachi no kazu demo nai ronri enzan to, dai-ichi no ronri enzan to dai-ni no kazu no ryōhō de wa nai ronri enzan o tsukaimasu.",
+		"Kono puroguramu wa totemo totemo kakkoii desu.",
+	} {
+		if !strings.Contains(flat, want) {
+			t.Errorf("no %q in\n%s", want, text)
+		}
+	}
+	if q := parse(t, []byte(text)); !Equal(p, q) {
+		t.Errorf("tables differ:\n%s", text)
+	}
+	for lang, want := range map[Lang]string{English: "as a japanese ordinal", German: "als eine japanische Ordinalzahl", Italian: "come ordinale giapponese",
+		French: "comme ordinal japonais", Portuguese: "como ordinal japonês"} {
+		if text, err := Render(p, lang); err != nil || !strings.Contains(text, want) {
+			t.Errorf("lang %d: %v, no %q in\n%s", lang, err, want, text)
+		}
+	}
+	none := parse(t, []byte(strings.Replace(skeleton, "STATEMENT", "the first number", 1)))
+	text, err = Render(none, Japanese)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Kono puroguramu wa kazu o tsukaimasen.", "Kono puroguramu wa doko ni mo ikimasen.", "Kono puroguramu wa kakemasen.",
+		"Kono puroguramu wa yomemasen.", "Kono puroguramu wa wa o tsukaimasen.", "Kono puroguramu wa jōken o tsukaimasen.",
+		"Kono puroguramu wa raberu o tsukaimasen.", "Kono puroguramu wa sa o tsukaimasen.",
+		"Kono puroguramu wa dainyū shimasen.", "Kono puroguramu wa seki o tsukaimasen.",
+		"Kono puroguramu wa dai-ichi no kazu o jissō shimasu.", "Kono puroguramu wa hi o tsukaimasen.",
+		"Kono puroguramu wa hironriteki desu.", "Kono puroguramu wa totemo totemo kakkoii desu."} {
+		if !strings.Contains(text, want) {
+			t.Errorf("no %q in\n%s", want, text)
+		}
+	}
+	if q := parse(t, []byte(text)); q.Verys != 2 {
+		t.Errorf("verys %d", q.Verys)
+	}
+	one := parse(t, []byte(strings.Replace(strings.Replace(skeleton, "STATEMENT", "the first number", 1), "This code does not use any labels.", "This code uses one label.", 1)))
+	if text, err := Render(one, Japanese); err != nil || !strings.Contains(text, "Kono puroguramu wa raberu o ikko tsukaimasu.") {
+		t.Errorf("one label: %v\n%s", err, text)
+	}
+	// A long list of pairs keeps its "to," in the verse.
+	long := parse(t, []byte(strings.Replace(src, "This code uses the ordered difference between the eleventh number and the second number.",
+		"This code uses the ordered differences between the eleventh number and the second number, and between the eleventh number and the twelveth number.", 1)))
+	if text, err := Render(long, Japanese); err != nil || !strings.Contains(text, "\tdai-jūichi no kazu to dai-ni no kazu no sa to,\n\tdai-jūichi no kazu to dai-jūni no kazu no sa o tsukaimasu.") {
+		t.Errorf("verse: %v\n%s", err, text)
+	}
+	// German numbers would change in Very Very Sorted!, as in Italian.
+	g := parse(t, []byte(strings.Replace(strings.Replace(skeleton, "STATEMENT", "the first output", 1), "This code cannot write.", "This code writes the first number as a german german ordinal.", 1)))
+	if _, err := Render(g, Japanese); err == nil {
+		t.Error("German numbers rendered in Japanese")
 	}
 }
