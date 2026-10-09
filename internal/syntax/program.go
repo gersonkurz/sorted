@@ -82,6 +82,9 @@ const (
 	// ... and Japanese numbers (#32).
 	FormatJapaneseCardinal int32 = 11
 	FormatJapaneseOrdinal  int32 = 12
+	// ... and Chinese numbers (#33), in hanzi.
+	FormatChineseCardinal int32 = 13
+	FormatChineseOrdinal  int32 = 14
 
 	CompareEqual int32 = 0
 	CompareLess  int32 = 1
@@ -120,7 +123,7 @@ type Program struct {
 	// Verys is the program's dialect, counted in verys (#39): 0 for the
 	// original's Sorted!, 1 for Very Sorted! ("This code is very cool."),
 	// 2 for Very Very Sorted! ("This code is very very cool."), which also
-	// speaks Italian, French, Portuguese and Japanese (see Parse). Each dialect has everything the one
+	// speaks Italian, French, Portuguese, Japanese and Mandarin (see Parse). Each dialect has everything the one
 	// before it has.
 	Verys int
 }

@@ -378,6 +378,23 @@ func TestJapaneseOutput(t *testing.T) {
 	}
 }
 
+// ... and Chinese numbers (#33), in hanzi.
+func TestChineseOutput(t *testing.T) {
+	var writes []syntax.Slide
+	var stmts []syntax.Operand
+	for i := range 3 {
+		writes = append(writes, syntax.Slide{Ops: [2]syntax.Operand{num(int32(i))}, Flags: syntax.FormatChineseCardinal},
+			syntax.Slide{Ops: [2]syntax.Operand{num(int32(i))}, Flags: syntax.FormatChineseOrdinal})
+		stmts = append(stmts, syntax.Operand{Type: syntax.Write, Index: int32(2 * i)}, syntax.Operand{Type: syntax.Write, Index: int32(2*i + 1)})
+	}
+	p := hand([]int32{101, 0, -7}, map[syntax.Category][]syntax.Slide{syntax.Writes: writes}, stmts...)
+	p.Verys = 2
+	want := "一百零一\n第一百零一\n零\n第零\n负七\n负第七\n"
+	if got, err := runHand(t, p, ""); err != nil || got != want {
+		t.Errorf("%q, %v; want %q", got, err, want)
+	}
+}
+
 // "Logical operations" compute ~a & ~b (NOR); Very Sorted!'s NAND (#26)
 // computes ~(a & b).
 func TestLogicalOperation(t *testing.T) {

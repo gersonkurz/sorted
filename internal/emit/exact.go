@@ -41,6 +41,7 @@ type exact struct {
 	vaudois bool // ... in Vaudois French
 	brazil  bool // ... in Brazilian Portuguese
 	japan   bool // ... in Japanese
+	china   bool // ... in Chinese
 	input   bool // a read can run
 	dynamic bool // a jump target is not a label, so pc can be anything
 }
@@ -192,6 +193,9 @@ func (x *exact) statement(i int) string {
 		case syntax.FormatJapaneseCardinal, syntax.FormatJapaneseOrdinal:
 			x.japan = true
 			return fmt.Sprintf("wj_(%d, %s);", e.Flags, v)
+		case syntax.FormatChineseCardinal, syntax.FormatChineseOrdinal:
+			x.china = true
+			return fmt.Sprintf("wc_(%d, %s);", e.Flags, v)
 		}
 		return fmt.Sprintf("putchar((unsigned char)%s);", v)
 	}
@@ -265,6 +269,9 @@ func (x *exact) render() string {
 	}
 	if x.japan {
 		b.WriteString(exactJapanese)
+	}
+	if x.china {
+		b.WriteString(exactChinese)
 	}
 	if x.input {
 		b.WriteString(exactInput)
@@ -604,6 +611,63 @@ static void wj_(I format, I v) {
 	putchar('\n');
 }
 `
+
+// exactChinese is the Chinese number formatting of internal/numbers (Very
+// Very Sorted!, #33): any number has its words, in hanzi (written here as
+// UTF-8 and escaped for the C source, cEscape).
+var exactChinese = cEscape(`static const char *const zhD[10] = {"零", "一", "二", "三", "四", "五", "六", "七", "八", "九"};
+static void zhs_(char *b, U n, int inner) {
+	static const U pv[4] = {1000, 100, 10, 1};
+	static const char *const un[4] = {"千", "百", "十", ""};
+	int i, wrote = 0, zero = 0;
+	for (i = 0; i < 4; i++) {
+		U d = n / pv[i] % 10;
+		if (d == 0) { if (wrote) zero = 1; continue; }
+		if (zero) { strcat(b, "零"); zero = 0; }
+		if (!(pv[i] == 10 && d == 1 && !inner && !wrote)) strcat(b, zhD[d]);
+		strcat(b, un[i]);
+		wrote = 1;
+	}
+}
+static void zhc_(char *b, U n) {
+	static const U gv[3] = {100000000, 10000, 1};
+	static const char *const gu[3] = {"亿", "万", ""};
+	int i, started = 0, gap = 0;
+	for (i = 0; i < 3; i++) {
+		U s = i == 0 ? n / gv[0] : n / gv[i] % 10000;
+		if (s == 0) { if (started) gap = 1; continue; }
+		if (started && (s < 1000 || gap)) strcat(b, "零");
+		zhs_(b, s, started);
+		strcat(b, gu[i]);
+		started = 1;
+		gap = 0;
+	}
+}
+static void wc_(I format, I v) {
+	char b[512];
+	U m = v < 0 ? 0u - (U)v : (U)v;
+	strcpy(b, v < 0 ? "负" : "");
+	if (format == 14) strcat(b, "第");
+	if (m == 0) strcat(b, "零");
+	else zhc_(b, m);
+	fputs(b, stdout);
+	putchar('\n');
+}
+`)
+
+// cEscape writes the bytes of s above 0x7F as octal escapes, so that C
+// source stays ASCII.
+func cEscape(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x80 {
+			fmt.Fprintf(&b, "\\%03o", s[i])
+		} else {
+			b.WriteByte(s[i])
+		}
+	}
+	return b.String()
+}
 
 // exactInput reads like the interpreter's stdin: as the Win32 C runtime's
 // text mode does, CRLF arrives as LF and Ctrl-Z ends the input for good.

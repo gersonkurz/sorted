@@ -82,7 +82,7 @@ check: lint test cross
 cross $SORTED_CROSS="1":
     go test -count 1 -run TestCrossCompile ./cmd/sorted
 
-# Regenerate the Sorted! versions (English, German, Italian, French, Portuguese, Japanese) of the C examples
+# Regenerate the Sorted! versions (English, German, Italian, French, Portuguese, Japanese, Mandarin in hanzi and pinyin) of the C examples
 examples:
     go run ./cmd/sorted --from-c {{ex}}99-bottles.c --lang en > {{ex}}99-bottles.s
     go run ./cmd/sorted --from-c {{ex}}99-bottles.c --lang de > {{ex}}99-bottles.de.s
@@ -90,12 +90,16 @@ examples:
     go run ./cmd/sorted --from-c {{ex}}99-bottles.c --lang fr > {{ex}}99-bottles.fr.s
     go run ./cmd/sorted --from-c {{ex}}99-bottles.c --lang pt > {{ex}}99-bottles.pt.s
     go run ./cmd/sorted --from-c {{ex}}99-bottles.c --lang ja > {{ex}}99-bottles.ja.s
+    go run ./cmd/sorted --from-c {{ex}}99-bottles.c --lang zh > {{ex}}99-bottles.zh.s
+    go run ./cmd/sorted --from-c {{ex}}99-bottles.c --lang pinyin > {{ex}}99-bottles.pinyin.s
     go run ./cmd/sorted --from-c {{ex}}brainfuck.c --lang en > {{ex}}brainfuck.s
     go run ./cmd/sorted --from-c {{ex}}brainfuck.c --lang de > {{ex}}brainfuck.de.s
     go run ./cmd/sorted --from-c {{ex}}brainfuck.c --lang it > {{ex}}brainfuck.it.s
     go run ./cmd/sorted --from-c {{ex}}brainfuck.c --lang fr > {{ex}}brainfuck.fr.s
     go run ./cmd/sorted --from-c {{ex}}brainfuck.c --lang pt > {{ex}}brainfuck.pt.s
     go run ./cmd/sorted --from-c {{ex}}brainfuck.c --lang ja > {{ex}}brainfuck.ja.s
+    go run ./cmd/sorted --from-c {{ex}}brainfuck.c --lang zh > {{ex}}brainfuck.zh.s
+    go run ./cmd/sorted --from-c {{ex}}brainfuck.c --lang pinyin > {{ex}}brainfuck.pinyin.s
 
 # Run tests with coverage; writes out/coverage.out and out/coverage.html
 coverage: _out-dir

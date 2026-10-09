@@ -1,9 +1,10 @@
 // Package numbers converts between integers and English, German, Italian,
-// Vaudois French, Brazilian Portuguese or Japanese number words, as Sorted!
-// does when it parses number declarations and ordinal references, and when
-// it writes a value as a cardinal or ordinal. Italian, Vaudois French,
-// Brazilian Portuguese and Japanese (italian.go, vaudois.go, brazilian.go,
-// japanese.go, Very Very Sorted!) are new and have no quirks.
+// Vaudois French, Brazilian Portuguese, Japanese or Chinese number words,
+// as Sorted! does when it parses number declarations and ordinal
+// references, and when it writes a value as a cardinal or ordinal. Italian,
+// Vaudois French, Brazilian Portuguese, Japanese and Chinese (italian.go,
+// vaudois.go, brazilian.go, japanese.go, chinese.go, Very Very Sorted!) are
+// new and have no quirks.
 //
 // English and German are a line-by-line port of EnglishNumbers.cpp and
 // GermanNumbers.cpp from legacy/sorted.win32, quirks included: the

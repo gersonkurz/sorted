@@ -102,8 +102,41 @@ var umlauts = strings.NewReplacer("ä", "ae", "ö", "oe", "ü", "ue")
 // the word, so a number is one word ("deux-cent-vingt-et-un"), and the
 // fillers French loves, "eh", "hein", "quoi" and "voilà", are dropped with
 // the commas around them ("Ce programme, eh, utilise", "…, voilà, quoi."),
-// wherever they stand: they carry no meaning.
-func FilterVeryVery(raw []byte) string { return dropFillers(Unaccent(filterUTF8(raw, true))) }
+// wherever they stand: they carry no meaning. Three serve its Mandarin
+// (#33): the full-width 。，、 are a period and commas, traditional
+// characters (and Taiwan's 程式) read as the simplified ones the keywords
+// are spelled in, and a period or comma gets a space after it before a
+// letter outside ASCII, so a keyword ends there ("一,二" is "一, 二").
+func FilterVeryVery(raw []byte) string {
+	s := filterUTF8([]byte(hanPunctuation.Replace(string(raw))), true)
+	return dropFillers(spaceAfterPunctuation(simplified.Replace(Unaccent(s))))
+}
+
+// hanPunctuation is the full-width punctuation Mandarin writes.
+var hanPunctuation = strings.NewReplacer("。", ". ", "，", ", ", "、", ", ")
+
+// simplified turns the traditional characters of Mandarin's vocabulary
+// into the simplified ones (#33). 語 stays, as Japanese writes it (ドイツ語);
+// the Mandarin format names read both 语 and 語 (zhFormats).
+var simplified = strings.NewReplacer(
+	"程式", "程序", "這", "这", "個", "个", "數", "数", "總", "总", "並", "并", "為", "为", "時", "时", "兒", "儿",
+	"寫", "写", "讀", "读", "單", "单", "積", "积", "於", "于", "條", "条", "標", "标", "籤", "签", "賦", "赋",
+	"給", "给", "實", "实", "現", "现", "邏", "逻", "輯", "辑", "運", "运", "轉", "转", "輸", "输",
+	"萬", "万", "億", "亿", "兩", "两", "負", "负",
+)
+
+// spaceAfterPunctuation puts a space after a period or comma that a byte
+// above 0x7F follows.
+func spaceAfterPunctuation(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		b.WriteByte(s[i])
+		if (s[i] == '.' || s[i] == ',') && i+1 < len(s) && s[i+1] >= 0x80 {
+			b.WriteByte(' ')
+		}
+	}
+	return b.String()
+}
 
 // fillers are the words Very Very Sorted! reads past (FilterVeryVery).
 var fillers = map[string]bool{"eh": true, "hein": true, "quoi": true, "voila": true}

@@ -286,6 +286,7 @@ var jpFormats = []struct {
 	{"voshu no kisu", FormatVaudoisCardinal}, {"voshu no josu", FormatVaudoisOrdinal},
 	{"burajiru no kisu", FormatBrazilianCardinal}, {"burajiru no josu", FormatBrazilianOrdinal},
 	{"nihongo no kisu", FormatJapaneseCardinal}, {"nihongo no josu", FormatJapaneseOrdinal},
+	{"chugokugo no kisu", FormatChineseCardinal}, {"chugokugo no josu", FormatChineseOrdinal},
 }
 
 // jpWrite parses what follows the reference in an output: "o <format> to

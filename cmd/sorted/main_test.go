@@ -283,7 +283,7 @@ func TestGolden(t *testing.T) {
 
 // The examples: the committed Sorted! versions are what --from-c writes
 // today (run "just examples" after changing the compiler), English, German,
-// Italian, French, Portuguese and Japanese print the same, and that is what the C program prints compiled
+// Italian, French, Portuguese, Japanese and Mandarin (hanzi and pinyin) print the same, and that is what the C program prints compiled
 // natively (where there is a C compiler).
 func TestExamples(t *testing.T) {
 	sources, err := filepath.Glob(filepath.Join("..", "..", "examples", "*.c"))
@@ -299,7 +299,7 @@ func TestExamples(t *testing.T) {
 				t.Fatal(err)
 			}
 			var printed []string
-			for _, v := range []struct{ file, lang string }{{base + ".s", "en"}, {base + ".de.s", "de"}, {base + ".it.s", "it"}, {base + ".fr.s", "fr"}, {base + ".pt.s", "pt"}, {base + ".ja.s", "ja"}} {
+			for _, v := range []struct{ file, lang string }{{base + ".s", "en"}, {base + ".de.s", "de"}, {base + ".it.s", "it"}, {base + ".fr.s", "fr"}, {base + ".pt.s", "pt"}, {base + ".ja.s", "ja"}, {base + ".zh.s", "zh"}, {base + ".pinyin.s", "pinyin"}} {
 				committed, err := os.ReadFile(v.file)
 				if err != nil {
 					t.Fatal(err)
@@ -332,11 +332,14 @@ func TestExamples(t *testing.T) {
 // case and accents, with --lang or as a flag of its own.
 func TestLanguageNames(t *testing.T) {
 	hello := filepath.Join("..", "..", "legacy", "sorted.win32", "hello.s")
-	const en, de, it, fr, pt, ja = "This code uses the numbers", "Dieses Programm benutzt die Zahlen", "Questo programma usa i numeri", "Ce programme utilise les nombres", "Este programa usa os números", "Kono puroguramu wa kazu"
+	const en, de, it, fr, pt, ja, zh, py = "This code uses the numbers", "Dieses Programm benutzt die Zahlen", "Questo programma usa i numeri", "Ce programme utilise les nombres", "Este programa usa os números", "Kono puroguramu wa kazu", "这个程序使用数字", "Zhège chéngxù shǐyòng shùzì"
 	for _, tt := range []struct {
 		args []string
 		head string
 	}{
+		{[]string{"--中文"}, zh}, {[]string{"--lang", "Chinesisch"}, zh}, {[]string{"--mandarin"}, zh}, {[]string{"--chinois"}, zh},
+		{[]string{"--汉语"}, zh}, {[]string{"--putonghua"}, zh}, {[]string{"--zh"}, zh}, {[]string{"--中国語"}, zh},
+		{[]string{"--pinyin"}, py}, {[]string{"--拼音"}, py}, {[]string{"--lang", "pīnyīn"}, py}, {[]string{"--zh-latn"}, py}, {[]string{"--ZH-Latn"}, py},
 		{[]string{"--nihongo"}, ja}, {[]string{"--日本語"}, ja}, {[]string{"--lang", "Japanisch"}, ja}, {[]string{"--japonais"}, ja},
 		{[]string{"--giapponese"}, ja}, {[]string{"--japones"}, ja}, {[]string{"--Japanese"}, ja}, {[]string{"--lang", "riyu"}, ja}, {[]string{"--ja"}, ja},
 		{[]string{"--brasileiro"}, pt}, {[]string{"--lang", "português"}, pt}, {[]string{"--portugues"}, pt},
@@ -357,11 +360,6 @@ func TestLanguageNames(t *testing.T) {
 		r := runCLI(append(tt.args, hello)...)
 		if r.code != 0 || !strings.HasPrefix(r.stdout, tt.head) {
 			t.Errorf("%v: %+v", tt.args, r)
-		}
-	}
-	for _, name := range []string{"中文", "zhongwen", "pǔtōnghuà", "Mandarin", "汉语"} {
-		if r := runCLI("--lang", name, hello); r.code != 2 || r.stderr != "sorted: Sorted! does not speak "+name+" yet\n" {
-			t.Errorf("%s: %+v", name, r)
 		}
 	}
 	if r := runCLI("--deutsch", "--anglais", hello); r.code != 2 || !strings.Contains(r.stderr, "usage: sorted") {
@@ -419,7 +417,7 @@ func TestLanguageNames(t *testing.T) {
 	if r := runCLI("--version", "--deutsch", "prog.s"); r.code != 0 || r.stdout != versionLine(version)+"\n" {
 		t.Errorf("a bool flag before a name: %+v", r)
 	}
-	if r := runCLI("--help"); !strings.Contains(r.stderr, "en: English, Englisch, anglais") || !strings.Contains(r.stderr, "zh (not yet): Mandarin") {
+	if r := runCLI("--help"); !strings.Contains(r.stderr, "en: English, Englisch, anglais") || !strings.Contains(r.stderr, "zh: Mandarin") || !strings.Contains(r.stderr, "zh-latn: Pinyin") || strings.Contains(r.stderr, "not yet") {
 		t.Errorf("help: %q", r.stderr)
 	}
 }
@@ -461,7 +459,11 @@ func TestLang(t *testing.T) {
 	if r := runCLI("--lang", "klingon", "hello.s"); r.code != 2 || !strings.Contains(r.stderr, "usage: sorted") {
 		t.Errorf("unknown language: %+v", r)
 	}
-	if r := runCLI("--lang", "zh", "hello.s"); r.code != 2 || r.stderr != "sorted: Sorted! does not speak zh yet\n" {
+	// Every language Sorted! names is spoken now; one that is named but not
+	// spoken yet is a usage error of its own.
+	defer func(ls []language) { languages = ls }(languages)
+	languages = append(append([]language{}, languages...), language{"qya", []string{"Quenya"}, 0, false})
+	if r := runCLI("--lang", "quenya", "hello.s"); r.code != 2 || r.stderr != "sorted: Sorted! does not speak quenya yet\n" {
 		t.Errorf("a language not spoken yet: %+v", r)
 	}
 }
@@ -474,12 +476,13 @@ func TestFromC(t *testing.T) {
 	if err := os.WriteFile(cFile, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	const en, de, it, fr, pt, ja = "This code uses the numbers", "Dieses Programm benutzt die Zahlen", "Questo programma usa i numeri", "Ce programme utilise les nombres", "Este programa usa os números", "Kono puroguramu wa kazu"
+	const en, de, it, fr, pt, ja, zh, py = "This code uses the numbers", "Dieses Programm benutzt die Zahlen", "Questo programma usa i numeri", "Ce programme utilise les nombres", "Este programa usa os números", "Kono puroguramu wa kazu", "这个程序使用数字", "Zhège chéngxù shǐyòng shùzì"
 	for _, tt := range []struct {
 		flags []string
 		head  string
 	}{
 		{[]string{"--lang", "ja"}, ja}, {[]string{"--nihongo"}, ja},
+		{[]string{"--lang", "zh"}, zh}, {[]string{"--中文"}, zh}, {[]string{"--pinyin"}, py},
 		{[]string{"--lang", "pt"}, pt}, {[]string{"--brasileiro"}, pt},
 		{[]string{"--lang", "fr"}, fr}, {[]string{"--vaudois"}, fr},
 		{[]string{"--lang", "en"}, en}, {[]string{"--english"}, en},
@@ -496,21 +499,25 @@ func TestFromC(t *testing.T) {
 	}
 	// Without a choice, the language is whatever pickLang picks...
 	defer func(pick func() render.Lang) { pickLang = pick }(pickLang)
-	for lang, head := range map[render.Lang]string{render.English: en, render.German: de, render.Italian: it, render.French: fr, render.Portuguese: pt, render.Japanese: ja} {
+	for lang, head := range map[render.Lang]string{render.English: en, render.German: de, render.Italian: it, render.French: fr, render.Portuguese: pt, render.Japanese: ja, render.Mandarin: zh, render.Pinyin: py} {
 		pickLang = func() render.Lang { return lang }
 		if r := runCLI("--from-c", cFile); r.code != 0 || !strings.HasPrefix(r.stdout, head) {
 			t.Errorf("picked %d: %+v", lang, r)
 		}
 	}
-	// ...and pickLang picks any: 200 runs show all six, unless chance is
-	// against it about 9 times in 10^16.
+	// ...and pickLang picks any: 300 runs show all eight, unless chance is
+	// against it about 3 times in 10^17.
 	pickLang = defaultPick
 	seen := map[string]bool{}
-	for range 200 {
+	for range 300 {
 		r := runCLI("--from-c", cFile)
-		seen[r.stdout[:strings.Index(r.stdout, " ")]] = true
+		for _, head := range []string{en, de, it, fr, pt, ja, zh, py} {
+			if strings.HasPrefix(r.stdout, head) {
+				seen[head] = true
+			}
+		}
 	}
-	if !seen["This"] || !seen["Dieses"] || !seen["Questo"] || !seen["Ce"] || !seen["Este"] || !seen["Kono"] || len(seen) != 6 {
+	if len(seen) != 8 {
 		t.Errorf("languages picked: %v", seen)
 	}
 	// One choice at most.

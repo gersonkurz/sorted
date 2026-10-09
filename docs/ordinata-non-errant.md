@@ -179,9 +179,13 @@ become one, the renderer sets a comma between them, that each may stay
 itself. And a sixth, the Japanese of the Latin letters, which says what it
 does only at the end, as the patient do, and counts in tens of thousands;
 in it the sum and the subject are one word, *wa*, and the parser tells
-them apart by where they stand. **Questo programma è molto molto figo. Ce
-programme est très très chouette. Este programa é muito muito legal. Kono
-puroguramu wa totemo totemo kakkoii desu.**
+them apart by where they stand. And a seventh, Mandarin, in two scripts,
+the characters that need no spaces and the letters that need their tones,
+in which "and" and "sum" are one character, 和; the parser takes words
+from a line without spaces by knowing them, and the old and the new
+characters alike. **Questo programma è molto molto figo. Ce programme est
+très très chouette. Este programa é muito muito legal. Kono puroguramu wa
+totemo totemo kakkoii desu. 这个程序非常非常酷。**
 
 ---
 

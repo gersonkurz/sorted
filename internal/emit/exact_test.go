@@ -269,6 +269,39 @@ func TestExactJapaneseWords(t *testing.T) {
 	}
 }
 
+// TestExactChineseWords compares the C Chinese number words with
+// internal/numbers (#33).
+func TestExactChineseWords(t *testing.T) {
+	values := []int32{math.MinInt32, -1000000, -91, -1, 0, 1000000000, 1000000001, 2000000000, math.MaxInt32,
+		10, 11, 110, 1010, 10001, 10010, 100100, 100000010, 120000000}
+	for v := int32(1); v <= 12000; v++ {
+		values = append(values, v)
+	}
+	for v := int64(12001); v <= math.MaxInt32; v = v*7/5 + 3 {
+		values = append(values, int32(v), int32(v/10000*10000), int32(v/100000000*100000000+v%10000), int32(v/100000000*100000000+v%100))
+	}
+	var b, want strings.Builder
+	b.WriteString(exactHeader + "static I _[193719];\n" + exactRuntime + exactChinese + "int main(void) {\n")
+	for _, v := range values {
+		fmt.Fprintf(&b, "\twc_(13, %d);\n\twc_(14, %d);\n", v, v)
+		want.WriteString(numbers.ChineseCardinal(v) + "\n" + numbers.ChineseOrdinal(v) + "\n")
+	}
+	b.WriteString("\treturn 0;\n}\n")
+	got, stderr, code := runC(t, b.String(), "")
+	if code != 0 || stderr != "" {
+		t.Fatalf("exit %d, stderr %q", code, stderr)
+	}
+	gotLines, wantLines := strings.Split(got, "\n"), strings.Split(want.String(), "\n")
+	if len(gotLines) != len(wantLines) {
+		t.Fatalf("%d lines, want %d", len(gotLines), len(wantLines))
+	}
+	for i := range gotLines {
+		if gotLines[i] != wantLines[i] {
+			t.Errorf("line %d: %q, want %q", i, gotLines[i], wantLines[i])
+		}
+	}
+}
+
 // builder lays out tables by hand: each category gets a block of slots.
 type builder struct{ p syntax.Program }
 
@@ -448,6 +481,14 @@ func TestExactQuirks(t *testing.T) {
 			b.p.Data = []int32{23, 0, -10000000, 1000000000}
 			b.table(syntax.Writes, write(syntax.FormatJapaneseCardinal, op(N, 0)), write(syntax.FormatJapaneseOrdinal, op(N, 0)),
 				write(syntax.FormatJapaneseOrdinal, op(N, 1)), write(syntax.FormatJapaneseCardinal, op(N, 2)), write(syntax.FormatJapaneseOrdinal, op(N, 3)))
+			b.table(syntax.Statements, stmt(syntax.Write, 0), stmt(syntax.Write, 1), stmt(syntax.Write, 2), stmt(syntax.Write, 3), stmt(syntax.Write, 4))
+		},
+		"chinese numbers": func(b *builder) {
+			// Very Very Sorted! prints Chinese numbers (#33).
+			b.p.Verys = 2
+			b.p.Data = []int32{101, 0, -10010, 1000000001}
+			b.table(syntax.Writes, write(syntax.FormatChineseCardinal, op(N, 0)), write(syntax.FormatChineseOrdinal, op(N, 0)),
+				write(syntax.FormatChineseOrdinal, op(N, 1)), write(syntax.FormatChineseCardinal, op(N, 2)), write(syntax.FormatChineseOrdinal, op(N, 3)))
 			b.table(syntax.Statements, stmt(syntax.Write, 0), stmt(syntax.Write, 1), stmt(syntax.Write, 2), stmt(syntax.Write, 3), stmt(syntax.Write, 4))
 		},
 		"a jump below the code": func(b *builder) {

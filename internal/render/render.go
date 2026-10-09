@@ -1,6 +1,6 @@
 // Package render writes a program's tables as Sorted! source: the inverse of
-// the parser, in English, German, Italian, French, Portuguese or Japanese,
-// laid out to be sung.
+// the parser, in English, German, Italian, French, Portuguese, Japanese or
+// Mandarin (hanzi or pinyin), laid out to be sung.
 //
 // What it writes is exactly what the parser accepts. Some things have no
 // form in one language, or none at all:
@@ -42,6 +42,10 @@
 //     own (japanese.go), with one-word numbers grouped by man and oku
 //     ("nijūsan", "nihongo no josū to shite") and prefixed ordinals
 //     ("dai-san no kazu").
+//   - So is Mandarin (#33, "这个程序非常非常酷。"), written as two languages,
+//     Mandarin in hanzi and Pinyin, with writers of their own
+//     (mandarin.go): hanzi without spaces, actions with 把, ordinals with
+//     第 ("第三个数字"), and 和 for both "and" and the sum.
 //
 // Render checks its own work: it parses the text it produced and fails unless
 // the result is the same program in every observable respect, table layout
@@ -68,11 +72,13 @@ const (
 	French
 	Portuguese
 	Japanese
+	Mandarin // in hanzi
+	Pinyin   // Mandarin in pinyin
 )
 
 // Verys is the dialect a program written in l needs, counted in verys:
-// Italian (#30), French (#29), Portuguese (#31) and Japanese (#32) are Very
-// Very Sorted!.
+// Italian (#30), French (#29), Portuguese (#31), Japanese (#32) and
+// Mandarin in either script (#33) are Very Very Sorted!.
 func (l Lang) Verys() int {
 	if l >= Italian {
 		return 2
@@ -172,8 +178,11 @@ func write(p *syntax.Program, lang Lang) (string, *syntax.Program, error) {
 		r.numbers, r.jumps, r.outputs, r.inputs, r.sums, r.conditions, r.labels,
 		r.diffs, r.assigns, r.prods, r.implementation, r.ratios, r.nands, r.cool,
 	}
-	if lang == Japanese {
+	switch lang {
+	case Japanese:
 		sentences = r.jpSentences()
+	case Mandarin, Pinyin:
+		sentences = r.zhSentences()
 	}
 	var b strings.Builder
 	f := fillers{}
@@ -268,8 +277,9 @@ func slot(p *syntax.Program, i int) syntax.Slide {
 // numbers that would merge (comma). A French sentence may end with a filler
 // (tail). Japanese (japanese.go) ends with its verb (tail), puts the comma
 // of a list of pairs after the "to" (after), and chains actions with
-// commas alone (no conj).
+// commas alone (no conj). Mandarin lays itself out (raw, mandarin.go).
 type sentence struct {
+	raw   string
 	head  string
 	items []string
 	conj  string
@@ -284,6 +294,9 @@ const width = 78
 // text lays the sentence out: on one line if it fits, otherwise as a verse
 // with one item per indented line.
 func (s sentence) text() string {
+	if s.raw != "" {
+		return s.raw
+	}
 	n := len(s.items)
 	var line string
 	switch {
@@ -481,6 +494,8 @@ func (r *renderer) ref(l Lang, op syntax.Operand, c gcase) (string, error) {
 		return r.ptRef(op, c)
 	case Japanese:
 		return r.jpRef(op)
+	case Mandarin, Pinyin:
+		return r.zhRef(op)
 	}
 	if op.Type&syntax.Indirect != 0 {
 		inner, err := r.ref(l, syntax.Operand{Type: op.Type &^ syntax.Indirect, Index: op.Index}, accusative)
@@ -751,6 +766,8 @@ func (r *renderer) outputs() (sentence, error) {
 		syntax.FormatBrazilianOrdinal:  {"as a brazilian ordinal", "als eine brasilianische Ordinalzahl", "come ordinale brasiliano", "comme ordinal brésilien", "como ordinal brasileiro"},
 		syntax.FormatJapaneseCardinal:  {"as a japanese cardinal", "als ein japanischer Kardinal", "come cardinale giapponese", "comme cardinal japonais", "como cardinal japonês"},
 		syntax.FormatJapaneseOrdinal:   {"as a japanese ordinal", "als eine japanische Ordinalzahl", "come ordinale giapponese", "comme ordinal japonais", "como ordinal japonês"},
+		syntax.FormatChineseCardinal:   {"as a chinese cardinal", "als ein chinesischer Kardinal", "come cardinale cinese", "comme cardinal chinois", "como cardinal chinês"},
+		syntax.FormatChineseOrdinal:    {"as a chinese ordinal", "als eine chinesische Ordinalzahl", "come ordinale cinese", "comme ordinal chinois", "como ordinal chinês"},
 	}
 	phrases, ok := formats[w.Flags]
 	if !ok || r.p.Verys < 2 && w.Flags >= syntax.FormatItalianCardinal {

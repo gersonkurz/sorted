@@ -142,6 +142,8 @@ var jaFormats = map[int32]string{
 	syntax.FormatBrazilianOrdinal:  "burajiru no josū",
 	syntax.FormatJapaneseCardinal:  "nihongo no kisū",
 	syntax.FormatJapaneseOrdinal:   "nihongo no josū",
+	syntax.FormatChineseCardinal:   "chūgokugo no kisū",
+	syntax.FormatChineseOrdinal:    "chūgokugo no josū",
 }
 
 func (r *renderer) jpOutputs() (sentence, error) {

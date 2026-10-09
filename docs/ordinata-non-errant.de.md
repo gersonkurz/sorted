@@ -194,9 +194,14 @@ würden, setzt der Renderer ein Komma zwischen sie, auf dass jede sie selbst
 bleibe. Und eine sechste, das Japanisch der lateinischen Buchstaben, das
 erst am Ende sagt, was es tut, wie es die Geduldigen tun, und in
 Zehntausenden zählt; in ihm sind die Summe und das Thema ein Wort, *wa*,
-und der Parser unterscheidet sie danach, wo sie stehen. **Questo programma
-è molto molto figo. Ce programme est très très chouette. Este programa é
-muito muito legal. Kono puroguramu wa totemo totemo kakkoii desu.**
+und der Parser unterscheidet sie danach, wo sie stehen. Und eine siebte,
+das Mandarin, in zwei Schriften, den Zeichen, die keine Leerzeichen
+brauchen, und den Buchstaben, die ihre Töne brauchen, in dem "und" und
+"Summe" ein Zeichen sind, 和; der Parser nimmt die Wörter aus einer Zeile
+ohne Leerzeichen, weil er sie kennt, und die alten Zeichen wie die neuen.
+**Questo programma è molto molto figo. Ce programme est très très chouette.
+Este programa é muito muito legal. Kono puroguramu wa totemo totemo kakkoii
+desu. 这个程序非常非常酷。**
 
 ---
 

@@ -22,7 +22,9 @@ type language struct {
 }
 
 // languages names each language in English, German, French, Italian,
-// Portuguese, Japanese and Mandarin, in that order, plus regional names.
+// Portuguese, Japanese and Mandarin, in that order, plus regional names;
+// Mandarin is written in hanzi (zh) or in pinyin (zh-latn, BCP 47's
+// zh-Latn, #33).
 var languages = []language{
 	{"en", []string{"English", "Englisch", "anglais", "inglese", "inglês", "英語", "eigo", "英语", "yīngyǔ"}, render.English, true},
 	{"de", []string{"German", "Deutsch", "allemand", "tedesco", "alemão", "ドイツ語", "doitsugo", "德语", "déyǔ"}, render.German, true},
@@ -30,7 +32,8 @@ var languages = []language{
 	{"it", []string{"Italian", "Italienisch", "italien", "italiano", "italiano", "イタリア語", "itariago", "意大利语", "yìdàlìyǔ"}, render.Italian, true},
 	{"pt", []string{"Portuguese", "Portugiesisch", "portugais", "portoghese", "português", "ポルトガル語", "porutogarugo", "葡萄牙语", "pútáoyáyǔ", "brasileiro", "Brazilian", "Brasilianisch"}, render.Portuguese, true},
 	{"ja", []string{"Japanese", "Japanisch", "japonais", "giapponese", "japonês", "日本語", "nihongo", "日语", "rìyǔ"}, render.Japanese, true},
-	{"zh", []string{"Mandarin", "Chinese", "Chinesisch", "chinois", "mandarin", "cinese", "mandarino", "chinês", "mandarim", "中国語", "chūgokugo", "汉语", "hànyǔ", "中文", "zhōngwén", "普通话", "pǔtōnghuà"}, 0, false},
+	{"zh", []string{"Mandarin", "Chinese", "Chinesisch", "chinois", "mandarin", "cinese", "mandarino", "chinês", "mandarim", "中国語", "chūgokugo", "汉语", "hànyǔ", "中文", "zhōngwén", "普通话", "pǔtōnghuà"}, render.Mandarin, true},
+	{"zh-latn", []string{"Pinyin", "拼音", "pīnyīn", "ピンイン"}, render.Pinyin, true},
 }
 
 // fold folds case the Unicode way (ß becomes ss); syntax.Unaccent strips

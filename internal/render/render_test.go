@@ -42,7 +42,7 @@ func parse(t *testing.T, src []byte) *syntax.Program {
 // tables.
 func TestSamplesRoundTrip(t *testing.T) {
 	for _, name := range samples {
-		for _, lang := range []Lang{English, German, Italian, French, Portuguese, Japanese} {
+		for _, lang := range []Lang{English, German, Italian, French, Portuguese, Japanese, Mandarin, Pinyin} {
 			t.Run(fmt.Sprintf("%s/%d", name, lang), func(t *testing.T) {
 				p := parse(t, readFile(t, "legacy", "sorted.win32", name+".s"))
 				text, err := Render(p, lang)
@@ -75,7 +75,7 @@ func TestSamplesRoundTrip(t *testing.T) {
 // Italian (#30): every preposition its article fuses with.
 func TestReferencesRoundTrip(t *testing.T) {
 	r := &renderer{}
-	for _, lang := range []Lang{English, German, Italian, French, Portuguese, Japanese} {
+	for _, lang := range []Lang{English, German, Italian, French, Portuguese, Japanese, Mandarin, Pinyin} {
 		cases := []gcase{nominative, accusative, dative}
 		switch lang {
 		case Italian:
@@ -84,7 +84,7 @@ func TestReferencesRoundTrip(t *testing.T) {
 			cases = []gcase{nominative, frA, frDe}
 		case Portuguese:
 			cases = []gcase{nominative, ptDe, ptA, ptPor}
-		case Japanese:
+		case Japanese, Mandarin, Pinyin:
 			cases = []gcase{nominative}
 		}
 		for typ := range nouns {
@@ -141,7 +141,7 @@ Cool.`
 // Numbers from zero to 999999999 are declarable in both languages.
 func TestNumbersRoundTrip(t *testing.T) {
 	values := []int32{0, 1, 2, 15, 99, 100, 101, 999, 1000, 1001, 65536, 999999, 1000000, 41281927, 123456789, 999999999}
-	for _, lang := range []Lang{English, German, Italian, French, Portuguese, Japanese} {
+	for _, lang := range []Lang{English, German, Italian, French, Portuguese, Japanese, Mandarin, Pinyin} {
 		p := parse(t, []byte(strings.Replace(skeleton, "STATEMENT", "the first number", 1)))
 		p.Data = values // the data does not affect the layout
 		if _, err := Render(p, lang); err != nil {
@@ -496,9 +496,11 @@ func TestOutputFormats(t *testing.T) {
 		syntax.FormatBrazilianOrdinal:  "vigésimo primeiro\n",
 		syntax.FormatJapaneseCardinal:  "nijūichi\n",
 		syntax.FormatJapaneseOrdinal:   "dai-nijūichi\n",
+		syntax.FormatChineseCardinal:   "二十一\n",
+		syntax.FormatChineseOrdinal:    "第二十一\n",
 	}
 	for format, output := range want {
-		for _, lang := range []Lang{English, German, Italian, French, Portuguese, Japanese} {
+		for _, lang := range []Lang{English, German, Italian, French, Portuguese, Japanese, Mandarin, Pinyin} {
 			p := parse(t, []byte(strings.Replace(strings.Replace(strings.Replace(skeleton, "STATEMENT", "the first output", 1),
 				"This code does not use any numbers.", "This code uses the number twentyone.", 1),
 				"This code cannot write.", "This code writes the first number as a character.", 1)))
@@ -941,5 +943,111 @@ This code is very very cool.`
 	g := parse(t, []byte(strings.Replace(strings.Replace(skeleton, "STATEMENT", "the first output", 1), "This code cannot write.", "This code writes the first number as a german german ordinal.", 1)))
 	if _, err := Render(g, Japanese); err == nil {
 		t.Error("German numbers rendered in Japanese")
+	}
+}
+
+// Mandarin (#33), in hanzi and in pinyin: no spaces and full-width
+// punctuation in hanzi, 把 for actions, "，并" between jumps, 和 for "and"
+// and the sum, 两 in counts; a program in Mandarin is Very Very Sorted!.
+func TestMandarin(t *testing.T) {
+	src := `This code uses the numbers twentythree, tenthousand, onehundredone, and twohundred.
+This code always goes to the first label, and sometimes goes to the second label if the eleventh condition is true.
+This code writes the first sum as a chinese ordinal.
+This code reads the first number as a character.
+This code uses the sums of the first number and the second number, and of the eight number and the cell indexed by the first sum.
+This code uses the condition that the first sum is equal to the eight number, and the condition that the first number is less than the first ratio.
+This code uses two labels.
+This code uses the ordered difference between the eleventh number and the second number.
+This code assigns the first sum to the third number, the first input to the eight number, and the first product to the cell indexed by the first sum.
+This code uses the products of the first number and the second number, and of the first sum and the first ordered difference.
+This code implements the first assignment, the first label, the first jump, the second assignment, the first input, the first output, and the eleventh label.
+This code uses the ratios of the first number to the second number, and of the second number to the first number.
+This code uses the logical operations of not the first number and not the eight number, and of not both the first logical operation and the second number.
+This code is very very cool.`
+	p := parse(t, []byte(src))
+	for _, tt := range []struct {
+		lang  Lang
+		wants []string
+	}{
+		{Mandarin, []string{
+			"这个程序使用数字二十三、一万、一百零一和二百。",
+			"这个程序总是跳到第一个标签，并在第十一个条件为真时跳到第二个标签。",
+			"这个程序把第一个和作为中文序数写出。",
+			"这个程序把第一个数字作为字符读入。",
+			"第一个数字和第二个数字的和和第八个数字和第一个和所指的单元的和。",
+			"第一个和等于第八个数字的条件和第一个数字小于第一个比的条件。",
+			"这个程序使用两个标签。",
+			"这个程序使用第十一个数字和第二个数字的差。",
+			"把第一个和赋给第三个数字，", "把第一个输入赋给第八个数字，", "把第一个积赋给第一个和所指的单元。",
+			"第一个数字和第二个数字的积和第一个和和第一个差的积。",
+			"第一个赋值、", "和第十一个标签。",
+			"第一个数字和第二个数字的比和第二个数字和第一个数字的比。",
+			"既非第一个数字也非第八个数字的逻辑运算和并非第一个逻辑运算和第二个数字都成立的逻辑运算。",
+			"这个程序非常非常酷。",
+		}},
+		{Pinyin, []string{
+			"Zhège chéngxù shǐyòng shùzì èrshísān, yīwàn, yībǎilíngyī hé èrbǎi.",
+			"zǒngshì tiàodào dì-yī gè biāoqiān,", "bìng zài dì-shíyī gè tiáojiàn wéi zhēn shí tiàodào dì-èr gè biāoqiān.",
+			"Zhège chéngxù bǎ dì-yī gè hé zuòwéi Zhōngwén xùshù xiěchū.",
+			"Zhège chéngxù shǐyòng liǎng gè biāoqiān.",
+			"bǎ dì-yī gè jī fù gěi dì-yī gè hé suǒ zhǐ de dānyuán.",
+			"bìngfēi dì-yī gè luójí yùnsuàn hé dì-èr gè shùzì dōu chénglì de luójí yùnsuàn.",
+			"Zhège chéngxù fēicháng fēicháng kù.",
+		}},
+	} {
+		text, err := Render(p, tt.lang)
+		if err != nil {
+			t.Fatal(err)
+		}
+		flat := strings.Join(strings.Fields(text), " ")
+		for _, want := range tt.wants {
+			if !strings.Contains(flat, want) && !strings.Contains(strings.ReplaceAll(text, "\n\t", ""), want) {
+				t.Errorf("lang %d: no %q in\n%s", tt.lang, want, text)
+			}
+		}
+		if q := parse(t, []byte(text)); !Equal(p, q) {
+			t.Errorf("lang %d: tables differ:\n%s", tt.lang, text)
+		}
+	}
+	for lang, want := range map[Lang]string{English: "as a chinese ordinal", German: "als eine chinesische Ordinalzahl", Italian: "come ordinale cinese",
+		French: "comme ordinal chinois", Portuguese: "como ordinal chinês", Japanese: "chūgokugo no josū to shite"} {
+		if text, err := Render(p, lang); err != nil || !strings.Contains(text, want) {
+			t.Errorf("lang %d: %v, no %q in\n%s", lang, err, want, text)
+		}
+	}
+	none := parse(t, []byte(strings.Replace(skeleton, "STATEMENT", "the first number", 1)))
+	for lang, wants := range map[Lang][]string{
+		Mandarin: {"这个程序不使用数字。", "这个程序哪儿也不去。", "这个程序不能写。", "这个程序不能读。", "这个程序不使用和。", "这个程序不使用条件。",
+			"这个程序不使用标签。", "这个程序不使用差。", "这个程序不赋值。", "这个程序不使用积。", "这个程序实现第一个数字。", "这个程序不使用比。",
+			"这个程序不合逻辑。", "这个程序非常非常酷。"},
+		Pinyin: {"Zhège chéngxù bù shǐyòng shùzì.", "Zhège chéngxù nǎr yě bú qù.", "Zhège chéngxù bú fùzhí.", "Zhège chéngxù bù hé luójí."},
+	} {
+		text, err := Render(none, lang)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, want := range wants {
+			if !strings.Contains(text, want) {
+				t.Errorf("lang %d: no %q in\n%s", lang, want, text)
+			}
+		}
+		if q := parse(t, []byte(text)); q.Verys != 2 {
+			t.Errorf("verys %d", q.Verys)
+		}
+	}
+	one := parse(t, []byte(strings.Replace(strings.Replace(skeleton, "STATEMENT", "the first number", 1), "This code does not use any labels.", "This code uses one label.", 1)))
+	if text, err := Render(one, Mandarin); err != nil || !strings.Contains(text, "这个程序使用一个标签。") {
+		t.Errorf("one label: %v\n%s", err, text)
+	}
+	g := parse(t, []byte(strings.Replace(strings.Replace(skeleton, "STATEMENT", "the first output", 1), "This code cannot write.", "This code writes the first number as a german german ordinal.", 1)))
+	if _, err := Render(g, Mandarin); err == nil {
+		t.Error("German numbers rendered in Mandarin")
+	}
+}
+
+// A hanzi line is measured in columns, two to a character.
+func TestMandarinWidth(t *testing.T) {
+	if zhWidth("一a") != 3 {
+		t.Errorf("zhWidth = %d", zhWidth("一a"))
 	}
 }

@@ -10,7 +10,8 @@ the year 2000. Its design criteria, quoting the
 
 It is also multilingual: every statement can be written in English or in
 German, and, since Very Very Sorted!, in Italian, the French of Vaud,
-Brazilian Portuguese or Japanese (in romaji), and a program may mix them.
+Brazilian Portuguese, Japanese (in romaji) or Mandarin (in hanzi or pinyin),
+and a program may mix them.
 
 This repository is a Go port of the original C++ interpreter that Gerson Kurz
 wrote in 2000. It is faithful to the original, quirks included: it accepts the
@@ -84,8 +85,9 @@ every number as a character, so `fibo.s` comes out as raw bytes instead of
 moves its famous NUL. `--to-c` replaces it. `--lang NAME`, or just `--NAME`, prints the program in that
 language instead of running it, so `sorted --deutsch hello.s` sings Hello
 World in German, `sorted --italiano hello.s` in Italian, `sorted --vaudois
-hello.s` in French, `sorted --brasileiro hello.s` in Portuguese and `sorted
---nihongo hello.s` in Japanese. Sorted! has no favourite language, not even for naming
+hello.s` in French, `sorted --brasileiro hello.s` in Portuguese, `sorted
+--nihongo hello.s` in Japanese, and `sorted --中文 hello.s` and `sorted
+--pinyin hello.s` in Mandarin. Sorted! has no favourite language, not even for naming
 languages: NAME may be the language's name in any language Sorted! speaks or
 will, ignoring case and accents (`--english`, `--Englisch`, `--anglais`,
 `--lang inglês`, `--英語`, `--lang en`; `sorted --help` lists them all).
@@ -123,22 +125,22 @@ very very cool. (a105f41-dirty)`. Releases are tagged the same way (`cool`,
 
 A program is fourteen sentences, always in this order:
 
-| # | Sentence | English | German | Italian (Very Very Sorted!) | French (Very Very Sorted!) | Portuguese (Very Very Sorted!) | Japanese (Very Very Sorted!) |
-|---|---|---|---|---|---|---|---|
-| 1 | numbers | This code uses the numbers … | Dieses Programm benutzt die Zahlen … | Questo programma usa i numeri … | Ce programme utilise les nombres … | Este programa usa os números … | Kono puroguramu wa kazu … o tsukaimasu |
-| 2 | jumps | This code always goes to … / sometimes goes to … if … is true | Dieses Programm springt immer an … | Questo programma va sempre alla … / va talvolta alla … se … è vera | Ce programme va toujours à la … / va parfois à la … si … est vraie | Este programa sempre vai para o … / às vezes vai para o … se … for verdadeira | Kono puroguramu wa itsumo … ni tobi, … ga shin nara … ni tobimasu |
-| 3 | output | This code writes … as a character | Dieses Programm schreibt … als ein Zeichen | Questo programma scrive … come carattere | Ce programme écrit … comme caractère | Este programa escreve … como caractere | Kono puroguramu wa … o moji to shite kakimasu |
-| 4 | input | This code cannot read. | Dieses Programm kann nicht lesen. | Questo programma non può leggere. | Ce programme ne peut pas lire. | Este programa não pode ler. | Kono puroguramu wa yomemasen. |
-| 5 | sums | This code uses the sum of … and … | Dieses Programm benutzt die Summe aus … und … | Questo programma usa la somma del … e del … | Ce programme utilise la somme du … et du … | Este programa usa a soma do … e do … | Kono puroguramu wa … to … no wa o tsukaimasu |
-| 6 | conditions | This code uses the condition that … is equal to … | … die Bedingung dass … ist gleich … | … la condizione che … sia uguale al … | … la condition que … soit égal au … | … a condição de que … seja igual ao … | … ga … to hitoshii to iu jōken … |
-| 7 | labels | This code uses two labels. | Dieses Programm benutzt zwei Sprungziele. | Questo programma usa due etichette. | Ce programme utilise deux étiquettes. | Este programa usa dois rótulos. | Kono puroguramu wa raberu o niko tsukaimasu. |
-| 8 | ordered differences | This code uses the ordered difference between … and … | … die geordnete Differenz zwischen … und … | … la differenza ordinata tra … e … | … la différence ordonnée entre … et … | … a diferença ordenada entre … e … | … to … no sa … |
-| 9 | assignments | This code assigns … to … | Dieses Programm weisst zu … an … | Questo programma assegna … al … | Ce programme affecte … au … | Este programa atribui … ao … | Kono puroguramu wa … o … ni dainyū shimasu |
-| 10 | products | This code uses the product of … and … | Dieses Programm benutzt das Produkt von … und … | … il prodotto del … e del … | … le produit du … et du … | … o produto do … e do … | … to … no seki … |
-| 11 | implementation | This code implements the first assignment, … | Dieses Programm implementiert … | Questo programma implementa il primo assegnamento, … | Ce programme implémente la première affectation, … | Este programa implementa a primeira atribuição, … | Kono puroguramu wa dai-ichi no dainyū, … o jissō shimasu |
-| 12 | ratios | This code uses the ratio of … to … | (English only) | … il rapporto tra … e … | … le rapport du … au … | … a razão entre … e … | … to … no hi … |
-| 13 | logical operations | This code does not use any logical operations. | Dieses Programm ist unlogisch. | Questo programma è illogico. | Ce programme est illogique. | Este programa é ilógico. | Kono puroguramu wa hironriteki desu. |
-| 14 | coolness | Cool. | Hervorragend. | Questo programma è molto molto figo. | Ce programme est très très chouette. | Este programa é muito muito legal. | Kono puroguramu wa totemo totemo kakkoii desu. |
+| # | Sentence | English | German | Italian (Very Very Sorted!) | French (Very Very Sorted!) | Portuguese (Very Very Sorted!) | Japanese (Very Very Sorted!) | Mandarin (Very Very Sorted!) |
+|---|---|---|---|---|---|---|---|---|
+| 1 | numbers | This code uses the numbers … | Dieses Programm benutzt die Zahlen … | Questo programma usa i numeri … | Ce programme utilise les nombres … | Este programa usa os números … | Kono puroguramu wa kazu … o tsukaimasu | 这个程序使用数字…… |
+| 2 | jumps | This code always goes to … / sometimes goes to … if … is true | Dieses Programm springt immer an … | Questo programma va sempre alla … / va talvolta alla … se … è vera | Ce programme va toujours à la … / va parfois à la … si … est vraie | Este programa sempre vai para o … / às vezes vai para o … se … for verdadeira | Kono puroguramu wa itsumo … ni tobi, … ga shin nara … ni tobimasu | 这个程序总是跳到……，并在……为真时跳到…… |
+| 3 | output | This code writes … as a character | Dieses Programm schreibt … als ein Zeichen | Questo programma scrive … come carattere | Ce programme écrit … comme caractère | Este programa escreve … como caractere | Kono puroguramu wa … o moji to shite kakimasu | 这个程序把……作为字符写出 |
+| 4 | input | This code cannot read. | Dieses Programm kann nicht lesen. | Questo programma non può leggere. | Ce programme ne peut pas lire. | Este programa não pode ler. | Kono puroguramu wa yomemasen. | 这个程序不能读。 |
+| 5 | sums | This code uses the sum of … and … | Dieses Programm benutzt die Summe aus … und … | Questo programma usa la somma del … e del … | Ce programme utilise la somme du … et du … | Este programa usa a soma do … e do … | Kono puroguramu wa … to … no wa o tsukaimasu | 这个程序使用……和……的和 |
+| 6 | conditions | This code uses the condition that … is equal to … | … die Bedingung dass … ist gleich … | … la condizione che … sia uguale al … | … la condition que … soit égal au … | … a condição de que … seja igual ao … | … ga … to hitoshii to iu jōken … | ……等于……的条件 |
+| 7 | labels | This code uses two labels. | Dieses Programm benutzt zwei Sprungziele. | Questo programma usa due etichette. | Ce programme utilise deux étiquettes. | Este programa usa dois rótulos. | Kono puroguramu wa raberu o niko tsukaimasu. | 这个程序使用两个标签。 |
+| 8 | ordered differences | This code uses the ordered difference between … and … | … die geordnete Differenz zwischen … und … | … la differenza ordinata tra … e … | … la différence ordonnée entre … et … | … a diferença ordenada entre … e … | … to … no sa … | ……和……的差 |
+| 9 | assignments | This code assigns … to … | Dieses Programm weisst zu … an … | Questo programma assegna … al … | Ce programme affecte … au … | Este programa atribui … ao … | Kono puroguramu wa … o … ni dainyū shimasu | 这个程序把……赋给…… |
+| 10 | products | This code uses the product of … and … | Dieses Programm benutzt das Produkt von … und … | … il prodotto del … e del … | … le produit du … et du … | … o produto do … e do … | … to … no seki … | ……和……的积 |
+| 11 | implementation | This code implements the first assignment, … | Dieses Programm implementiert … | Questo programma implementa il primo assegnamento, … | Ce programme implémente la première affectation, … | Este programa implementa a primeira atribuição, … | Kono puroguramu wa dai-ichi no dainyū, … o jissō shimasu | 这个程序实现第一个赋值、…… |
+| 12 | ratios | This code uses the ratio of … to … | (English only) | … il rapporto tra … e … | … le rapport du … au … | … a razão entre … e … | … to … no hi … | ……和……的比 |
+| 13 | logical operations | This code does not use any logical operations. | Dieses Programm ist unlogisch. | Questo programma è illogico. | Ce programme est illogique. | Este programa é ilógico. | Kono puroguramu wa hironriteki desu. | 这个程序不合逻辑。 |
+| 14 | coolness | Cool. | Hervorragend. | Questo programma è molto molto figo. | Ce programme est très très chouette. | Este programa é muito muito legal. | Kono puroguramu wa totemo totemo kakkoii desu. | 这个程序非常非常酷。 |
 
 Every sentence except the implementation and "Cool." also has a "none" form
 ("This code does not use any sums."). For more than one entry, use the plural
@@ -225,8 +227,9 @@ The first song has to be the obvious one. [`examples/99-bottles.c`](examples/99-
 is the standard C version of 99 Bottles of Beer, and next to it sit what the
 compiler makes of it, [in English](examples/99-bottles.s),
 [in German](examples/99-bottles.de.s), [in Italian](examples/99-bottles.it.s),
-[in French](examples/99-bottles.fr.s), [in Portuguese](examples/99-bottles.pt.s)
-and [in Japanese](examples/99-bottles.ja.s):
+[in French](examples/99-bottles.fr.s), [in Portuguese](examples/99-bottles.pt.s),
+[in Japanese](examples/99-bottles.ja.s) and in Mandarin, [in hanzi](examples/99-bottles.zh.s)
+and [in pinyin](examples/99-bottles.pinyin.s):
 about 630 lines each, all singable, every verse printed exactly as the C
 program prints it.
 
@@ -287,9 +290,9 @@ what the C program prints when compiled with clang.
 translating between English and German comes free. Everything the compiler
 and the translator write in English or German uses only forms the 2000 parser
 knows, so it also runs on the original `Sorted.exe` (unless the program is
-very). Italian, French, Portuguese and Japanese are Very Very Sorted!
-(below), so `--lang it`, `--lang fr`, `--lang pt` or `--lang ja` makes any
-program Very Very Sorted!,
+very). Italian, French, Portuguese, Japanese and Mandarin are Very Very
+Sorted! (below), so `--lang it`, `--lang fr`, `--lang pt`, `--lang ja`,
+`--lang zh` or `--pinyin` makes any program Very Very Sorted!,
 and refuses the rare 2000 program that would then do
 something else: one that prints German numbers, which Very Sorted! spells in
 UTF-8, or one whose statements reach past their tables. A few programs that run fine cannot be
@@ -418,6 +421,30 @@ counted with *-ko* (ikko, niko, rokko), and long vowels may be written
 japanese ordinal", "come cardinale giapponese"), "dai-zero" and "mainasu
 nana" included.
 
+And it speaks Mandarin, in hanzi and in pinyin, which Sorted! writes as two
+languages and reads in any mix:
+
+```
+这个程序使用数字二十三、一万和一百零一。
+这个程序总是跳到第一个标签，并在第一个条件为真时跳到第二个标签。
+这个程序把第一个和作为中文序数写出。
+这个程序使用第一个数字和第二个数字的和和第三个数字和第一个和的和。
+这个程序非常非常酷。
+
+Zhège chéngxù shǐyòng shùzì èrshísān, yīwàn hé yībǎilíngyī.
+Zhège chéngxù fēicháng fēicháng kù.
+```
+
+Hanzi have no spaces between words, so the parser finds each word by its
+characters, and reads 。，、 as a period and commas and traditional
+characters (這個程式) as the simplified ones it writes. 和 is both "and" and
+the sum, so a list of sums says 和和. Numbers are one word grouped by 万 and
+亿, with 零 for a gap (一百零一) and 两 in counts (两个标签); ordinals are 第
+and the number (第三个数字). Pinyin is read with or without its tones, which
+cannot tell 一 (yī) from 亿 (yì), so "shiyi" is eleven. Chinese numbers print
+in hanzi in every language ("as a chinese ordinal", "comme cardinal
+chinois"), "第零" and "负七" included.
+
 **And back to C.** `sorted --from-c prog.c --to-c obfuscated.c` takes a
 program on the full round trip: C → Sorted! → C. The result prints what
 `prog.c` prints, and nothing in it resembles the original. Every sum,
@@ -474,8 +501,8 @@ just run legacy/sorted.win32/fibo.s
 ```
 
 The packages follow the original's pipeline: `internal/syntax` (source filter
-and parser, `italian.go`, `french.go`, `portuguese.go` and `japanese.go` for
-Very Very Sorted!), `internal/numbers` (number
+and parser, `italian.go`, `french.go`, `portuguese.go`, `japanese.go` and
+`mandarin.go` for Very Very Sorted!), `internal/numbers` (number
 words), `internal/interp`
 (interpreter), `internal/emit` (`/D` dump and C translation), `internal/render`
 (programs back to Sorted! text), and the command in `cmd/sorted`. The C
