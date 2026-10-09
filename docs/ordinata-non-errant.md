@@ -169,7 +169,11 @@ correction of the elder tongues. "fiveteen" remains fifteen, "as a english
 english ordinal" remains how one asks for an ordinal, and a program of the
 year 2000 that would sing otherwise in Italian is not translated at all.
 The sorted do not err: neither the old, which keep their ways, nor the new,
-which never strayed. **Questo programma è molto molto figo.**
+which never strayed. In the same age the language learned a fourth tongue,
+the French of Vaud, which counts in tens as the faithful always hoped
+French would, and says "eh" and "voilà" where others pause; the parser
+hears those as the silence they are. **Questo programma è molto molto
+figo. Ce programme est très très chouette.**
 
 ---
 

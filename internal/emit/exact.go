@@ -38,6 +38,7 @@ type exact struct {
 	queue   []fnKey
 	words   bool // a write prints a cardinal or an ordinal
 	italian bool // ... in Italian
+	vaudois bool // ... in Vaudois French
 	input   bool // a read can run
 	dynamic bool // a jump target is not a label, so pc can be anything
 }
@@ -180,6 +181,9 @@ func (x *exact) statement(i int) string {
 		case syntax.FormatItalianCardinal, syntax.FormatItalianOrdinal:
 			x.words, x.italian = true, true
 			return fmt.Sprintf("wi_(%d, %s);", e.Flags, v)
+		case syntax.FormatVaudoisCardinal, syntax.FormatVaudoisOrdinal:
+			x.vaudois = true
+			return fmt.Sprintf("wf_(%d, %s);", e.Flags, v)
 		}
 		return fmt.Sprintf("putchar((unsigned char)%s);", v)
 	}
@@ -244,6 +248,9 @@ func (x *exact) render() string {
 	}
 	if x.italian {
 		b.WriteString(exactItalian)
+	}
+	if x.vaudois {
+		b.WriteString(exactVaudois)
 	}
 	if x.input {
 		b.WriteString(exactInput)
@@ -429,6 +436,72 @@ static void wi_(I format, I v) {
 		else if (ends_(w, "centootto")) strcpy(w + n - 5, "ott");
 		else w[n - 1] = 0;
 		strcat(w, "esimo");
+	}
+	fputs(b, stdout);
+	putchar('\n');
+}
+`
+
+// exactVaudois is the Vaudois French number formatting of internal/numbers
+// (Very Very Sorted!, #29): any number has its words, joined by hyphens,
+// in UTF-8.
+const exactVaudois = `static const char *const frU[17] = {"", "un", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf", "dix", "onze", "douze", "treize", "quatorze", "quinze", "seize"};
+static const char *const frD[10] = {"", "dix", "vingt", "trente", "quarante", "cinquante", "soixante", "septante", "huitante", "nonante"};
+static void frp_(char *w, const char *part) {
+	if (*w) strcat(w, "-");
+	strcat(w, part);
+}
+static void fr2_(char *w, U n) {
+	if (n <= 16) frp_(w, frU[n]);
+	else if (n < 20) { frp_(w, "dix"); frp_(w, frU[n - 10]); }
+	else {
+		frp_(w, frD[n / 10]);
+		if (n % 10 == 1) { frp_(w, "et"); frp_(w, "un"); }
+		else if (n % 10 != 0) frp_(w, frU[n % 10]);
+	}
+}
+static void fr3_(char *w, U n, int plural) {
+	U h = n / 100, r = n % 100;
+	if (h == 1) frp_(w, "cent");
+	else if (h > 1) { frp_(w, frU[h]); frp_(w, r == 0 && plural ? "cents" : "cent"); }
+	if (r != 0) fr2_(w, r);
+}
+static void frg_(char *w, U c, const char *one, const char *more) {
+	if (c == 1) { frp_(w, "un"); frp_(w, one); }
+	else { fr3_(w, c, 1); frp_(w, more); }
+}
+static void frc_(char *w, U n) {
+	if (n == 0) { frp_(w, "z\303\251ro"); return; }
+	if (n >= 1000000000) { frg_(w, n / 1000000000, "milliard", "milliards"); n %= 1000000000; }
+	if (n >= 1000000) { frg_(w, n / 1000000, "million", "millions"); n %= 1000000; }
+	if (n >= 1000) { if (n / 1000 > 1) fr3_(w, n / 1000, 0); frp_(w, "mille"); n %= 1000; }
+	if (n > 0) fr3_(w, n, 1);
+}
+static void wf_(I format, I v) {
+	char b[512];
+	char *w, *last;
+	size_t n;
+	U m = v < 0 ? 0u - (U)v : (U)v;
+	strcpy(b, v < 0 ? "moins " : "");
+	w = b + strlen(b);
+	if (format == 7) frc_(w, m);
+	else if (m == 1) strcpy(w, "premier");
+	else if (m == 0) strcpy(w, "z\303\251roi\303\250me");
+	else {
+		frc_(w, m);
+		if (strcmp(w, "un-million") == 0 || strcmp(w, "un-milliard") == 0) memmove(w, w + 3, strlen(w + 3) + 1);
+		last = strrchr(w, '-');
+		last = last ? last + 1 : w;
+		n = strlen(last);
+		if (strcmp(last, "cents") == 0) last[n - 1] = 0;
+		else if (strcmp(last, "millions") == 0 || strcmp(last, "milliards") == 0) {
+			last[n - 1] = 0;
+			if (last - w >= 6 && strncmp(last - 6, "cents-", 6) == 0 && (last - 6 == w || last[-7] == '-')) memmove(last - 2, last - 1, strlen(last - 1) + 1);
+		}
+		else if (strcmp(last, "cinq") == 0) strcpy(last, "cinqu");
+		else if (strcmp(last, "neuf") == 0) strcpy(last, "neuv");
+		else if (last[n - 1] == 'e') last[n - 1] = 0;
+		strcat(w, "i\303\250me");
 	}
 	fputs(b, stdout);
 	putchar('\n');

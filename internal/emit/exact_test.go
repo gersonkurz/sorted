@@ -170,6 +170,39 @@ func TestExactItalianWords(t *testing.T) {
 	}
 }
 
+// TestExactVaudoisWords compares the C Vaudois French number words with
+// internal/numbers (#29).
+func TestExactVaudoisWords(t *testing.T) {
+	values := []int32{math.MinInt32, -1000000, -91, -1, 0, 1000000000, 2000000000, math.MaxInt32,
+		200000000, -200000000, 300000000, 200000003, 200001000, 900000000}
+	for v := int32(1); v <= 1200; v++ {
+		values = append(values, v)
+	}
+	for v := int64(1201); v <= math.MaxInt32; v = v*7/5 + 3 {
+		values = append(values, int32(v), int32(v/1000*1000), int32(v/1000000*1000000))
+	}
+	var b, want strings.Builder
+	b.WriteString(exactHeader + "static I _[193719];\n" + exactRuntime + exactVaudois + "int main(void) {\n")
+	for _, v := range values {
+		fmt.Fprintf(&b, "\twf_(7, %d);\n\twf_(8, %d);\n", v, v)
+		want.WriteString(numbers.VaudoisCardinal(v) + "\n" + numbers.VaudoisOrdinal(v, false) + "\n")
+	}
+	b.WriteString("\treturn 0;\n}\n")
+	got, stderr, code := runC(t, b.String(), "")
+	if code != 0 || stderr != "" {
+		t.Fatalf("exit %d, stderr %q", code, stderr)
+	}
+	gotLines, wantLines := strings.Split(got, "\n"), strings.Split(want.String(), "\n")
+	if len(gotLines) != len(wantLines) {
+		t.Fatalf("%d lines, want %d", len(gotLines), len(wantLines))
+	}
+	for i := range gotLines {
+		if gotLines[i] != wantLines[i] {
+			t.Errorf("line %d: %q, want %q", i, gotLines[i], wantLines[i])
+		}
+	}
+}
+
 // builder lays out tables by hand: each category gets a block of slots.
 type builder struct{ p syntax.Program }
 
@@ -325,6 +358,14 @@ func TestExactQuirks(t *testing.T) {
 			b.p.Data = []int32{23, 0, -1000000, 1000000}
 			b.table(syntax.Writes, write(syntax.FormatItalianCardinal, op(N, 0)), write(syntax.FormatItalianOrdinal, op(N, 0)),
 				write(syntax.FormatItalianOrdinal, op(N, 1)), write(syntax.FormatItalianCardinal, op(N, 2)), write(syntax.FormatItalianOrdinal, op(N, 3)))
+			b.table(syntax.Statements, stmt(syntax.Write, 0), stmt(syntax.Write, 1), stmt(syntax.Write, 2), stmt(syntax.Write, 3), stmt(syntax.Write, 4))
+		},
+		"vaudois numbers": func(b *builder) {
+			// Very Very Sorted! prints Vaudois French numbers (#29).
+			b.p.Verys = 2
+			b.p.Data = []int32{91, 0, -200, 1000000}
+			b.table(syntax.Writes, write(syntax.FormatVaudoisCardinal, op(N, 0)), write(syntax.FormatVaudoisOrdinal, op(N, 0)),
+				write(syntax.FormatVaudoisOrdinal, op(N, 1)), write(syntax.FormatVaudoisCardinal, op(N, 2)), write(syntax.FormatVaudoisOrdinal, op(N, 3)))
 			b.table(syntax.Statements, stmt(syntax.Write, 0), stmt(syntax.Write, 1), stmt(syntax.Write, 2), stmt(syntax.Write, 3), stmt(syntax.Write, 4))
 		},
 		"a jump below the code": func(b *builder) {

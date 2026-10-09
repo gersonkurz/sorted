@@ -1,7 +1,8 @@
-// Package numbers converts between integers and English, German or Italian
-// number words, as Sorted! does when it parses number declarations and
-// ordinal references, and when it writes a value as a cardinal or ordinal.
-// Italian (italian.go, Very Very Sorted!) is new and has no quirks.
+// Package numbers converts between integers and English, German, Italian or
+// Vaudois French number words, as Sorted! does when it parses number
+// declarations and ordinal references, and when it writes a value as a
+// cardinal or ordinal. Italian and Vaudois French (italian.go, vaudois.go,
+// Very Very Sorted!) are new and have no quirks.
 //
 // English and German are a line-by-line port of EnglishNumbers.cpp and
 // GermanNumbers.cpp from legacy/sorted.win32, quirks included: the

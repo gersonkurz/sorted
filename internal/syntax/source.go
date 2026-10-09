@@ -69,13 +69,20 @@ func Filter(raw []byte) string {
 //
 // The Win32 text-mode reading that Filter reproduces belongs to 2000: here a
 // Ctrl-Z or a NUL is just another character that is not a letter.
-func FilterVery(raw []byte) string {
+func FilterVery(raw []byte) string { return filterUTF8(raw, false) }
+
+// filterUTF8 is FilterVery; with hyphens, a hyphen between two letters stays
+// too, as part of the word ("vingt-et-un").
+func filterUTF8(raw []byte, hyphens bool) string {
 	s := norm.NFC.String(cases.Fold().String(norm.NFC.String(string(raw))))
-	s = umlauts.Replace(s)
+	rs := []rune(umlauts.Replace(s))
+	letter := func(i int) bool {
+		return i >= 0 && i < len(rs) && (unicode.IsLetter(rs[i]) || unicode.Is(unicode.M, rs[i]))
+	}
 	var b strings.Builder
-	for _, r := range s {
+	for i, r := range rs {
 		switch {
-		case r == '.' || r == ',', unicode.IsLetter(r), unicode.Is(unicode.M, r):
+		case r == '.' || r == ',', letter(i), hyphens && r == '-' && letter(i-1) && letter(i+1):
 			b.WriteRune(r)
 		default:
 			b.WriteByte(' ')
@@ -91,7 +98,47 @@ var umlauts = strings.NewReplacer("ä", "ae", "ö", "oe", "ü", "ue")
 // read as "e", "puo" and "ventitre", the way its keywords are spelled
 // (written with or without accents, they mean the same). The German
 // umlauts are written out before (FilterVery), so "fünf" is still "fuenf".
-func FilterVeryVery(raw []byte) string { return Unaccent(FilterVery(raw)) }
+// Two things serve its French (#29): a hyphen between letters stays part of
+// the word, so a number is one word ("deux-cent-vingt-et-un"), and the
+// fillers French loves, "eh", "hein", "quoi" and "voilà", are dropped with
+// the commas around them ("Ce programme, eh, utilise", "…, voilà, quoi."),
+// wherever they stand: they carry no meaning.
+func FilterVeryVery(raw []byte) string { return dropFillers(Unaccent(filterUTF8(raw, true))) }
+
+// fillers are the words Very Very Sorted! reads past (FilterVeryVery).
+var fillers = map[string]bool{"eh": true, "hein": true, "quoi": true, "voila": true}
+
+// dropFillers removes the fillers from filtered text, each with the commas
+// (and spaces) directly before and after it, leaving one space. The rest of
+// the text stays as it is.
+func dropFillers(s string) string {
+	out := make([]byte, 0, len(s))
+	for i := 0; i < len(s); {
+		if !isLetter(s[i]) {
+			out = append(out, s[i])
+			i++
+			continue
+		}
+		j := i
+		for j < len(s) && isLetter(s[j]) {
+			j++
+		}
+		if !fillers[s[i:j]] {
+			out = append(out, s[i:j]...)
+			i = j
+			continue
+		}
+		for len(out) > 0 && (out[len(out)-1] == ' ' || out[len(out)-1] == ',') {
+			out = out[:len(out)-1]
+		}
+		for j < len(s) && (s[j] == ' ' || s[j] == ',') {
+			j++
+		}
+		out = append(out, ' ')
+		i = j
+	}
+	return string(out)
+}
 
 // Unaccent strips accents: decompose (NFD), drop the combining marks,
 // recompose (NFC). The voicing marks of kana (U+3099, U+309A) are not
@@ -110,9 +157,10 @@ func isChar(b byte) bool { return 'A' <= b && b <= 'Z' || 'a' <= b && b <= 'z' }
 func isValidChar(b byte) bool { return isChar(b) || b == '.' || b == ',' }
 
 // isLetter reports whether the parser takes b as part of a word: an ASCII
-// letter, or a byte of a UTF-8 letter that FilterVery kept. Filter leaves no
-// byte above 0x7F, so for 2000 text this is isChar.
-func isLetter(b byte) bool { return isChar(b) || b >= 0x80 }
+// letter, a byte of a UTF-8 letter that FilterVery kept, or a hyphen that
+// FilterVeryVery kept inside a word. Filter leaves no byte above 0x7F and
+// no hyphen, so for 2000 text this is isChar.
+func isLetter(b byte) bool { return isChar(b) || b >= 0x80 || b == '-' }
 
 // isText reports whether the parser stops skipping at b (isValidChar).
 func isText(b byte) bool { return isLetter(b) || b == '.' || b == ',' }

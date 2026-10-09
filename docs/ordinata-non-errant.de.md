@@ -183,8 +183,12 @@ Berichtigung der älteren Zungen. "einstausend" bleibt tausend, "als ein ein
 ein ein deutscher Kardinal" bleibt die Art, nach einer Kardinalzahl zu
 fragen, und ein Programm des Jahres 2000, das auf Italienisch anders sänge,
 wird gar nicht erst übersetzt. Die Geordneten irren nicht: weder die alten,
-die ihre Wege behalten, noch die neue, die nie abwich. **Questo programma è
-molto molto figo.**
+die ihre Wege behalten, noch die neue, die nie abwich. Im selben Zeitalter
+lernte die Sprache eine vierte Zunge, das Französisch der Waadt, das in
+Zehnern zählt, wie die Gläubigen es sich vom Französischen immer erhofft
+hatten, und "eh" und "voilà" sagt, wo andere innehalten; der Parser hört
+darin die Stille, die sie sind. **Questo programma è molto molto figo. Ce
+programme est très très chouette.**
 
 ---
 

@@ -327,6 +327,23 @@ func TestItalianOutput(t *testing.T) {
 	}
 }
 
+// ... and Vaudois French numbers (#29).
+func TestVaudoisOutput(t *testing.T) {
+	var writes []syntax.Slide
+	var stmts []syntax.Operand
+	for i := range 3 {
+		writes = append(writes, syntax.Slide{Ops: [2]syntax.Operand{num(int32(i))}, Flags: syntax.FormatVaudoisCardinal},
+			syntax.Slide{Ops: [2]syntax.Operand{num(int32(i))}, Flags: syntax.FormatVaudoisOrdinal})
+		stmts = append(stmts, syntax.Operand{Type: syntax.Write, Index: int32(2 * i)}, syntax.Operand{Type: syntax.Write, Index: int32(2*i + 1)})
+	}
+	p := hand([]int32{91, 0, -1}, map[syntax.Category][]syntax.Slide{syntax.Writes: writes}, stmts...)
+	p.Verys = 2
+	want := "nonante-et-un\nnonante-et-unième\nzéro\nzéroième\nmoins un\nmoins premier\n"
+	if got, err := runHand(t, p, ""); err != nil || got != want {
+		t.Errorf("%q, %v; want %q", got, err, want)
+	}
+}
+
 // "Logical operations" compute ~a & ~b (NOR); Very Sorted!'s NAND (#26)
 // computes ~(a & b).
 func TestLogicalOperation(t *testing.T) {

@@ -73,6 +73,9 @@ const (
 	// Very Very Sorted! (#30) also writes Italian numbers.
 	FormatItalianCardinal int32 = 5
 	FormatItalianOrdinal  int32 = 6
+	// ... and Vaudois French numbers (#29).
+	FormatVaudoisCardinal int32 = 7
+	FormatVaudoisOrdinal  int32 = 8
 
 	CompareEqual int32 = 0
 	CompareLess  int32 = 1
@@ -111,7 +114,7 @@ type Program struct {
 	// Verys is the program's dialect, counted in verys (#39): 0 for the
 	// original's Sorted!, 1 for Very Sorted! ("This code is very cool."),
 	// 2 for Very Very Sorted! ("This code is very very cool."), which also
-	// speaks Italian (see Parse). Each dialect has everything the one
+	// speaks Italian and French (see Parse). Each dialect has everything the one
 	// before it has.
 	Verys int
 }

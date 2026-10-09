@@ -131,12 +131,25 @@ func (ps *parser) itCardinal() (int32, bool) {
 // itList parses an Italian list: items separated by commas, the last after
 // "e" (or "ed"), with or without a comma before it ("uno, due e tre",
 // "..., e ..."). A single item is a list too.
-func (ps *parser) itList(spec func() bool) bool {
+func (ps *parser) itList(spec func() bool) bool { return ps.listOf(spec, "e", "ed") }
+
+// listOf parses a list of Very Very Sorted!'s Italian or French: items
+// separated by commas, the last after one of the conjunctions, with or
+// without a comma before it. A single item is a list too.
+func (ps *parser) listOf(spec func() bool, conjs ...string) bool {
+	conj := func() bool {
+		for _, c := range conjs {
+			if ps.kw(c) {
+				return true
+			}
+		}
+		return false
+	}
 	save := ps.p
 	if spec() {
 		for {
 			comma := ps.kw(",")
-			if ps.kw("e") || ps.kw("ed") {
+			if conj() {
 				if spec() {
 					return true
 				}
@@ -154,9 +167,9 @@ func (ps *parser) itList(spec func() bool) bool {
 	return false
 }
 
-// itWith parses the words, then spec, restoring the cursor unless both
+// with parses the words, then spec, restoring the cursor unless both
 // succeed.
-func (ps *parser) itWith(spec func() bool, words string) bool {
+func (ps *parser) with(spec func() bool, words string) bool {
 	save := ps.p
 	if ps.seq(strings.Fields(words)...) && spec() {
 		return true
@@ -167,7 +180,7 @@ func (ps *parser) itWith(spec func() bool, words string) bool {
 
 // itHead parses "questo programma" and the words that follow, then spec.
 func (ps *parser) itHead(words string, spec func() bool) bool {
-	return ps.itWith(spec, "questo programma "+words)
+	return ps.with(spec, "questo programma "+words)
 }
 
 // always is a spec that needs nothing more.
@@ -180,7 +193,7 @@ func (ps *parser) itNone(words string) bool { return ps.itHead("non "+words, alw
 // ("la somma ...") or a list after the plural ("le somme ...").
 func (ps *parser) itUses(spec func() bool, one, many string) bool {
 	return ps.itHead("usa", func() bool {
-		return ps.itWith(spec, one) || ps.itWith(func() bool { return ps.itList(spec) }, many)
+		return ps.with(spec, one) || ps.with(func() bool { return ps.itList(spec) }, many)
 	})
 }
 
@@ -275,9 +288,10 @@ func (ps *parser) itJump(cell *Slide) bool {
 }
 
 // veryVeryFormat parses the output formats Very Very Sorted! adds: all of
-// them in Italian ("come carattere", "come cardinale italiano"), and the
-// Italian numbers in English and German ("as an italian ordinal", "als ein
-// italienischer Kardinal"). Unlike the original's formats, each is parsed
+// them in Italian ("come carattere", "come cardinale italiano") and French
+// ("comme caractère", "comme ordinal vaudois"), and the Italian and Vaudois
+// numbers in the other languages ("as an italian ordinal", "als ein
+// waadtländischer Kardinal", "come cardinale vodese"). Unlike the original's formats, each is parsed
 // whole or not at all.
 func (ps *parser) veryVeryFormat(cell *Slide) bool {
 	for _, f := range []struct {
@@ -298,6 +312,22 @@ func (ps *parser) veryVeryFormat(cell *Slide) bool {
 		{"as a italian ordinal", FormatItalianOrdinal},
 		{"als ein italienischer kardinal", FormatItalianCardinal},
 		{"als eine italienische ordinalzahl", FormatItalianOrdinal},
+		{"come cardinale vodese", FormatVaudoisCardinal},
+		{"come ordinale vodese", FormatVaudoisOrdinal},
+		{"comme caractere", FormatCharacter},
+		{"comme un caractere", FormatCharacter},
+		{"comme cardinal anglais", FormatEnglishCardinal},
+		{"comme ordinal anglais", FormatEnglishOrdinal},
+		{"comme cardinal allemand", FormatGermanCardinal},
+		{"comme ordinal allemand", FormatGermanOrdinal},
+		{"comme cardinal italien", FormatItalianCardinal},
+		{"comme ordinal italien", FormatItalianOrdinal},
+		{"comme cardinal vaudois", FormatVaudoisCardinal},
+		{"comme ordinal vaudois", FormatVaudoisOrdinal},
+		{"as a vaudois cardinal", FormatVaudoisCardinal},
+		{"as a vaudois ordinal", FormatVaudoisOrdinal},
+		{"als ein waadtlaendischer kardinal", FormatVaudoisCardinal},
+		{"als eine waadtlaendische ordinalzahl", FormatVaudoisOrdinal},
 	} {
 		if ps.seq(strings.Fields(f.words)...) {
 			cell.Flags = f.format
