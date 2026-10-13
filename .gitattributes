@@ -1,2 +1,4 @@
 # Golden captures from the original Sorted.exe: keep their bytes (CRLF) exactly
 testdata/golden/** -text
+# gofmt wants LF, whatever core.autocrlf says (Git for Windows defaults to true)
+*.go text eol=lf
